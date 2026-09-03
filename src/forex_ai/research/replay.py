@@ -89,6 +89,12 @@ class ReplayEngine:
 
     def run(self, events: Iterable[ReplayEvent], account_r_value: float = 1.0) -> ReplayArtifact:
         event_list = tuple(events)
+        if any(event.clock_utc.tzinfo is None for event in event_list):
+            raise ValueError("replay event clocks must be timezone-aware")
+        if any(a.clock_utc >= b.clock_utc for a, b in zip(event_list[:-1], event_list[1:])):
+            raise ValueError("replay events must be strictly ordered")
+        if any(event.snapshot.captured_at_utc > event.clock_utc for event in event_list):
+            raise ValueError("snapshot capture time cannot be in the future relative to replay clock")
         dataset_fp = fingerprint([{"clock": e.clock_utc, "snapshot": e.snapshot.fingerprint} for e in event_list])
         open_trades: dict[str, _OpenTrade] = {}
         seen_candidates: set[str] = set()

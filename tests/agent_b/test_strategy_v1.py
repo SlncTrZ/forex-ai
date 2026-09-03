@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from forex_ai.strategy.v1.contracts import Candle, MarketSnapshot, StrategyConfig, TimeframeSnapshot
 from forex_ai.strategy.v1.trend_pullback import DEFAULT_CONFIG as PULLBACK_CONFIG, evaluate as eval_pullback
 from forex_ai.strategy.v1.volatility_breakout import DEFAULT_CONFIG as BREAKOUT_CONFIG, evaluate as eval_breakout
@@ -56,6 +58,18 @@ def test_one_current_bar_produces_no_closed_signal():
     result=eval_pullback(snap,PULLBACK_CONFIG,now)
     assert result.candidate is None
     assert 'INSUFFICIENT_CLOSED_BARS' in result.no_setup_reason_codes
+
+
+def test_timeframe_rejects_duplicate_unordered_and_nonfinite_bars():
+    start=datetime(2026,1,1,tzinfo=UTC)
+    a=Candle(start,100,101,99,100)
+    b=Candle(start+timedelta(minutes=15),100,101,99,100)
+    with pytest.raises(ValueError):
+        TimeframeSnapshot('M15',(a,a))
+    with pytest.raises(ValueError):
+        TimeframeSnapshot('M15',(b,a))
+    with pytest.raises(ValueError):
+        Candle(start,100,float('nan'),99,100)
 
 
 def test_breakout_positive_and_cost_rejection():

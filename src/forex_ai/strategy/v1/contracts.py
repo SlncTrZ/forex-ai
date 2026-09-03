@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from types import MappingProxyType
@@ -37,6 +38,11 @@ class Candle:
     def __post_init__(self) -> None:
         if self.time_utc.tzinfo is None:
             raise ValueError("timezone-aware candle required")
+        values = (self.open, self.high, self.low, self.close, self.volume)
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("candle values must be finite")
+        if min(self.open, self.high, self.low, self.close) <= 0 or self.volume < 0:
+            raise ValueError("candle prices must be positive and volume non-negative")
         if self.high < max(self.open, self.close) or self.low > min(self.open, self.close) or self.high < self.low:
             raise ValueError("invalid OHLC")
 
@@ -49,6 +55,17 @@ class TimeframeSnapshot:
     timeframe: str
     closed_bars: tuple[Candle, ...]
     current_bar: Candle | None = None
+
+    def __post_init__(self) -> None:
+        if not self.timeframe:
+            raise ValueError("timeframe is required")
+        timestamps = tuple(bar.time_utc for bar in self.closed_bars)
+        if len(set(timestamps)) != len(timestamps):
+            raise ValueError("duplicate closed bars")
+        if any(a >= b for a, b in zip(timestamps[:-1], timestamps[1:])):
+            raise ValueError("closed bars must be strictly ordered")
+        if self.current_bar is not None and timestamps and self.current_bar.time_utc <= timestamps[-1]:
+            raise ValueError("current bar must be newer than closed bars")
 
     @classmethod
     def from_sequence(cls, timeframe: str, bars: Sequence[Candle], current_bar: Candle | None = None) -> "TimeframeSnapshot":
@@ -73,6 +90,14 @@ class MarketSnapshot:
     def __post_init__(self) -> None:
         if self.captured_at_utc.tzinfo is None:
             raise ValueError("timezone-aware snapshot required")
+        if self.market_time_msc <= 0:
+            raise ValueError("market_time_msc must be positive")
+        if not all(math.isfinite(value) for value in (self.bid, self.ask, self.spread_cost, self.commission_cost)):
+            raise ValueError("snapshot prices/costs must be finite")
+        if self.bid <= 0 or self.ask <= 0 or self.ask < self.bid:
+            raise ValueError("invalid bid/ask")
+        if self.spread_cost < 0 or self.commission_cost < 0:
+            raise ValueError("costs must be non-negative")
         object.__setattr__(self, "timeframes", MappingProxyType(dict(self.timeframes)))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 

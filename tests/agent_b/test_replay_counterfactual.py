@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from forex_ai.research.counterfactual import CounterfactualRecord, evaluate as evaluate_counterfactual
 from forex_ai.research.evaluation import evaluate_trades
 from forex_ai.research.replay import CostModel, ReplayEngine, ReplayEvent
@@ -38,6 +40,19 @@ def test_replay_uses_supplied_strategy_and_applies_costs():
     assert artifact.trades[0].net_r<artifact.trades[0].gross_r
     metrics=evaluate_trades(artifact.trades)
     assert metrics.trade_count==1 and metrics.expectancy_r==artifact.trades[0].net_r
+
+
+def test_replay_rejects_out_of_order_and_future_snapshots():
+    cfg=StrategyConfig(StrategyVersion('fixture','1'),{})
+    t0=datetime(2026,1,1,tzinfo=UTC)
+    b=Candle(t0,100,101,99,100)
+    later=ReplayEvent(t0+timedelta(minutes=30),_snap(t0+timedelta(minutes=30),(b,)))
+    earlier=ReplayEvent(t0+timedelta(minutes=15),_snap(t0+timedelta(minutes=15),(b,)))
+    with pytest.raises(ValueError, match='strictly ordered'):
+        ReplayEngine(_strategy,cfg).run((later,earlier))
+    future=_snap(t0+timedelta(hours=1),(b,))
+    with pytest.raises(ValueError, match='future'):
+        ReplayEngine(_strategy,cfg).run((ReplayEvent(t0+timedelta(minutes=1),future),))
 
 
 def test_walkforward_boundaries_do_not_overlap():
