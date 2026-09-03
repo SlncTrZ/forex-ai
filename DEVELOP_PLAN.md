@@ -46,7 +46,7 @@ Production-ready does **not** mean profitable. Software safety/correctness and s
   - persistent `armed=false`
   - persistent `kill_switch=true` when no explicit control state exists
   - no LLM execution tool
-- Automated suite after A/B/Integration + Gates 0–4 engineering merge and Gate 1 maintenance hardening: 118 tests passing as of 2026-09-03.
+- Automated suite after A/B/Integration + Gates 0–4 engineering merge, Gate 1 maintenance hardening, and Gate 6 minimum ops hardening: 123 tests passing as of 2026-09-03.
 
 ### 2.2 Remaining critical gaps
 
@@ -55,7 +55,7 @@ Production-ready does **not** mean profitable. Software safety/correctness and s
 - Gate 4 immutable dataset/OOS tooling is code-complete and tested, including byte hashes, semantic event fingerprints, overwrite refusal, tamper detection, non-overlapping splits, reproducible evidence fingerprints, and explicit acceptance policy. The remaining strategy blocker is evidence, not framework: freeze an approved real historical dataset and complete walk-forward/final-test OOS evaluation after realistic broker costs.
 - RiskEngine broker-edge validation now covers pending/existing exposure, finite calculator failures, stop/target/freeze boundaries, fees, account-currency neutrality, volume-step flooring, nonlinear broker profit calculation, and live read-only profit/margin calculations on the configured XAUUSD/EURUSD/GBPUSD broker symbols. Filling-mode/retcode behavior belongs to Gate 3 execution validation and remains pending.
 - Persistent effectively-once state exists, but crash-before/after-send, timeout-but-accepted, restart reconciliation, partial-fill, orphan, and missing-protection behavior still require demo/fault-injection evidence.
-- Emergency SL/TP protection/close policy, owner alerting, watchdog/heartbeat, backup/restore, disk-full handling, and disaster-recovery drills remain operational work.
+- Gate 6 minimum ops hardening now includes runtime health assessment, heartbeat staleness checks, unresolved execution-intent detection, low-disk fail-closed guards, transactional SQLite backup with integrity verification, health/backup systemd timer units, and a successful live backup/restore + observer process-restart drill. External owner-alert transport, host reboot, disk-full simulation, retention, and broader DR drills remain operational work.
 - Legacy signal/DeepSeek code remains for compatibility/research and must not regain production decision authority.
 - OBSERVE, SHADOW, DEMO, and OOS acceptance samples have not yet been collected; real-money production remains No-Go.
 
@@ -68,7 +68,7 @@ Production-ready does **not** mean profitable. Software safety/correctness and s
 | Observer/research harness | 97%+ code complete | Destructive container/network fault drill passed; seven-day soak in progress |
 | Strategy validation evidence | 80–85% framework complete | Immutable/OOS framework passed; real historical dataset + final evidence still required |
 | Controlled LLM experiment | 60–70% | Advisory boundary ready; paid shadow evidence pending |
-| Operations/release/DR | 45–55% | Gate 0 local acceptance passed; Gate 6 work remains |
+| Operations/release/DR | 70–75% | Minimum health/disk/backup/restart layer implemented and live-drilled; owner-alert transport + host/disk/retention DR remain |
 | Real-money production | 0% approved | No-Go until all release/validation gates pass |
 
 ### 2.4 Gate status snapshot
@@ -81,7 +81,7 @@ Production-ready does **not** mean profitable. Software safety/correctness and s
 | Gate 3 — Execution | Normalized MT5 request builders, filling policy, retcode classifier, persistent broker-event hashes, timeout/partial/restart reconciliation, protection repair/emergency-close policy implemented | 17/17 focused fake-fault tests + full suite + live read-only execution-contract build on XAUUSD/EURUSD/GBPUSD passed; real DEMO `order_check/order_send` timeout/partial/protection campaign still pending | **ENGINEERING/FAKE-FAULT PASS — DEMO CAMPAIGN PENDING** |
 | Gate 4 — Strategy/replay | Strategy/replay/reporting + immutable dataset manifest/hash + OOS evidence/acceptance framework implemented | 5/5 focused immutable/OOS tests + 115/115 full suite passed; real historical dataset freeze, realistic-cost walk-forward, untouched final test, sensitivity/Monte Carlo evidence and owner approval remain | **ENGINEERING/IMMUTABILITY PASS — REAL OOS EVIDENCE PENDING** |
 | Gate 5 — LLM advisory | Advisory safety boundary implemented | Paid shadow/cost/value evidence pending | PARTIAL |
-| Gate 6 — Operations/DR | Existing service/deploy baseline only | Alerts/backup/restore/fault drills pending | PENDING |
+| Gate 6 — Operations/DR | Runtime ops health evaluator, low-disk fail-closed guard, transactional verified SQLite backup, health/backup systemd timers implemented | 5/5 focused ops tests + 123/123 full suite passed; live health check healthy, live backup restored with integrity `ok`/schema v8, observer process restart reconciled through `CONNECTING -> SYNCING -> HEALTHY`. Owner-alert transport, deployed timer activation, host reboot, disk-full simulation and broader DR remain | **MINIMUM OPS ENGINEERING/LIVE DRILL PASS — FULL OPS ACCEPTANCE PENDING** |
 | Gate 7 — Rollout | Modes/control state defined | No soak/demo/live stages approved | BLOCKED BY EARLIER GATES |
 
 ## 3. Non-negotiable architecture
@@ -816,7 +816,7 @@ Forex-AI V1 is production-ready only when all items below are true:
 | CURRENT | Execution unknown-outcome, retcode, restart, partial-fill and SL/TP fault campaign | Persistent execution lifecycle |
 | DONE/REAL-DATA-PENDING | Immutable replay dataset + reproducible walk-forward/OOS evidence framework | Strategy/replay tooling |
 | P1 | Demo integration and fault injection | Execution adapter |
-| P1 | Metrics, alerting, watchdog, backup/restore | Runtime contracts |
+| PARTIAL | Metrics/health watchdog + verified backup/restore + low-disk fail-closed | Minimum layer implemented/live-drilled; alert transport/full DR pending |
 | P1 | Selective DeepSeek review, MacroSnapshot cache, batching, budget, and fallback | Stable shadow pipeline |
 | P1 | Shadow BOT_ONLY versus BOT_LLM counterfactual evaluation | Replay/audit contracts |
 | P2 | Account-neutral live-canary tooling and daily arming | All previous gates |
@@ -830,7 +830,7 @@ Forex-AI V1 is production-ready only when all items below are true:
 3. Before any real production deployment, repeat the already-passed Gate 0 drill from a clean branch synchronized with upstream on the target host; production deploy continues to refuse dirty/ahead/behind source.
 4. Freeze the approved real historical replay dataset using the completed immutable dataset framework, then produce walk-forward/OOS strategy evidence after realistic costs without tuning on the final test split.
 5. Run controlled DeepSeek/advisory paid shadow smoke; verify cache/budget/fallback and counterfactual value.
-6. Add observability, owner alerts, watchdog, backup/restore, disk-full handling, and recovery drills.
+6. Finish Gate 6 beyond the minimum layer: deploy/enable health+backup timers, add owner-alert transport, retention, host reboot and disk-full simulation, then complete broader recovery drills.
 7. Complete the seven-day OBSERVE soak that began 2026-09-03 17:54:40 +07; review heartbeat/data-quality/reconciliation incidents at or after 2026-09-10 17:54:40 +07.
 8. Run SHADOW comparison with at least 200 candidate decisions and BOT_ONLY/BOT_LLM counterfactuals.
 9. Run DEMO execution campaign with at least 100 complete lifecycles plus required fault injections.
