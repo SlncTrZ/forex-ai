@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA = r"""
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -341,6 +341,20 @@ CREATE TABLE IF NOT EXISTS execution_transitions_v1 (
     FOREIGN KEY(intent_id) REFERENCES order_intents_v1(intent_id)
 );
 CREATE INDEX IF NOT EXISTS idx_execution_transitions_intent ON execution_transitions_v1(intent_id, id);
+
+CREATE TABLE IF NOT EXISTS execution_broker_events_v1 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intent_id TEXT NOT NULL,
+    timestamp_utc TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL,
+    response_sha256 TEXT,
+    retcode INTEGER,
+    outcome_class TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    FOREIGN KEY(intent_id) REFERENCES order_intents_v1(intent_id)
+);
+CREATE INDEX IF NOT EXISTS idx_execution_broker_events_intent ON execution_broker_events_v1(intent_id, id);
 
 CREATE TABLE IF NOT EXISTS counterfactuals_v1 (
     candidate_id TEXT PRIMARY KEY,

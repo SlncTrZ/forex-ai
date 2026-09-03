@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Callable
 
 from forex_ai.execution.state import ExecutionState, IntentRepository, OrderIntent
@@ -12,6 +13,9 @@ class SendOutcome:
     broker_order_ticket: int | None = None
     broker_position_ticket: int | None = None
     reason: str | None = None
+    unknown: bool = False
+    partial: bool = False
+    filled_volume: Decimal = Decimal("0")
 
 
 class ExecutionController:
@@ -66,17 +70,26 @@ class ExecutionController:
         intent = self.begin_send(intent_id)
         try:
             response = send(request)
-        except (TimeoutError, ConnectionError):
+        except Exception:
+            # Once SEND_STARTED is persisted, any broker-call exception leaves the
+            # external outcome uncertain. Reconciliation is required before retry.
             return self._save(intent.transition(ExecutionState.UNKNOWN, reason="SEND_RESULT_UNKNOWN"))
-        outcome = classify(response)
+        try:
+            outcome = classify(response)
+        except Exception:
+            return self._save(intent.transition(ExecutionState.UNKNOWN, reason="SEND_CLASSIFICATION_UNKNOWN"))
+        if outcome.unknown:
+            return self._save(intent.transition(ExecutionState.UNKNOWN, reason=outcome.reason or "SEND_RESULT_UNKNOWN"))
         if not outcome.accepted:
             return self._save(intent.transition(ExecutionState.REJECTED, reason=outcome.reason or "BROKER_REJECTED"))
+        target = ExecutionState.PARTIALLY_FILLED if outcome.partial else ExecutionState.ACCEPTED
         return self._save(
             intent.transition(
-                ExecutionState.ACCEPTED,
-                reason=outcome.reason or "BROKER_ACCEPTED",
+                target,
+                reason=outcome.reason or ("BROKER_PARTIAL" if outcome.partial else "BROKER_ACCEPTED"),
                 broker_order_ticket=outcome.broker_order_ticket,
                 broker_position_ticket=outcome.broker_position_ticket,
+                filled_volume=outcome.filled_volume if outcome.partial else intent.filled_volume,
             )
         )
 

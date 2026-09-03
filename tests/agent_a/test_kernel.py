@@ -312,6 +312,17 @@ def test_existing_and_pending_risk_calc_failures_have_distinct_reasons():
     assert "INVALID_PENDING_RISK_CALC" in result.reason_codes
 
 
+def test_trade_tick_size_alignment_is_enforced():
+    tick_sized = contract().model_copy(update={"trade_tick_size": 0.0001})
+    misaligned = candidate(stop_loss=D("1.09005"), take_profit=D("1.12005"))
+    result = evaluate(c=misaligned, con=tick_sized)
+    assert not result.approved
+    assert "PRICE_TICK_ALIGNMENT" in result.reason_codes
+    aligned = candidate(stop_loss=D("1.0900"), take_profit=D("1.1200"))
+    aligned_result = evaluate(c=aligned, con=tick_sized)
+    assert "PRICE_TICK_ALIGNMENT" not in aligned_result.reason_codes
+
+
 def test_target_and_freeze_distance_are_enforced():
     tight_target = candidate(take_profit=D("1.10005"))
     result = evaluate(c=tight_target)

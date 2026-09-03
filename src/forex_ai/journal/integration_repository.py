@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -17,6 +18,51 @@ from .db import session, utc_now
 
 def _json(value) -> str:
     return json.dumps(value, ensure_ascii=False, default=str, sort_keys=True, separators=(",", ":"))
+
+
+def payload_sha256(value) -> str:
+    return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
+
+
+def persist_execution_broker_event(
+    db_path: Path,
+    *,
+    intent_id: str,
+    timestamp_utc: datetime,
+    phase: str,
+    request: dict,
+    response: dict | None,
+    outcome_class: str,
+) -> int:
+    request_hash = payload_sha256(request)
+    response_hash = payload_sha256(response) if response is not None else None
+    retcode = None
+    if response is not None and response.get("retcode") is not None:
+        try:
+            retcode = int(response["retcode"])
+        except (TypeError, ValueError):
+            retcode = None
+    payload = {
+        "response_present": response is not None,
+        "retcode": retcode,
+    }
+    with session(db_path) as con:
+        cur = con.execute(
+            """INSERT INTO execution_broker_events_v1(
+                intent_id,timestamp_utc,phase,request_sha256,response_sha256,retcode,outcome_class,payload_json
+            ) VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                intent_id,
+                timestamp_utc.astimezone(timezone.utc).isoformat(),
+                phase,
+                request_hash,
+                response_hash,
+                retcode,
+                outcome_class,
+                _json(payload),
+            ),
+        )
+        return int(cur.lastrowid)
 
 
 class SQLiteIntentRepository(IntentRepository):

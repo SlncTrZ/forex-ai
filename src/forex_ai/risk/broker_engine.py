@@ -186,6 +186,7 @@ class BrokerAwareRiskEngine:
         bid = D(str(tick.bid))
         ask = D(str(tick.ask))
         point = D(str(contract.point))
+        price_step = D(str(contract.trade_tick_size or contract.point))
 
         if not p.enabled:
             reasons.append("RISK_PROFILE_DISABLED")
@@ -221,6 +222,11 @@ class BrokerAwareRiskEngine:
             reasons.append("SLIPPAGE_LIMIT")
         adverse_slippage = max(D("0"), context.expected_slippage_points) * point
         executable = (ask + adverse_slippage) if candidate.side == "BUY" else (bid - adverse_slippage)
+        if any(
+            (value / price_step) != (value / price_step).to_integral_value()
+            for value in (executable, candidate.stop_loss, candidate.take_profit)
+        ):
+            reasons.append("PRICE_TICK_ALIGNMENT")
         if candidate.side == "BUY":
             if not (candidate.stop_loss < executable < candidate.take_profit):
                 reasons.append("INVALID_PRICE_ORDER")
