@@ -9,6 +9,10 @@ from mt5linux import MetaTrader5
 
 from forex_ai.config import RuntimeConfig
 
+# MetaTrader 5 SYMBOL_ORDER_MODE flag: market orders are bit 0 (value 1).
+# The Python package used by mt5linux does not expose SYMBOL_ORDER_MARKET.
+MT5_SYMBOL_ORDER_MARKET_BIT = 1
+
 
 def plain(value: Any) -> Any:
     if value is None:
@@ -162,4 +166,8 @@ class MT5Client:
             "M15": mt5.TIMEFRAME_M15,
             "H1": mt5.TIMEFRAME_H1,
             "H4": mt5.TIMEFRAME_H4,
+            "POSITION_TYPE_BUY": mt5.POSITION_TYPE_BUY,
+            "POSITION_TYPE_SELL": mt5.POSITION_TYPE_SELL,
+            "SYMBOL_TRADE_MODE_DISABLED": mt5.SYMBOL_TRADE_MODE_DISABLED,
+            "SYMBOL_ORDER_MARKET": MT5_SYMBOL_ORDER_MARKET_BIT,
         }

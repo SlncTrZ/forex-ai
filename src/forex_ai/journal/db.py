@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = r"""
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -357,6 +357,18 @@ CREATE TABLE IF NOT EXISTS trading_control_state (
     updated_at_utc TEXT NOT NULL,
     reason TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS runtime_heartbeats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_utc TEXT NOT NULL,
+    health_state TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    last_mt5_success_utc TEXT,
+    last_market_time_msc INTEGER,
+    last_journal_success_utc TEXT,
+    payload_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_heartbeats_time ON runtime_heartbeats(timestamp_utc);
 
 CREATE TABLE IF NOT EXISTS system_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

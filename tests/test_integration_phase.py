@@ -37,7 +37,7 @@ def test_schema_v6_and_default_control_fail_closed(tmp_path):
     with session(db) as con:
         version = con.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()[0]
         tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert version == str(SCHEMA_VERSION) == "6"
+    assert version == str(SCHEMA_VERSION)
     assert {"order_intents_v1", "execution_transitions_v1", "risk_decisions_v1", "candidate_decisions"}.issubset(tables)
     control = load_trading_control(db)
     assert not control.armed and control.kill_switch
