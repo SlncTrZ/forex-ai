@@ -18,7 +18,7 @@ from forex_ai.mt5.contracts import (
     TickSnapshot,
 )
 from forex_ai.mt5.symbols import resolve_symbol_strict
-from forex_ai.risk.broker_engine import BrokerAwareRiskEngine, CandidateInput, ExistingPosition, RiskContext
+from forex_ai.risk.broker_engine import BrokerAwareRiskEngine, CandidateInput, ExistingPosition, PendingExposure, RiskContext
 from forex_ai.risk.profile import RiskProfile
 
 NOW = datetime(2026, 9, 3, 6, 0, tzinfo=timezone.utc)
@@ -231,6 +231,155 @@ def test_unprotected_existing_position_fails_closed():
     result = evaluate(ctx=context(existing_positions=(existing,)))
     assert not result.approved
     assert "UNPROTECTED_EXISTING_POSITION" in result.reason_codes
+
+
+def test_pending_exposure_risk_is_derived_and_counts_once_for_quota():
+    pending = PendingExposure(
+        intent_id="pending-a", symbol="EURUSD", side="BUY", volume=D("0.03"),
+        entry=D("1.1000"), stop_loss=D("1.0900"), take_profit=D("1.1200"), correlation_group="USD",
+    )
+    ctx = context(
+        active_intent_ids=("pending-a", "other"), pending_exposures=(pending,), proposed_correlation_group="USD"
+    )
+    assert ctx.active_orders == 2
+    result = evaluate(ctx=ctx)
+    assert not result.approved
+    assert "TOTAL_OPEN_RISK_LIMIT" in result.reason_codes
+    assert "CORRELATED_RISK_LIMIT" in result.reason_codes
+
+
+def test_unquantified_active_exposure_fails_closed():
+    result = evaluate(ctx=context(active_intent_ids=("unknown-risk",)))
+    assert not result.approved
+    assert "UNQUANTIFIED_ACTIVE_EXPOSURE" in result.reason_codes
+
+
+def test_pending_exposure_requires_finite_protected_price_order():
+    with pytest.raises(ValueError):
+        PendingExposure(
+            intent_id="p", symbol="EURUSD", side="BUY", volume=D("0.01"),
+            entry=D("1.1"), stop_loss=D("1.09"), take_profit=D("NaN"),
+        )
+    with pytest.raises(ValueError):
+        PendingExposure(
+            intent_id="p", symbol="EURUSD", side="SELL", volume=D("0.01"),
+            entry=D("1.1"), stop_loss=D("1.09"), take_profit=D("1.12"),
+        )
+
+
+def test_broker_calculator_exception_and_nan_fail_closed():
+    engine = BrokerAwareRiskEngine(profile())
+
+    def bad_profit(*_args):
+        raise RuntimeError("broker calc unavailable")
+
+    result = engine.evaluate(
+        candidate(), account=account(), contract=contract(), tick=tick(), safety=safety(), context=context(),
+        calc_profit=bad_profit, calc_margin=calc_margin, now_utc=NOW,
+    )
+    assert not result.approved
+    assert "INVALID_PROFIT_CALC" in result.reason_codes
+
+    result_margin = engine.evaluate(
+        candidate(), account=account(), contract=contract(), tick=tick(), safety=safety(), context=context(),
+        calc_profit=calc_profit, calc_margin=lambda *_: D("NaN"), now_utc=NOW,
+    )
+    assert not result_margin.approved
+    assert "INVALID_MARGIN_CALC" in result_margin.reason_codes
+
+
+def test_existing_and_pending_risk_calc_failures_have_distinct_reasons():
+    existing = exposure("existing", "5")
+    pending = PendingExposure(
+        intent_id="pending", symbol="EURUSD", side="BUY", volume=D("0.01"),
+        entry=D("1.1"), stop_loss=D("1.09"), take_profit=D("1.12"),
+    )
+    calls = 0
+
+    def fail_first_two(*args):
+        nonlocal calls
+        calls += 1
+        if calls <= 2:
+            return D("NaN")
+        return calc_profit(*args)
+
+    result = BrokerAwareRiskEngine(profile()).evaluate(
+        candidate(), account=account(), contract=contract(), tick=tick(), safety=safety(),
+        context=context(existing_positions=(existing,), pending_exposures=(pending,)),
+        calc_profit=fail_first_two, calc_margin=calc_margin, now_utc=NOW,
+    )
+    assert "INVALID_EXISTING_RISK_CALC" in result.reason_codes
+    assert "INVALID_PENDING_RISK_CALC" in result.reason_codes
+
+
+def test_target_and_freeze_distance_are_enforced():
+    tight_target = candidate(take_profit=D("1.10005"))
+    result = evaluate(c=tight_target)
+    assert "TARGET_LEVEL_VIOLATION" in result.reason_codes
+    frozen = contract().model_copy(update={"trade_freeze_level": 1500})
+    freeze_result = evaluate(con=frozen)
+    assert "PROTECTION_FREEZE_LEVEL_VIOLATION" in freeze_result.reason_codes
+
+
+def test_fee_is_included_in_sizing_budget():
+    result = evaluate(p=profile(max_risk_per_trade_pct=D("2"), conservative_fee_per_lot=D("500")))
+    assert result.approved
+    assert result.normalized_volume == D("0.01")
+    assert result.projected_loss_account_currency <= D("20")
+
+
+def test_broker_nonlinear_profit_calc_binary_searches_to_safe_volume():
+    p = profile(max_risk_per_trade_pct=D("20"), max_total_open_risk_pct=D("30"))
+
+    def nonlinear_profit(side, symbol, volume, entry, stop):
+        del side, symbol, entry, stop
+        rate = D("1000") if volume <= D("0.10") else D("1100")
+        return -rate * volume
+
+    result = BrokerAwareRiskEngine(p).evaluate(
+        candidate(), account=account(), contract=contract(), tick=tick(), safety=safety(), context=context(),
+        calc_profit=nonlinear_profit, calc_margin=lambda *_: D("10"), now_utc=NOW,
+    )
+    assert result.approved
+    assert result.normalized_volume == D("0.18")
+    assert result.projected_loss_account_currency == D("198.00")
+    assert result.projected_loss_account_currency <= D("200")
+
+
+def test_account_currency_agnostic_sizing_uses_broker_account_currency_calc():
+    jpy_account = account().model_copy(update={"currency": "JPY", "equity": 100000.0, "margin_free": 100000.0})
+    engine = BrokerAwareRiskEngine(profile())
+
+    def calc_profit_jpy(side, symbol, volume, entry, stop):
+        del side, symbol, entry, stop
+        return -D("100000") * volume
+
+    result = engine.evaluate(
+        candidate(), account=jpy_account, contract=contract(), tick=tick(), safety=safety(), context=context(
+            daily_reference_equity=D("100000"), weekly_reference_equity=D("100000")
+        ), calc_profit=calc_profit_jpy, calc_margin=lambda *_: D("100"), now_utc=NOW,
+    )
+    assert result.approved
+    assert result.normalized_volume == D("0.01")
+    assert result.projected_loss_account_currency == D("1000")
+
+
+def test_non_finite_candidate_or_context_is_rejected():
+    result = evaluate(c=candidate(stop_loss=D("NaN")))
+    assert not result.approved and "INVALID_NUMERIC_VALUE" in result.reason_codes
+    with pytest.raises(ValueError, match="finite"):
+        context(drawdown_amount=D("NaN"))
+
+
+@pytest.mark.parametrize(
+    ("risk_pct", "expected_volume"),
+    [("1", "0.01"), ("2", "0.02"), ("2.99", "0.02")],
+)
+def test_volume_step_never_rounds_risk_up(risk_pct, expected_volume):
+    result = evaluate(p=profile(max_risk_per_trade_pct=D(risk_pct)))
+    assert result.approved
+    assert result.normalized_volume == D(expected_volume)
+    assert result.projected_loss_account_currency <= D("1000") * D(risk_pct) / D("100")
 
 
 def test_backoff_is_bounded():

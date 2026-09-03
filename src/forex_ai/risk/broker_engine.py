@@ -39,9 +39,39 @@ class ExistingPosition:
 
 
 @dataclass(frozen=True)
+class PendingExposure:
+    intent_id: str
+    symbol: str
+    side: str
+    volume: Decimal
+    entry: Decimal
+    stop_loss: Decimal
+    take_profit: Decimal
+    correlation_group: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.intent_id:
+            raise ValueError("intent_id is required")
+        if self.side not in {"BUY", "SELL"}:
+            raise ValueError("pending exposure side must be BUY or SELL")
+        values = (self.volume, self.entry, self.stop_loss, self.take_profit)
+        if any(not value.is_finite() for value in values):
+            raise ValueError("pending exposure numeric values must be finite")
+        if self.volume <= 0:
+            raise ValueError("pending exposure volume must be > 0")
+        if self.entry <= 0 or self.stop_loss <= 0 or self.take_profit <= 0:
+            raise ValueError("pending exposure prices must be > 0")
+        if self.side == "BUY" and not (self.stop_loss < self.entry < self.take_profit):
+            raise ValueError("BUY pending exposure requires SL < entry < TP")
+        if self.side == "SELL" and not (self.take_profit < self.entry < self.stop_loss):
+            raise ValueError("SELL pending exposure requires TP < entry < SL")
+
+
+@dataclass(frozen=True)
 class RiskContext:
     active_intent_ids: tuple[str, ...] = ()
     existing_positions: tuple[ExistingPosition, ...] = ()
+    pending_exposures: tuple[PendingExposure, ...] = ()
     proposed_correlation_group: str | None = None
     tick_age_seconds: Decimal = D("0")
     expected_slippage_points: Decimal = D("0")
@@ -54,10 +84,27 @@ class RiskContext:
     weekly_net_cash_flow: Decimal = D("0")
     cooldown_active: bool = False
 
+    def __post_init__(self) -> None:
+        values = (
+            self.tick_age_seconds, self.expected_slippage_points,
+            self.daily_realized_loss_amount, self.weekly_realized_loss_amount,
+            self.drawdown_amount, self.daily_net_cash_flow, self.weekly_net_cash_flow,
+        )
+        optional = (self.daily_reference_equity, self.weekly_reference_equity)
+        if any(not value.is_finite() for value in values):
+            raise ValueError("risk context numeric values must be finite")
+        if any(value is not None and not value.is_finite() for value in optional):
+            raise ValueError("risk context reference equity must be finite")
+        if self.tick_age_seconds < 0:
+            raise ValueError("tick_age_seconds must be >= 0")
+        if self.daily_realized_loss_amount < 0 or self.weekly_realized_loss_amount < 0 or self.drawdown_amount < 0:
+            raise ValueError("loss and drawdown amounts must be >= 0")
+
     @property
     def active_orders(self) -> int:
         ids = set(self.active_intent_ids)
         ids.update(item.intent_id for item in self.existing_positions)
+        ids.update(item.intent_id for item in self.pending_exposures)
         return len(ids)
 
 
@@ -93,6 +140,17 @@ class BrokerAwareRiskEngine:
     @staticmethod
     def _bounded_budget(percent_budget: Decimal, absolute_budget: Decimal | None) -> Decimal:
         return percent_budget if absolute_budget is None else min(percent_budget, absolute_budget)
+
+    @staticmethod
+    def _calculated_decimal(call: Callable[[], Decimal]) -> Decimal | None:
+        try:
+            value = call()
+            if value is None:
+                return None
+            result = D(str(value))
+            return result if result.is_finite() else None
+        except Exception:
+            return None
 
     @staticmethod
     def _floor_volume(raw: Decimal, contract: SymbolContract) -> Decimal:
@@ -141,6 +199,21 @@ class BrokerAwareRiskEngine:
             reasons.append("INVALID_SIDE")
         if candidate.expires_at_utc.astimezone(timezone.utc) <= now_utc:
             reasons.append("CANDIDATE_EXPIRED")
+        candidate_numbers = (
+            candidate.reference_entry, candidate.stop_loss, candidate.take_profit, candidate.age_seconds,
+        )
+        if any(not value.is_finite() for value in candidate_numbers):
+            reasons.append("INVALID_NUMERIC_VALUE")
+            unique = tuple(dict.fromkeys(reasons))
+            return BrokerRiskResult(
+                candidate_id=candidate.candidate_id, approved=False, reason_codes=unique,
+                normalized_symbol=contract.symbol, normalized_volume=D("0"),
+                executable_entry=ask if candidate.side == "BUY" else bid,
+                stop_loss=candidate.stop_loss, take_profit=candidate.take_profit,
+                projected_loss_account_currency=D("0"), margin_required=D("0"),
+                risk_profile_fingerprint=p.fingerprint, safety_snapshot_fingerprint=safety.fingerprint,
+                expires_at_utc=candidate.expires_at_utc.astimezone(timezone.utc),
+            )
 
         if context.expected_slippage_points < 0:
             reasons.append("INVALID_SLIPPAGE")
@@ -182,9 +255,18 @@ class BrokerAwareRiskEngine:
         if spread_points > D(p.max_spread_points):
             reasons.append("SPREAD_LIMIT")
         stop_points = risk_distance / point if contract.point else D("0")
+        target_points = reward_distance / point if contract.point else D("0")
         if stop_points < D(contract.trade_stops_level):
             reasons.append("STOP_LEVEL_VIOLATION")
+        if target_points < D(contract.trade_stops_level):
+            reasons.append("TARGET_LEVEL_VIOLATION")
+        if D(contract.trade_freeze_level) > 0 and min(stop_points, target_points) < D(contract.trade_freeze_level):
+            reasons.append("PROTECTION_FREEZE_LEVEL_VIOLATION")
 
+        quantified_intent_ids = {item.intent_id for item in context.existing_positions}
+        quantified_intent_ids.update(item.intent_id for item in context.pending_exposures)
+        if set(context.active_intent_ids) - quantified_intent_ids:
+            reasons.append("UNQUANTIFIED_ACTIVE_EXPOSURE")
         if context.active_orders >= p.max_active_orders:
             reasons.append("MAX_ACTIVE_ORDERS")
         if context.cooldown_active:
@@ -227,21 +309,36 @@ class BrokerAwareRiskEngine:
             if position.sl <= 0:
                 reasons.append("UNPROTECTED_EXISTING_POSITION")
                 continue
-            remaining_pnl = calc_profit(
+            remaining_pnl = self._calculated_decimal(lambda: calc_profit(
                 position.side,
                 position.symbol,
                 D(str(position.volume)),
                 D(str(position.price_current)),
                 D(str(position.sl)),
-            )
+            ))
+            if remaining_pnl is None:
+                reasons.append("INVALID_EXISTING_RISK_CALC")
+                continue
             remaining_loss = max(D("0"), -remaining_pnl)
             remaining_loss += p.conservative_fee_per_lot * D(str(position.volume))
             total_open_risk += remaining_loss
             if context.proposed_correlation_group is not None and existing.correlation_group == context.proposed_correlation_group:
                 correlated_open_risk += remaining_loss
+        for pending in context.pending_exposures:
+            pending_pnl = self._calculated_decimal(lambda pending=pending: calc_profit(
+                pending.side, pending.symbol, pending.volume, pending.entry, pending.stop_loss,
+            ))
+            if pending_pnl is None:
+                reasons.append("INVALID_PENDING_RISK_CALC")
+                continue
+            pending_loss = max(D("0"), -pending_pnl)
+            pending_loss += p.conservative_fee_per_lot * pending.volume
+            total_open_risk += pending_loss
+            if context.proposed_correlation_group is not None and pending.correlation_group == context.proposed_correlation_group:
+                correlated_open_risk += pending_loss
         if total_open_risk >= total_budget:
             reasons.append("TOTAL_OPEN_RISK_LIMIT")
-        if correlated_open_risk >= correlated_budget:
+        if context.proposed_correlation_group is not None and correlated_open_risk >= correlated_budget:
             reasons.append("CORRELATED_RISK_LIMIT")
         if context.daily_realized_loss_amount >= daily_budget:
             reasons.append("DAILY_LOSS_LIMIT")
@@ -251,28 +348,68 @@ class BrokerAwareRiskEngine:
             reasons.append("DRAWDOWN_LIMIT")
 
         min_vol = D(str(contract.volume_min))
-        min_loss = abs(calc_profit(candidate.side, candidate.symbol, min_vol, executable, candidate.stop_loss))
-        if min_loss <= 0:
+        min_pnl = self._calculated_decimal(
+            lambda: calc_profit(candidate.side, candidate.symbol, min_vol, executable, candidate.stop_loss)
+        )
+        if min_pnl is None or min_pnl == 0:
             reasons.append("INVALID_PROFIT_CALC")
+            min_loss = D("0")
             raw_volume = D("0")
         else:
-            raw_volume = per_trade_budget / (min_loss / min_vol)
+            min_loss = abs(min_pnl)
+            risk_per_lot = (min_loss / min_vol) + p.conservative_fee_per_lot
+            raw_volume = per_trade_budget / risk_per_lot if risk_per_lot > 0 else D("0")
 
-        volume = self._floor_volume(raw_volume, contract)
-        if volume <= 0:
-            reasons.append("MIN_VOLUME_EXCEEDS_RISK")
-
+        upper_volume = self._floor_volume(raw_volume, contract)
+        volume = D("0")
         projected_loss = D("0")
         margin = D("0")
-        if volume > 0:
-            projected_loss = abs(calc_profit(candidate.side, candidate.symbol, volume, executable, candidate.stop_loss))
-            projected_loss += p.conservative_fee_per_lot * volume
-            margin = abs(calc_margin(candidate.side, candidate.symbol, volume, executable))
+        if upper_volume <= 0:
+            reasons.append("MIN_VOLUME_EXCEEDS_RISK")
+        else:
+            minimum = D(str(contract.volume_min))
+            step = D(str(contract.volume_step))
+            max_index = int(((upper_volume - minimum) / step).to_integral_value(rounding=ROUND_FLOOR))
+            low = 0
+            high = max_index
+            calc_failed = False
+            while low <= high:
+                mid = (low + high) // 2
+                trial_volume = minimum + step * D(mid)
+                trial_pnl = self._calculated_decimal(
+                    lambda trial_volume=trial_volume: calc_profit(
+                        candidate.side, candidate.symbol, trial_volume, executable, candidate.stop_loss
+                    )
+                )
+                if trial_pnl is None:
+                    reasons.append("INVALID_PROFIT_CALC")
+                    calc_failed = True
+                    break
+                trial_loss = abs(trial_pnl) + p.conservative_fee_per_lot * trial_volume
+                if trial_loss <= per_trade_budget:
+                    volume = trial_volume
+                    projected_loss = trial_loss
+                    low = mid + 1
+                else:
+                    high = mid - 1
+            if not calc_failed and volume <= 0:
+                reasons.append("MIN_VOLUME_EXCEEDS_RISK")
+            if volume > 0:
+                calculated_margin = self._calculated_decimal(
+                    lambda: calc_margin(candidate.side, candidate.symbol, volume, executable)
+                )
+                if calculated_margin is None or calculated_margin < 0:
+                    reasons.append("INVALID_MARGIN_CALC")
+                else:
+                    margin = calculated_margin
             if projected_loss > per_trade_budget:
                 reasons.append("PER_TRADE_RISK_LIMIT")
             if total_open_risk + projected_loss > total_budget:
                 reasons.append("TOTAL_OPEN_RISK_LIMIT")
-            if correlated_open_risk + projected_loss > correlated_budget:
+            if (
+                context.proposed_correlation_group is not None
+                and correlated_open_risk + projected_loss > correlated_budget
+            ):
                 reasons.append("CORRELATED_RISK_LIMIT")
             reserve = equity * p.min_margin_reserve_pct / D("100")
             if D(str(account.margin_free)) - margin < reserve:
