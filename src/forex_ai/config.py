@@ -8,9 +8,25 @@ from typing import Any
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = PROJECT_ROOT / "config" / "app.yaml"
-DEFAULT_RISK = PROJECT_ROOT / "config" / "risk.yaml"
-DEFAULT_LLM = PROJECT_ROOT / "config" / "llm.yaml"
+
+
+def _default_config_path(filename: str) -> Path:
+    config_dir = os.getenv("FOREX_AI_CONFIG_DIR")
+    if config_dir:
+        return Path(config_dir).expanduser() / filename
+    project_root = os.getenv("FOREX_AI_PROJECT_ROOT")
+    candidates: list[Path] = []
+    if project_root:
+        candidates.append(Path(project_root).expanduser() / "config" / filename)
+    candidates.extend([
+        PROJECT_ROOT / "config" / filename,
+        Path.cwd() / "config" / filename,
+        Path.home() / "apps" / "forex-ai" / "current" / "config" / filename,
+    ])
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
 
 
 @dataclass(frozen=True)
@@ -44,8 +60,8 @@ def _resolve_path(value: str) -> Path:
     return Path(os.path.expandvars(os.path.expanduser(str(value))))
 
 
-def load_runtime_config(path: Path = DEFAULT_CONFIG) -> RuntimeConfig:
-    raw = _load_yaml(path)
+def load_runtime_config(path: Path | None = None) -> RuntimeConfig:
+    raw = _load_yaml(path or _default_config_path("app.yaml"))
     runtime = raw.get("runtime", {})
     mt5 = raw.get("mt5", {})
     mode = os.getenv("FOREX_AI_MODE", raw.get("mode", "OBSERVE")).upper()
@@ -71,20 +87,20 @@ def load_runtime_config(path: Path = DEFAULT_CONFIG) -> RuntimeConfig:
     )
 
 
-def load_risk_config(path: Path = DEFAULT_RISK) -> dict[str, Any]:
-    return _load_yaml(path)
+def load_risk_config(path: Path | None = None) -> dict[str, Any]:
+    return _load_yaml(path or _default_config_path("risk.yaml"))
 
 
-def load_risk_profile(path: Path = DEFAULT_RISK):
+def load_risk_profile(path: Path | None = None):
     """Load the explicit V1 RiskProfile; no live-capable defaults are invented."""
     from forex_ai.risk.profile import RiskProfile
 
-    raw = _load_yaml(path)
+    raw = _load_yaml(path or _default_config_path("risk.yaml"))
     profile = raw.get("profile")
     if not isinstance(profile, dict):
         raise ValueError("risk profile is missing; execution remains disarmed")
     return RiskProfile.model_validate(profile)
 
 
-def load_llm_config(path: Path = DEFAULT_LLM) -> dict[str, Any]:
-    return _load_yaml(path)
+def load_llm_config(path: Path | None = None) -> dict[str, Any]:
+    return _load_yaml(path or _default_config_path("llm.yaml"))

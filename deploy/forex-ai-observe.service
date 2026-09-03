@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=FOREX_AI_MODE=OBSERVE
+Environment=FOREX_AI_CONFIG_DIR=%h/apps/forex-ai/current/config
 ExecStartPre=/bin/sh -lc '/usr/bin/docker inspect --format={{.State.Running}} forex-mt5 | /usr/bin/grep -qx true'
 ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/run_observe.py
 Restart=on-failure
