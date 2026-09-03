@@ -4,6 +4,7 @@ set -euo pipefail
 NAME="forex-mt5"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENTRYPOINT_HELPER="$PROJECT_ROOT/scripts/mt5_container_entrypoint.sh"
 PINNED_IMAGE="$(tr -d '\r\n' < "$PROJECT_ROOT/config/mt5_image.txt")"
 IMAGE="${FOREX_AI_MT5_IMAGE:-$PINNED_IMAGE}"
 HOME_DIR="${HOME:-/tmp}"
@@ -23,7 +24,8 @@ case "${1:-status}" in
     fi
     test -s "$UI_PASSWORD_FILE" || { echo "Missing $UI_PASSWORD_FILE" >&2; exit 2; }
     PW=$(cat "$UI_PASSWORD_FILE")
-    docker run -d \
+    test -s "$ENTRYPOINT_HELPER" || { echo "Missing $ENTRYPOINT_HELPER" >&2; exit 3; }
+    docker create \
       --name "$NAME" \
       --restart unless-stopped \
       -p 127.0.0.1:18812:18812 \
@@ -31,7 +33,10 @@ case "${1:-status}" in
       -p "$BIND_IP:5901:5901" \
       -e NOVNC_HOST="$NOVNC_HOST" \
       -e UI_PASSWORD="$PW" \
-      "$IMAGE"
+      --entrypoint /bin/sh \
+      "$IMAGE" /opt/forex-mt5-entrypoint.sh >/dev/null
+    docker cp "$ENTRYPOINT_HELPER" "$NAME:/opt/forex-mt5-entrypoint.sh"
+    docker start "$NAME"
     ;;
   stop)
     docker stop "$NAME"

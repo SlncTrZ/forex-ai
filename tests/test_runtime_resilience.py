@@ -19,6 +19,7 @@ class FakeMT5:
         self.gap_bars = False
         self.unprotected = False
         self.closed = 0
+        self.close_raises = False
         self.symbol_calls = 0
         self.bar_calls = 0
         self.history_order_calls = 0
@@ -29,6 +30,8 @@ class FakeMT5:
 
     def close(self):
         self.closed += 1
+        if self.close_raises:
+            raise EOFError("stream has been closed")
 
     def account_info(self):
         return {
@@ -126,6 +129,16 @@ def test_full_sync_is_healthy_and_can_repeat_from_healthy_state(tmp_path):
     assert fake.history_deal_calls == 1
     with session(db) as con:
         assert con.execute("select count(*) from runtime_heartbeats").fetchone()[0] >= 5
+
+
+def test_cleanup_failure_does_not_escape_resync_loop(tmp_path):
+    fake = FakeMT5(); fake.stale_tick = True; fake.close_raises = True
+    coord, _ = coordinator(tmp_path, fake)
+    out = coord.sync_once(now_utc=NOW)
+    assert out.state is HealthState.DEGRADED
+    assert not out.ready
+    assert not coord.connected
+    assert fake.closed == 1
 
 
 def test_stale_tick_degrades_and_forces_reconnect(tmp_path):

@@ -51,11 +51,13 @@ class MT5Client:
             return bool(self.mt5.initialize())
 
     def close(self) -> None:
-        if self.mt5 is not None:
+        mt5 = self.mt5
+        self.mt5 = None
+        if mt5 is not None:
             try:
-                self.mt5.shutdown()
-            finally:
-                self.mt5 = None
+                mt5.shutdown()
+            except Exception:
+                pass
 
     def _require(self) -> MetaTrader5:
         if self.mt5 is None:

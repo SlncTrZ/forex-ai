@@ -175,13 +175,18 @@ class MT5ResyncCoordinator:
             self._heartbeat(now, reason)
             try:
                 self.client.close()
+            except Exception:
+                pass
             finally:
                 self.connected = False
                 self._invalidate_caches()
             return SyncOutcome(self.health.state, None, None, {}, {}, reason=reason)
 
     def close(self) -> None:
-        self.client.close()
+        try:
+            self.client.close()
+        except Exception:
+            pass
         self.connected = False
         self._invalidate_caches()
         self.health.connection_failed()
