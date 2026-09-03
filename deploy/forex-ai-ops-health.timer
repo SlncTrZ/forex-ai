@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Forex-AI operational health check every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Persistent=true
+Unit=forex-ai-ops-health.service
+
+[Install]
+WantedBy=timers.target
