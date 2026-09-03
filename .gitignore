@@ -19,8 +19,8 @@ dist/
 logs/
 data/runtime/
 
-# Host-specific deployment artifacts (systemd units/timers)
-deploy/
+# Deployment templates are portable and version-controlled.
+# Runtime-installed copies live outside the repo under the user's systemd config.
 
 # Local exports/backups
 *.csv

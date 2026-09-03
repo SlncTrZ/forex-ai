@@ -1,0 +1,12 @@
+[Unit]
+Description=Review new Forex-AI signals with DeepSeek every 30 seconds
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec=30s
+AccuracySec=2s
+Unit=forex-ai-review-pending.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

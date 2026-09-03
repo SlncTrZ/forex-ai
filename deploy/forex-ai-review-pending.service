@@ -1,0 +1,8 @@
+[Unit]
+Description=Forex-AI DeepSeek pending-signal reviewer (shadow only)
+After=network-online.target forex-ai-observe.service forex-ai-candidate-scan.service
+
+[Service]
+Type=oneshot
+Environment=FOREX_AI_MODE=OBSERVE
+ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/review_pending.py

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Forex-AI candidate scanner every 30 seconds
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+AccuracySec=2s
+Unit=forex-ai-candidate-scan.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target
