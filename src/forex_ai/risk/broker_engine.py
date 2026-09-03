@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_FLOOR
 from typing import Callable
 
-from forex_ai.mt5.contracts import AccountSnapshot, SafetySnapshot, SymbolContract, TickSnapshot
+from forex_ai.mt5.contracts import AccountSnapshot, BrokerPosition, SafetySnapshot, SymbolContract, TickSnapshot
 from forex_ai.risk.profile import RiskProfile
 
 D = Decimal
@@ -28,21 +28,20 @@ class CandidateInput:
 
 
 @dataclass(frozen=True)
-class ActiveExposure:
+class ExistingPosition:
     intent_id: str
-    risk_amount: Decimal
+    position: BrokerPosition
     correlation_group: str | None = None
 
     def __post_init__(self) -> None:
         if not self.intent_id:
             raise ValueError("intent_id is required")
-        if self.risk_amount < 0:
-            raise ValueError("risk_amount must be >= 0")
 
 
 @dataclass(frozen=True)
 class RiskContext:
-    exposures: tuple[ActiveExposure, ...] = ()
+    active_intent_ids: tuple[str, ...] = ()
+    existing_positions: tuple[ExistingPosition, ...] = ()
     proposed_correlation_group: str | None = None
     tick_age_seconds: Decimal = D("0")
     expected_slippage_points: Decimal = D("0")
@@ -57,20 +56,9 @@ class RiskContext:
 
     @property
     def active_orders(self) -> int:
-        return len({item.intent_id for item in self.exposures})
-
-    @property
-    def total_open_risk_amount(self) -> Decimal:
-        return sum((item.risk_amount for item in self.exposures), D("0"))
-
-    @property
-    def correlated_open_risk_amount(self) -> Decimal:
-        if self.proposed_correlation_group is None:
-            return D("0")
-        return sum(
-            (item.risk_amount for item in self.exposures if item.correlation_group == self.proposed_correlation_group),
-            D("0"),
-        )
+        ids = set(self.active_intent_ids)
+        ids.update(item.intent_id for item in self.existing_positions)
+        return len(ids)
 
 
 @dataclass(frozen=True)
@@ -232,8 +220,25 @@ class BrokerAwareRiskEngine:
         )
         dd_budget = self._bounded_budget(self._pct_amount(equity, p.max_drawdown_pct), p.max_drawdown_amount)
 
-        total_open_risk = context.total_open_risk_amount
-        correlated_open_risk = context.correlated_open_risk_amount
+        total_open_risk = D("0")
+        correlated_open_risk = D("0")
+        for existing in context.existing_positions:
+            position = existing.position
+            if position.sl <= 0:
+                reasons.append("UNPROTECTED_EXISTING_POSITION")
+                continue
+            remaining_pnl = calc_profit(
+                position.side,
+                position.symbol,
+                D(str(position.volume)),
+                D(str(position.price_current)),
+                D(str(position.sl)),
+            )
+            remaining_loss = max(D("0"), -remaining_pnl)
+            remaining_loss += p.conservative_fee_per_lot * D(str(position.volume))
+            total_open_risk += remaining_loss
+            if context.proposed_correlation_group is not None and existing.correlation_group == context.proposed_correlation_group:
+                correlated_open_risk += remaining_loss
         if total_open_risk >= total_budget:
             reasons.append("TOTAL_OPEN_RISK_LIMIT")
         if correlated_open_risk >= correlated_budget:

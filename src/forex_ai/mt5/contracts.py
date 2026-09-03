@@ -91,7 +91,8 @@ class SymbolContract(FrozenModel):
 
     @property
     def contract_fingerprint(self) -> str:
-        return canonical_fingerprint(self.model_dump(mode="json"))
+        payload = self.model_dump(mode="json", exclude={"trade_allowed", "market_orders_allowed", "session_open"})
+        return canonical_fingerprint(payload)
 
 
 class TickSnapshot(FrozenModel):
@@ -190,6 +191,7 @@ class BrokerDeal(FrozenModel):
 class BrokerPosition(FrozenModel):
     ticket: int = Field(gt=0)
     symbol: str = Field(min_length=1)
+    side: str
     volume: float = Field(gt=0)
     price_open: float = Field(gt=0)
     price_current: float = Field(gt=0)
@@ -198,6 +200,14 @@ class BrokerPosition(FrozenModel):
     profit: float = 0.0
     magic: int | None = None
     comment: str = ""
+
+    @field_validator("side")
+    @classmethod
+    def validate_side(cls, value: str) -> str:
+        normalized = value.upper()
+        if normalized not in {"BUY", "SELL"}:
+            raise ValueError("position side must be BUY or SELL")
+        return normalized
 
 
 class BrokerState(FrozenModel):

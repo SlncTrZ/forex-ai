@@ -18,7 +18,7 @@ from forex_ai.mt5.contracts import (
     TickSnapshot,
 )
 from forex_ai.mt5.symbols import resolve_symbol_strict
-from forex_ai.risk.broker_engine import ActiveExposure, BrokerAwareRiskEngine, CandidateInput, RiskContext
+from forex_ai.risk.broker_engine import BrokerAwareRiskEngine, CandidateInput, ExistingPosition, RiskContext
 from forex_ai.risk.profile import RiskProfile
 
 NOW = datetime(2026, 9, 3, 6, 0, tzinfo=timezone.utc)
@@ -70,7 +70,15 @@ def candidate(**overrides):
 
 
 def exposure(intent_id, risk="5", group=None):
-    return ActiveExposure(intent_id=intent_id, risk_amount=D(risk), correlation_group=group)
+    risk_amount = D(risk)
+    current = D("1.1000")
+    stop = current - (risk_amount / D("1000"))
+    position = BrokerPosition(
+        ticket=abs(hash((intent_id, risk, group))) % 100000 + 1,
+        symbol="EURUSD", side="BUY", volume=0.01,
+        price_open=1.1, price_current=float(current), sl=float(stop), tp=1.12,
+    )
+    return ExistingPosition(intent_id=intent_id, position=position, correlation_group=group)
 
 
 def context(**overrides):
@@ -111,7 +119,7 @@ def test_profile_rejects_inverted_percentage_and_absolute_limits():
 
 
 def test_fourth_active_order_is_rejected_and_partial_intent_counts_once():
-    ctx = context(exposures=(exposure("a"), exposure("b"), exposure("c"), exposure("c", "2")))
+    ctx = context(existing_positions=(exposure("a"), exposure("b"), exposure("c"), exposure("c", "2")))
     result = evaluate(ctx=ctx)
     assert not result.approved
     assert "MAX_ACTIVE_ORDERS" in result.reason_codes
@@ -119,7 +127,7 @@ def test_fourth_active_order_is_rejected_and_partial_intent_counts_once():
 
 
 def test_two_active_intents_allow_third():
-    result = evaluate(ctx=context(exposures=(exposure("a"), exposure("b"))))
+    result = evaluate(ctx=context(existing_positions=(exposure("a"), exposure("b"))))
     assert result.approved
     assert result.normalized_volume == D("0.01")
     assert result.projected_loss_account_currency <= D("10")
@@ -140,7 +148,7 @@ def test_missing_reference_equity_fails_closed():
 
 def test_total_and_correlated_open_risk_are_derived_from_exposures():
     result = evaluate(ctx=context(
-        exposures=(exposure("a", "20", "USD"), exposure("b", "5", "USD")), proposed_correlation_group="USD"
+        existing_positions=(exposure("a", "20", "USD"), exposure("b", "5", "USD")), proposed_correlation_group="USD"
     ))
     assert not result.approved
     assert "TOTAL_OPEN_RISK_LIMIT" in result.reason_codes
@@ -187,10 +195,42 @@ def test_health_kernel_blocks_account_drift_and_unprotected_position():
     assert hk.complete_sync(state).reconciled
     hk.degrade(); hk.begin_sync()
     changed = account().model_copy(update={"login": 999})
-    pos = BrokerPosition(ticket=1, symbol="EURUSD", volume=0.01, price_open=1.1, price_current=1.1, sl=0, tp=1.12)
+    pos = BrokerPosition(ticket=1, symbol="EURUSD", side="BUY", volume=0.01, price_open=1.1, price_current=1.1, sl=0, tp=1.12)
     second = hk.complete_sync(state.model_copy(update={"account": changed, "positions": (pos,)}))
     assert hk.state is HealthState.BLOCKED
     assert {"ACCOUNT_IDENTITY_DRIFT", "UNPROTECTED_POSITION"}.issubset(second.blocking_reasons)
+
+
+def test_dynamic_session_state_does_not_change_contract_fingerprint_or_block_health():
+    open_contract = contract().model_copy(update={"session_open": True})
+    closed_contract = contract().model_copy(update={"session_open": False})
+    assert open_contract.contract_fingerprint == closed_contract.contract_fingerprint
+    hk = HealthKernel(); hk.begin_connect(); hk.begin_sync()
+    first_state = BrokerState(account=account(), contracts=(open_contract,), ticks=(tick(),), reconciled_at_utc=NOW)
+    assert hk.complete_sync(first_state).reconciled
+    hk.degrade(); hk.begin_sync()
+    second_state = first_state.model_copy(update={"contracts": (closed_contract,)})
+    second = hk.complete_sync(second_state)
+    assert second.reconciled
+    assert "BROKER_CONTRACT_DRIFT" not in second.blocking_reasons
+
+
+def test_existing_position_risk_is_recomputed_from_current_price_to_stop():
+    existing = exposure("a", "20", "USD")
+    result = evaluate(ctx=context(existing_positions=(existing,), proposed_correlation_group="USD"))
+    assert result.approved
+    tighter = exposure("a", "25", "USD")
+    result_tighter = evaluate(ctx=context(existing_positions=(tighter,), proposed_correlation_group="USD"))
+    assert not result_tighter.approved
+    assert "TOTAL_OPEN_RISK_LIMIT" in result_tighter.reason_codes
+
+
+def test_unprotected_existing_position_fails_closed():
+    position = BrokerPosition(ticket=90, symbol="EURUSD", side="BUY", volume=0.01, price_open=1.1, price_current=1.1, sl=0, tp=1.12)
+    existing = ExistingPosition(intent_id="unsafe", position=position)
+    result = evaluate(ctx=context(existing_positions=(existing,)))
+    assert not result.approved
+    assert "UNPROTECTED_EXISTING_POSITION" in result.reason_codes
 
 
 def test_backoff_is_bounded():
@@ -213,14 +253,14 @@ def test_unknown_without_broker_evidence_remains_blocking():
 
 
 def test_unknown_with_filled_protected_position_reconciles():
-    pos = BrokerPosition(ticket=22, symbol="EURUSD", volume=0.01, price_open=1.1, price_current=1.11, sl=1.09, tp=1.12)
+    pos = BrokerPosition(ticket=22, symbol="EURUSD", side="BUY", volume=0.01, price_open=1.1, price_current=1.11, sl=1.09, tp=1.12)
     result = reconcile_intent(make_intent(), positions=(pos,))
     assert result.intent.state is ExecutionState.RECONCILED
     assert not result.blocking_reasons
 
 
 def test_unprotected_position_blocks_reconciliation():
-    pos = BrokerPosition(ticket=22, symbol="EURUSD", volume=0.01, price_open=1.1, price_current=1.11, sl=0, tp=1.12)
+    pos = BrokerPosition(ticket=22, symbol="EURUSD", side="BUY", volume=0.01, price_open=1.1, price_current=1.11, sl=0, tp=1.12)
     assert "UNPROTECTED_POSITION" in reconcile_intent(make_intent(), positions=(pos,)).blocking_reasons
 
 
@@ -255,7 +295,7 @@ def test_execution_controller_duplicate_registration_is_idempotent():
 
 
 def test_orphan_position_detection():
-    known = BrokerPosition(ticket=22, symbol="EURUSD", volume=0.01, price_open=1.1, price_current=1.1, sl=1.09, tp=1.12)
+    known = BrokerPosition(ticket=22, symbol="EURUSD", side="BUY", volume=0.01, price_open=1.1, price_current=1.1, sl=1.09, tp=1.12)
     orphan = known.model_copy(update={"ticket": 23})
     assert find_orphan_positions((make_intent(),), (known, orphan)) == (orphan,)
 
@@ -281,6 +321,6 @@ def test_stale_tick_slippage_and_closed_session_fail_closed():
 
 
 def test_reconciliation_blockers_aggregate_unknown_orphan_and_protection():
-    unprotected_orphan = BrokerPosition(ticket=23, symbol="EURUSD", volume=0.01, price_open=1.1, price_current=1.1, sl=0, tp=1.12)
+    unprotected_orphan = BrokerPosition(ticket=23, symbol="EURUSD", side="BUY", volume=0.01, price_open=1.1, price_current=1.1, sl=0, tp=1.12)
     blockers = reconciliation_blockers((make_intent(),), (unprotected_orphan,))
     assert {"UNRESOLVED_UNKNOWN", "ORPHAN_BROKER_POSITION", "UNPROTECTED_POSITION"}.issubset(blockers)

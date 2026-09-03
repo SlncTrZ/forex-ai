@@ -60,7 +60,7 @@ class HealthKernel:
 
     @staticmethod
     def contracts_fingerprint(state: BrokerState) -> str:
-        payload = [c.model_dump(mode="json") for c in sorted(state.contracts, key=lambda x: x.symbol)]
+        payload = [{"symbol": c.symbol, "contract_fingerprint": c.contract_fingerprint} for c in sorted(state.contracts, key=lambda x: x.symbol)]
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()
 
