@@ -49,7 +49,10 @@ def load_runtime_config(path: Path = DEFAULT_CONFIG) -> RuntimeConfig:
     runtime = raw.get("runtime", {})
     mt5 = raw.get("mt5", {})
     mode = os.getenv("FOREX_AI_MODE", raw.get("mode", "OBSERVE")).upper()
-    if mode not in {"OBSERVE", "SHADOW", "CENT_GUARDED", "CENT_EXPERIMENT"}:
+    if mode not in {
+        "OBSERVE", "SHADOW", "DEMO", "LIVE_CANARY", "GUARDED_LIVE", "LIVE_EXPERIMENT",
+        "CENT_GUARDED", "CENT_EXPERIMENT",
+    }:
         raise ValueError(f"Unsupported FOREX_AI_MODE={mode}")
 
     db_path = _resolve_path(os.getenv("FOREX_AI_DB_PATH", runtime.get("db_path", "~/.local/share/forex-ai/forex.db")))
@@ -70,6 +73,17 @@ def load_runtime_config(path: Path = DEFAULT_CONFIG) -> RuntimeConfig:
 
 def load_risk_config(path: Path = DEFAULT_RISK) -> dict[str, Any]:
     return _load_yaml(path)
+
+
+def load_risk_profile(path: Path = DEFAULT_RISK):
+    """Load the explicit V1 RiskProfile; no live-capable defaults are invented."""
+    from forex_ai.risk.profile import RiskProfile
+
+    raw = _load_yaml(path)
+    profile = raw.get("profile")
+    if not isinstance(profile, dict):
+        raise ValueError("risk profile is missing; execution remains disarmed")
+    return RiskProfile.model_validate(profile)
 
 
 def load_llm_config(path: Path = DEFAULT_LLM) -> dict[str, Any]:

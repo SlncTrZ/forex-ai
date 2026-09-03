@@ -1,4 +1,4 @@
-from forex_ai.journal.db import connect, initialize
+from forex_ai.journal.db import SCHEMA_VERSION, connect, initialize
 from forex_ai.journal.repository import upsert_mt5_deals, upsert_mt5_orders
 
 
@@ -28,4 +28,4 @@ def test_history_tables_upsert(tmp_path):
     with connect(db) as con:
         assert con.execute("select count(*) from mt5_deals").fetchone()[0] == 1
         assert con.execute("select count(*) from mt5_orders_history").fetchone()[0] == 1
-        assert con.execute("select value from schema_meta where key='schema_version'").fetchone()[0] == "5"
+        assert con.execute("select value from schema_meta where key='schema_version'").fetchone()[0] == str(SCHEMA_VERSION)
