@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 from forex_ai.config import load_runtime_config
@@ -38,8 +39,8 @@ def _v1_scan_symbol(client: MT5Client, cfg, base_symbol: str, *, now_utc: dateti
     if not tick:
         raise RuntimeError(f"TICK_UNAVAILABLE:{actual}")
     bars_by_timeframe = {
-        label: client.bars(actual, constants[label], 240)
-        for label in ("M5", "M15", "H1", "H4")
+        label: client.bars(actual, constants[label], 80)
+        for label in ("M15", "H1", "H4")
     }
     if any(len(rows) < 2 for rows in bars_by_timeframe.values()):
         raise RuntimeError(f"BARS_UNAVAILABLE:{actual}")
@@ -110,33 +111,34 @@ def main() -> int:
             return 2
         output = []
         now = datetime.now(UTC)
+        legacy_enabled = os.getenv("FOREX_AI_LEGACY_SCAN", "false").lower() in {"1", "true", "yes"}
         for base_symbol in cfg.symbols:
-            # Legacy scanner remains as a diagnostic comparator only.
-            context = build_symbol_context(client, cfg, base_symbol)
-            legacy = generate_signal(context)
             legacy_row = None
-            if legacy is not None:
-                signal_id, created = insert_signal(
-                    cfg.db_path,
-                    signal_key=legacy.signal_key,
-                    symbol=legacy.symbol,
-                    strategy=legacy.strategy,
-                    direction=legacy.direction,
-                    score=legacy.score,
-                    proposed_entry=legacy.proposed_entry,
-                    proposed_sl=legacy.proposed_sl,
-                    proposed_tp=legacy.proposed_tp,
-                    rr=legacy.rr,
-                    payload=legacy.evidence,
-                    market_time_msc=legacy.market_time_msc,
-                )
-                legacy_row = {
-                    "signal_id": signal_id,
-                    "created": created,
-                    "strategy": legacy.strategy,
-                    "direction": legacy.direction,
-                    "score": legacy.score,
-                }
+            if legacy_enabled:
+                context = build_symbol_context(client, cfg, base_symbol)
+                legacy = generate_signal(context)
+                if legacy is not None:
+                    signal_id, created = insert_signal(
+                        cfg.db_path,
+                        signal_key=legacy.signal_key,
+                        symbol=legacy.symbol,
+                        strategy=legacy.strategy,
+                        direction=legacy.direction,
+                        score=legacy.score,
+                        proposed_entry=legacy.proposed_entry,
+                        proposed_sl=legacy.proposed_sl,
+                        proposed_tp=legacy.proposed_tp,
+                        rr=legacy.rr,
+                        payload=legacy.evidence,
+                        market_time_msc=legacy.market_time_msc,
+                    )
+                    legacy_row = {
+                        "signal_id": signal_id,
+                        "created": created,
+                        "strategy": legacy.strategy,
+                        "direction": legacy.direction,
+                        "score": legacy.score,
+                    }
             try:
                 v1 = _v1_scan_symbol(client, cfg, base_symbol, now_utc=now)
             except Exception as exc:
@@ -144,7 +146,7 @@ def main() -> int:
                     cfg.db_path,
                     event_type="V1_SCAN_ERROR",
                     source="production_v1_scanner",
-                    symbol=context.get("symbol"),
+                    symbol=None,
                     payload={"base_symbol": base_symbol, "error": f"{type(exc).__name__}: {exc}"},
                 )
                 v1 = [{"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}]
