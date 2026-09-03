@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Forex-AI SQLite backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=forex-ai-db-backup.service
+
+[Install]
+WantedBy=timers.target

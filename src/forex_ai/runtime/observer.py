@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import signal
 import time
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from forex_ai.journal.repository import (
     upsert_mt5_orders,
 )
 from forex_ai.mt5.client import MT5Client
+from forex_ai.runtime.ops import ensure_disk_headroom
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
 from forex_ai.strategy.v1.contracts import Candle, MarketSnapshot
 
@@ -57,6 +59,8 @@ def run_observer(cfg: RuntimeConfig) -> int:
     if cfg.mode != "OBSERVE":
         raise RuntimeError(f"Observer requires OBSERVE mode, got {cfg.mode}")
 
+    min_free_bytes = int(os.getenv("FOREX_AI_MIN_FREE_BYTES", str(512 * 1024 * 1024)))
+    ensure_disk_headroom(cfg.db_path, min_free_bytes=min_free_bytes)
     initialize(cfg.db_path)
     state = ObserverState()
 
@@ -74,6 +78,7 @@ def run_observer(cfg: RuntimeConfig) -> int:
 
     try:
         while not state.stop:
+            ensure_disk_headroom(cfg.db_path, min_free_bytes=min_free_bytes)
             now = datetime.now(timezone.utc)
             outcome = coordinator.sync_once(now_utc=now)
             if not outcome.ready:

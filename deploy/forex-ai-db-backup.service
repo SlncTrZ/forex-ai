@@ -1,0 +1,8 @@
+[Unit]
+Description=Forex-AI SQLite backup
+After=forex-ai-observe.service
+
+[Service]
+Type=oneshot
+Environment=FOREX_AI_CONFIG_DIR=%h/apps/forex-ai/current/config
+ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/backup_db.py

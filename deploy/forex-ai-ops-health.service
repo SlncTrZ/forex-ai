@@ -1,0 +1,8 @@
+[Unit]
+Description=Forex-AI operational health check
+After=forex-ai-observe.service
+
+[Service]
+Type=oneshot
+Environment=FOREX_AI_CONFIG_DIR=%h/apps/forex-ai/current/config
+ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/ops_health.py
