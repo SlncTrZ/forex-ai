@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from forex_ai.config import load_runtime_config
+from forex_ai.runtime.alerts import retain_files
 from forex_ai.runtime.ops import backup_database, verify_database
 
 
@@ -22,6 +24,9 @@ def main() -> int:
     result = backup_database(cfg.db_path, destination)
     print(f"backup={result}")
     print(f"integrity={verify_database(result)}")
+    keep = int(os.getenv("FOREX_AI_BACKUP_RETENTION", "14"))
+    removed = retain_files(result.parent, keep=keep, patterns=("forex-*.db",))
+    print(f"retention_removed={len(removed)}")
     return 0
 
 
