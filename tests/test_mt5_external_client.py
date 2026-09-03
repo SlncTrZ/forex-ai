@@ -35,6 +35,8 @@ class FakeConn:
         }
         if code in values:
             return values[code]
+        if "copy_rates_from_pos" in code and "symbol_info_tick" in code:
+            return {"tick": {"bid": 1.1, "ask": 1.2, "time_msc": 1}, "bars": {"M15": [], "H1": [], "H4": []}}
         raise AssertionError(code)
 
     def close(self):
@@ -67,5 +69,8 @@ def test_external_engine_connects_existing_bridge_without_container_manager(monk
     constants = client.constants()
     assert constants["M15"] == 15
     assert constants["SYMBOL_ORDER_MARKET"] == 1
+    bundle = client.scan_bundle("EURUSDc", {"M15": 15, "H1": 60, "H4": 240}, 80)
+    assert bundle["tick"]["bid"] == 1.1
+    assert set(bundle["bars"]) == {"M15", "H1", "H4"}
     client.close()
     assert fake.closed

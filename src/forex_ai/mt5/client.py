@@ -124,6 +124,29 @@ class MT5Client:
     def tick(self, symbol: str) -> dict[str, Any] | None:
         return plain(self._remote_eval(f"(lambda x: None if x is None else dict(x._asdict()))(mt5.symbol_info_tick({symbol!r}))"))
 
+    def scan_bundle(self, symbol: str, timeframes: dict[str, int], count: int = 80) -> dict[str, Any]:
+        """Fetch tick plus multiple timeframe bars in one remote round-trip.
+
+        This keeps live candidate scans close to candle close instead of paying
+        one RPyC request per timeframe. Managed mode falls back to local calls.
+        """
+        if self._external_conn is not None:
+            tf_items = ",".join(f"{label!r}:{int(value)!r}" for label, value in timeframes.items())
+            code = (
+                "(lambda tick,tfs: {"
+                "'tick': None if tick is None else dict(tick._asdict()),"
+                "'bars': {label: (lambda rates: [] if rates is None else ["
+                "{name: (row[name].item() if hasattr(row[name], 'item') else row[name]) for name in rates.dtype.names} "
+                "for row in rates])(mt5.copy_rates_from_pos(" + repr(symbol) + ",tf,0," + repr(int(count)) + ")) "
+                "for label,tf in tfs.items()}"
+                "})(mt5.symbol_info_tick(" + repr(symbol) + "),{" + tf_items + "})"
+            )
+            return plain(self._remote_eval(code))
+        return {
+            "tick": self.tick(symbol),
+            "bars": {label: self.bars(symbol, timeframe, count) for label, timeframe in timeframes.items()},
+        }
+
     def bars(self, symbol: str, timeframe: int, count: int = 100, start_pos: int = 0) -> list[dict[str, Any]]:
         if self._external_conn is not None:
             code = (
