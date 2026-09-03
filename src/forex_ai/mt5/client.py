@@ -108,6 +108,49 @@ class MT5Client:
             return [{name: plain(row[name].item() if hasattr(row[name], "item") else row[name]) for name in names} for row in rates]
         return plain(rates)
 
+    def active_orders(self) -> list[dict[str, Any]]:
+        return plain(self._remote_eval("[dict(x._asdict()) for x in (mt5.orders_get() or ())]"))
+
+    def order_calc_profit(
+        self,
+        order_type: int,
+        symbol: str,
+        volume: float,
+        price_open: float,
+        price_close: float,
+    ) -> float | None:
+        code = (
+            "mt5.order_calc_profit("
+            f"{int(order_type)!r},{symbol!r},{float(volume)!r},{float(price_open)!r},{float(price_close)!r})"
+        )
+        value = self._remote_eval(code)
+        return None if value is None else float(value)
+
+    def order_calc_margin(self, order_type: int, symbol: str, volume: float, price: float) -> float | None:
+        code = f"mt5.order_calc_margin({int(order_type)!r},{symbol!r},{float(volume)!r},{float(price)!r})"
+        value = self._remote_eval(code)
+        return None if value is None else float(value)
+
+    def order_check(self, request: dict[str, Any]) -> dict[str, Any] | None:
+        code = f"(lambda x: None if x is None else dict(x._asdict()))(mt5.order_check({request!r}))"
+        return plain(self._remote_eval(code))
+
+    def order_send(self, request: dict[str, Any]) -> dict[str, Any] | None:
+        code = f"(lambda x: None if x is None else dict(x._asdict()))(mt5.order_send({request!r}))"
+        return plain(self._remote_eval(code))
+
+    def update_protection(self, request: dict[str, Any]) -> dict[str, Any] | None:
+        """Submit a caller-built SL/TP modification request; no request is invented here."""
+        return self.order_send(request)
+
+    def cancel_order(self, request: dict[str, Any]) -> dict[str, Any] | None:
+        """Submit a caller-built pending-order cancellation request."""
+        return self.order_send(request)
+
+    def close_position(self, request: dict[str, Any]) -> dict[str, Any] | None:
+        """Submit a caller-built position-close request."""
+        return self.order_send(request)
+
     def last_error(self) -> Any:
         return plain(self._require().last_error())
 
