@@ -53,7 +53,7 @@ class HealthKernel:
         return HealthTransition(self.state, "CONNECTION_FAILED")
 
     def begin_sync(self) -> HealthTransition:
-        if self.state not in {HealthState.CONNECTING, HealthState.DEGRADED, HealthState.DISCONNECTED}:
+        if self.state not in {HealthState.CONNECTING, HealthState.HEALTHY, HealthState.DEGRADED, HealthState.DISCONNECTED}:
             raise ValueError(f"cannot sync from {self.state}")
         self.state = HealthState.SYNCING
         return HealthTransition(self.state, "SYNCING")
@@ -79,7 +79,7 @@ class HealthKernel:
         elif self.baseline_contracts_fp != contracts_fp:
             blocking.append("BROKER_CONTRACT_DRIFT")
 
-        if any(p.sl <= 0 for p in broker_state.positions):
+        if any(p.sl <= 0 or p.tp <= 0 for p in broker_state.positions):
             blocking.append("UNPROTECTED_POSITION")
 
         self.state = HealthState.BLOCKED if blocking else HealthState.HEALTHY
