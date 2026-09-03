@@ -20,6 +20,7 @@ def main() -> int:
     parser.add_argument("--m15-count", type=int, default=5000)
     parser.add_argument("--h1-count", type=int, default=2000)
     parser.add_argument("--h4-count", type=int, default=1000)
+    parser.add_argument("--history-bars", type=int, default=60)
     args = parser.parse_args()
 
     cfg = load_runtime_config()
@@ -48,12 +49,13 @@ def main() -> int:
             m15_rows=m15,
             h1_rows=h1,
             h4_rows=h4,
+            history_bars=args.history_bars,
         )
         if not events:
             raise RuntimeError("NO_REPLAY_EVENTS")
         source_id = (
             f"mt5:{actual}:broker={cfg.mt5_host}:{cfg.mt5_port}:"
-            f"m15={len(m15)}:h1={len(h1)}:h4={len(h4)}"
+            f"m15={len(m15)}:h1={len(h1)}:h4={len(h4)}:history={args.history_bars}"
         )
         manifest = freeze_replay_dataset(
             events,
