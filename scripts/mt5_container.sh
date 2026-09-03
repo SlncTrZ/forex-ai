@@ -2,7 +2,10 @@
 set -euo pipefail
 
 NAME="forex-mt5"
-IMAGE="lprett/mt5linux:latest"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PINNED_IMAGE="$(tr -d '\r\n' < "$PROJECT_ROOT/config/mt5_image.txt")"
+IMAGE="${FOREX_AI_MT5_IMAGE:-$PINNED_IMAGE}"
 UI_PASSWORD_FILE="${FOREX_AI_UI_PASSWORD_FILE:-$HOME/.config/forex-ai/mt5_ui_password}"
 BIND_IP="${FOREX_AI_BIND_IP:-0.0.0.0}"
 NOVNC_HOST="${FOREX_AI_NOVNC_HOST:-$BIND_IP}"
