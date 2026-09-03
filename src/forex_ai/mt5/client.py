@@ -5,6 +5,7 @@ from contextlib import redirect_stdout
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
+import rpyc
 from mt5linux import MetaTrader5
 
 from forex_ai.config import RuntimeConfig
@@ -38,8 +39,17 @@ class MT5Client:
     def __init__(self, config: RuntimeConfig):
         self.config = config
         self.mt5: MetaTrader5 | None = None
+        self._external_conn: Any | None = None
 
     def connect(self) -> bool:
+        if self.config.mt5_engine == "external":
+            conn = rpyc.classic.connect(self.config.mt5_host, self.config.mt5_port)
+            conn._config["sync_request_timeout"] = 30
+            conn.execute("import sys; sys.path.append('C:\\\\mt5libs')")
+            conn.execute("import MetaTrader5 as mt5")
+            conn.execute("import datetime")
+            self._external_conn = conn
+            return bool(conn.eval("mt5.initialize()"))
         sink = io.StringIO()
         with redirect_stdout(sink):
             self.mt5 = MetaTrader5(
@@ -51,6 +61,13 @@ class MT5Client:
             return bool(self.mt5.initialize())
 
     def close(self) -> None:
+        conn = self._external_conn
+        self._external_conn = None
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
         mt5 = self.mt5
         self.mt5 = None
         if mt5 is not None:
@@ -61,13 +78,15 @@ class MT5Client:
 
     def _require(self) -> MetaTrader5:
         if self.mt5 is None:
-            raise RuntimeError("MT5 client is not connected")
+            raise RuntimeError("managed MT5 client is not connected")
         return self.mt5
 
     def version(self) -> Any:
         return plain(self._require().version())
 
     def _remote_eval(self, code: str) -> Any:
+        if self._external_conn is not None:
+            return self._external_conn.eval(code)
         mt5 = self._require()
         return mt5._container.eval(code)  # noqa: SLF001 - required workaround for mt5linux namedtuple pickling
 
@@ -106,6 +125,13 @@ class MT5Client:
         return plain(self._remote_eval(f"(lambda x: None if x is None else dict(x._asdict()))(mt5.symbol_info_tick({symbol!r}))"))
 
     def bars(self, symbol: str, timeframe: int, count: int = 100) -> list[dict[str, Any]]:
+        if self._external_conn is not None:
+            code = (
+                "(lambda rates: [] if rates is None else ["
+                "{name: (row[name].item() if hasattr(row[name], 'item') else row[name]) for name in rates.dtype.names} "
+                f"for row in rates])(mt5.copy_rates_from_pos({symbol!r},{int(timeframe)!r},0,{int(count)!r}))"
+            )
+            return plain(self._remote_eval(code))
         rates = self._require().copy_rates_from_pos(symbol, timeframe, 0, count)
         if rates is None:
             return []
@@ -158,26 +184,30 @@ class MT5Client:
         return self.order_send(request)
 
     def last_error(self) -> Any:
-        return plain(self._require().last_error())
+        return plain(self._remote_eval("mt5.last_error()"))
 
     def constants(self) -> dict[str, int]:
-        mt5 = self._require()
+        names = (
+            "TIMEFRAME_M1", "TIMEFRAME_M5", "TIMEFRAME_M15", "TIMEFRAME_H1", "TIMEFRAME_H4",
+            "POSITION_TYPE_BUY", "POSITION_TYPE_SELL", "ORDER_TYPE_BUY", "ORDER_TYPE_SELL",
+            "SYMBOL_TRADE_MODE_DISABLED",
+        )
+        values = {name: int(self._remote_eval(f"mt5.{name}")) for name in names}
         return {
-            "M1": mt5.TIMEFRAME_M1,
-            "M5": mt5.TIMEFRAME_M5,
-            "M15": mt5.TIMEFRAME_M15,
-            "H1": mt5.TIMEFRAME_H1,
-            "H4": mt5.TIMEFRAME_H4,
-            "POSITION_TYPE_BUY": mt5.POSITION_TYPE_BUY,
-            "POSITION_TYPE_SELL": mt5.POSITION_TYPE_SELL,
-            "ORDER_TYPE_BUY": mt5.ORDER_TYPE_BUY,
-            "ORDER_TYPE_SELL": mt5.ORDER_TYPE_SELL,
-            "SYMBOL_TRADE_MODE_DISABLED": mt5.SYMBOL_TRADE_MODE_DISABLED,
+            "M1": values["TIMEFRAME_M1"],
+            "M5": values["TIMEFRAME_M5"],
+            "M15": values["TIMEFRAME_M15"],
+            "H1": values["TIMEFRAME_H1"],
+            "H4": values["TIMEFRAME_H4"],
+            "POSITION_TYPE_BUY": values["POSITION_TYPE_BUY"],
+            "POSITION_TYPE_SELL": values["POSITION_TYPE_SELL"],
+            "ORDER_TYPE_BUY": values["ORDER_TYPE_BUY"],
+            "ORDER_TYPE_SELL": values["ORDER_TYPE_SELL"],
+            "SYMBOL_TRADE_MODE_DISABLED": values["SYMBOL_TRADE_MODE_DISABLED"],
             "SYMBOL_ORDER_MARKET": MT5_SYMBOL_ORDER_MARKET_BIT,
         }
 
     def execution_constants(self) -> dict[str, int]:
-        mt5 = self._require()
         names = (
             "TRADE_ACTION_DEAL",
             "TRADE_ACTION_SLTP",
@@ -218,4 +248,4 @@ class MT5Client:
             "TRADE_RETCODE_CLOSE_ONLY",
             "TRADE_RETCODE_HEDGE_PROHIBITED",
         )
-        return {name: int(getattr(mt5, name)) for name in names}
+        return {name: int(self._remote_eval(f"mt5.{name}")) for name in names}

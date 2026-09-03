@@ -12,4 +12,4 @@ mt5:
   port: 18812
   ui_host: 127.0.0.1
   ui_port: 8080
-  engine: docker
+  engine: external

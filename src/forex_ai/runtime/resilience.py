@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from forex_ai.integration.adapters import (
     account_snapshot,
@@ -126,6 +126,7 @@ class MT5ResyncCoordinator:
         history_refresh_seconds: int = 60,
         backoff: BackoffPolicy | None = None,
         health: HealthKernel | None = None,
+        clock: Callable[[], datetime] | None = None,
     ):
         self.client = client
         self.symbols = symbols
@@ -137,6 +138,7 @@ class MT5ResyncCoordinator:
         self.history_refresh_seconds = history_refresh_seconds
         self.backoff = backoff or BackoffPolicy()
         self.health = health or HealthKernel()
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.connected = False
         self.last_mt5_success_utc: datetime | None = None
         self.last_market_time_msc: int | None = None
@@ -246,7 +248,8 @@ class MT5ResyncCoordinator:
             if not raw_tick:
                 raise SyncError(f"TICK_UNAVAILABLE:{actual}")
             tick = tick_snapshot(raw_tick, symbol=actual, captured_at_utc=now)
-            tick_age = (now.timestamp() * 1000 - tick.time_msc) / 1000.0
+            tick_reference_utc = self.clock().astimezone(timezone.utc)
+            tick_age = (tick_reference_utc.timestamp() * 1000 - tick.time_msc) / 1000.0
             if tick_age < -2:
                 raise SyncError(f"CLOCK_DRIFT_FUTURE_TICK:{actual}")
             if tick_age > self.max_tick_age_seconds:

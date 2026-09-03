@@ -103,7 +103,7 @@ class FakeMT5:
 def coordinator(tmp_path, fake):
     db = tmp_path / "runtime.db"
     initialize(db)
-    return MT5ResyncCoordinator(client=fake, symbols=("EURUSD",), db_path=db, bars_count=60), db
+    return MT5ResyncCoordinator(client=fake, symbols=("EURUSD",), db_path=db, bars_count=60, clock=lambda: NOW), db
 
 
 def test_startup_connection_failure_is_fail_closed_and_heartbeat_persisted(tmp_path):
