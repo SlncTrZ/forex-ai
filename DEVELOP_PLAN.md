@@ -1,7 +1,8 @@
 # Forex-AI — Production Development Plan
 
-Status: Draft master implementation plan  
+Status: Active master plan — core architecture and software integration complete; operational validation pending  
 Created: 2026-09-03  
+Last reconciled with source: 2026-09-03  
 Target repository: `/mnt/pc-dev/Forex-AI`
 
 ## 1. Purpose
@@ -13,7 +14,7 @@ Production-ready means the system can:
 - make deterministic and auditable decisions;
 - contain loss through hard, non-LLM risk controls;
 - execute and reconcile orders without blind retries or duplicates;
-- fail closed when broker, market, account, data, model, or infrastructure state is uncertain;
+- fail closed when broker, market, account, deterministic data, risk, audit, reconciliation, or infrastructure safety state is uncertain; degrade to the approved BOT_ONLY path when only the optional model is unavailable;
 - recover predictably after MT5, network, container, process, or host failures;
 - identify the exact source, configuration, prompt, model, and runtime release behind every decision;
 - demonstrate strategy performance out of sample after realistic costs.
@@ -25,40 +26,63 @@ Production-ready does **not** mean profitable. Software safety/correctness and s
 ### 2.1 Implemented
 
 - Python 3.12 project structure and configuration loader.
-- MT5 Linux bridge client and broker symbol resolution.
+- MT5 Linux bridge client, strict broker symbol resolution, broker/account/tick/contract DTOs, and broker-aware profit/margin calls.
 - Read-only observer for account, positions, ticks, bars, orders, and deals.
-- SQLite schema with append-only audit timeline and correlation IDs.
-- Deterministic technical features and initial signal generation.
-- Shadow DeepSeek reviewer with structured response handling and forced hosted web search.
+- Deterministic MT5 health state machine with bounded backoff, account/contract drift detection, and fail-closed safety snapshots.
+- Strategy V1 implemented as deterministic closed-candle `trend_pullback_v1` and `volatility_breakout_v1` candidates with evidence/fingerprints and temporal-leakage guards.
+- Replay, evaluation, walk-forward, sensitivity, reporting, counterfactual, immutable replay-dataset freeze/load, manifest/hash tamper detection, and reproducible OOS evidence modules implemented; real historical dataset freeze and operational OOS evidence collection are still pending.
+- Account-neutral frozen `RiskProfile` with percentage/absolute limits, max-active-order control, broker-aware sizing, margin/spread/slippage/session checks, correlation grouping, reference-equity loss limits, and existing-position loss-to-stop recomputation.
+- Persistent execution lifecycle with idempotency, `SEND_STARTED` persistence, `UNKNOWN` handling, reconciliation primitives, protection/orphan blockers, and SQLite-backed order-intent/transition storage.
+- Integration layer joining MT5 DTOs -> Strategy V1 -> optional advisory -> RiskEngine -> persistent decision records -> guarded execution boundary.
+- Persistent manual arming / expiry / maintenance / kill-switch state defaults to disarmed and kill-switched; `execution_enabled=false` remains the shipped default.
+- Advisory/Macro modules enforce `NO_CHANGE` / `REDUCE_RISK` / source-backed `VETO`; the legacy DeepSeek BUY/SELL/NO_TRADE schema cannot create direction or veto through the integration compatibility adapter.
+- SQLite schema v8 with append-only audit timeline plus candidate, advisory, safety, risk, order-intent, transition, broker-call hash/retcode evidence, counterfactual, trading-control, and runtime-heartbeat persistence.
 - API usage/cost accounting and local lesson retrieval.
 - systemd user-service and timer definitions.
 - Local runtime release layout on `.227`; runtime state is not stored on the SMB development mount.
 - Safety defaults:
   - `FOREX_AI_MODE=OBSERVE`
   - `execution_enabled=false`
+  - persistent `armed=false`
+  - persistent `kill_switch=true` when no explicit control state exists
   - no LLM execution tool
-- Existing automated suite: 16 tests passing as of 2026-09-03.
+- Automated suite after A/B/Integration + Gates 0–4 engineering merge: 115 tests passing as of 2026-09-03.
 
-### 2.2 Critical gaps
+### 2.2 Remaining critical gaps
 
-- Repository has no baseline commit; all current files are untracked.
-- Dependencies and MT5 container image are not locked to reproducible versions/digests.
-- Observer connects once and has no explicit reconnect/resynchronization state machine.
-- Strategy score is heuristic and has no backtest/walk-forward evidence.
-- RiskEngine does not enforce `max_risk_per_trade_pct`.
-- Missing stop/freeze level, spread, slippage, margin, open-risk, correlation, and kill-switch guards.
-- No execution adapter, order lifecycle, idempotency, or unknown-outcome recovery.
-- No demo execution soak, cent canary, operational alerting, or disaster-recovery drill.
-- Documentation contains stale state and must be reconciled.
+- Reproducible release controls are implemented and passed local temp-runtime deploy/rollback/audit drills; the remaining release acceptance item is to repeat the synchronized-source deployment drill on the production host before any real deployment.
+- The read-only observer is now wired through the resilient MT5 coordinator with strict symbol resolution, full post-reconnect resynchronization, stale/gap/account/protection guards, cached healthy polling, and persistent heartbeats. Controlled container/network restart drills and the seven-day OBSERVE soak are still pending because the currently running observer/container were not disrupted during development.
+- Gate 4 immutable dataset/OOS tooling is code-complete and tested, including byte hashes, semantic event fingerprints, overwrite refusal, tamper detection, non-overlapping splits, reproducible evidence fingerprints, and explicit acceptance policy. The remaining strategy blocker is evidence, not framework: freeze an approved real historical dataset and complete walk-forward/final-test OOS evaluation after realistic broker costs.
+- RiskEngine broker-edge validation now covers pending/existing exposure, finite calculator failures, stop/target/freeze boundaries, fees, account-currency neutrality, volume-step flooring, nonlinear broker profit calculation, and live read-only profit/margin calculations on the configured XAUUSD/EURUSD/GBPUSD broker symbols. Filling-mode/retcode behavior belongs to Gate 3 execution validation and remains pending.
+- Persistent effectively-once state exists, but crash-before/after-send, timeout-but-accepted, restart reconciliation, partial-fill, orphan, and missing-protection behavior still require demo/fault-injection evidence.
+- Emergency SL/TP protection/close policy, owner alerting, watchdog/heartbeat, backup/restore, disk-full handling, and disaster-recovery drills remain operational work.
+- Legacy signal/DeepSeek code remains for compatibility/research and must not regain production decision authority.
+- OBSERVE, SHADOW, DEMO, and OOS acceptance samples have not yet been collected; real-money production remains No-Go.
 
 ### 2.3 Readiness assessment
 
 | Scope | Approximate readiness | Decision |
 |---|---:|---|
-| Observer/research harness | 65–70% | Usable with monitoring |
-| Shadow LLM experiment | 50–60% | Requires paid smoke and soak |
-| Complete V1 in `PLAN.md` | 35–40% | In development |
-| Real-money production | 0% approved | No-Go |
+| Core deterministic architecture (Strategy/Risk/Execution) | 97%+ code complete | Risk + execution engineering/fake-fault validation passed; DEMO broker execution campaign pending |
+| Software integration and persistence | 85–90% code complete | Integrated; execution remains disarmed |
+| Observer/research harness | 90–95% code complete | Resilient runtime wired; destructive fault drill + seven-day soak pending |
+| Strategy validation evidence | 80–85% framework complete | Immutable/OOS framework passed; real historical dataset + final evidence still required |
+| Controlled LLM experiment | 60–70% | Advisory boundary ready; paid shadow evidence pending |
+| Operations/release/DR | 45–55% | Gate 0 local acceptance passed; Gate 6 work remains |
+| Real-money production | 0% approved | No-Go until all release/validation gates pass |
+
+### 2.4 Gate status snapshot
+
+| Gate | Software status | Validation status | Current decision |
+|---|---|---|---|
+| Gate 0 — Source/release | Hashed dependency lock, pinned MT5 image digest, canonical release manifest, dirty/sync guards, transactional deploy/rollback implemented | Local temp-runtime deploy/rollback + release audit drill passed; production-host synchronized-source drill remains before any real deployment | **LOCAL ACCEPTANCE PASS** |
+| Gate 1 — MT5/data resilience | Resilient observer, full reconnect resync, strict mapping/data guards, heartbeat persistence implemented | 7/7 fake fault matrix + live read-only broker sync + client-session drop/reconnect passed; destructive container/network drill + seven-day soak pending | **CODE/SAFE-SMOKE PASS — MAINTENANCE DRILL PENDING** |
+| Gate 2 — RiskEngine | Broker-aware core hardened with structured pending/existing exposure and nonlinear safe-volume search | Expanded adversarial matrix + live read-only `order_calc_profit`/`order_calc_margin` smoke on XAUUSD/EURUSD/GBPUSD passed; XAUUSD correctly remains blocked when live spread exceeds profile | **CODE/READ-ONLY VALIDATION PASS** |
+| Gate 3 — Execution | Normalized MT5 request builders, filling policy, retcode classifier, persistent broker-event hashes, timeout/partial/restart reconciliation, protection repair/emergency-close policy implemented | 17/17 focused fake-fault tests + full suite + live read-only execution-contract build on XAUUSD/EURUSD/GBPUSD passed; real DEMO `order_check/order_send` timeout/partial/protection campaign still pending | **ENGINEERING/FAKE-FAULT PASS — DEMO CAMPAIGN PENDING** |
+| Gate 4 — Strategy/replay | Strategy/replay/reporting + immutable dataset manifest/hash + OOS evidence/acceptance framework implemented | 5/5 focused immutable/OOS tests + 115/115 full suite passed; real historical dataset freeze, realistic-cost walk-forward, untouched final test, sensitivity/Monte Carlo evidence and owner approval remain | **ENGINEERING/IMMUTABILITY PASS — REAL OOS EVIDENCE PENDING** |
+| Gate 5 — LLM advisory | Advisory safety boundary implemented | Paid shadow/cost/value evidence pending | PARTIAL |
+| Gate 6 — Operations/DR | Existing service/deploy baseline only | Alerts/backup/restore/fault drills pending | PENDING |
+| Gate 7 — Rollout | Modes/control state defined | No soak/demo/live stages approved | BLOCKED BY EARLIER GATES |
 
 ## 3. Non-negotiable architecture
 
@@ -79,11 +103,110 @@ Rules:
 2. The LLM must never select or increase position size.
 3. The RiskEngine recomputes all critical values; it does not trust signal or LLM claims.
 4. Broker/MT5 state is authoritative for positions, orders, deals, symbol constraints, and fills.
-5. Unknown state means no new order.
+5. Unknown safety-critical state means no new order. LLM unavailability alone is not a safety-critical unknown when deterministic market, calendar, account, risk, and execution state remain healthy.
 6. A timeout is an unknown outcome, not an automatic failure and not permission to retry.
 7. SQLite remains local to `.227`; never run the active database over SMB/CIFS.
 8. SlncTrZ-MCP remains outside the critical trading decision path.
 9. Every live capability requires explicit arming and must fail closed.
+
+### 3.1 Trading method and decision authority
+
+V1 uses a **technical-first, macro-regime-gated trend system**:
+
+- Primary strategy: H4/H1 trend regime with M15 trend-pullback entry.
+- Secondary strategy: M15 closed-candle volatility breakout.
+- M5 may refine execution timing but cannot reverse the M15 decision.
+- Mean reversion, grid, martingale, averaging down, live reinforcement learning, and LLM-generated discretionary trades are excluded from V1.
+- Technical rules create a candidate with deterministic entry, invalidation, SL, and TP.
+- Structured economic-calendar data supplies hard event blackouts.
+- Macro context and the LLM are advisory: they classify regime, rank candidates, and identify source-backed conflicts.
+- The deterministic RiskEngine is the final authority for monetary risk.
+- The execution adapter sends only normalized, RiskEngine-approved orders.
+
+Decision policy:
+
+| Technical setup | Deterministic data/risk/event gates | LLM state | V1 action |
+|---|---|---|---|
+| Valid | Pass | Not called, neutral, or uncertain | Trade at base risk |
+| Valid | Pass | Source-backed material conflict | Reduce risk or veto according to versioned policy |
+| Valid | Event blackout or unsafe state | Any | No trade |
+| Invalid | Pass | Strong macro opinion | No trade |
+| Valid | Pass | Timeout, provider failure, or budget exhausted | BOT_ONLY fallback at base risk |
+| Valid | Calendar/event state unavailable near relevant news | Any | No trade |
+
+An LLM response of NEUTRAL, UNCERTAIN, or unavailable must not become a default veto. LLM failure may fall back to BOT_ONLY only when all deterministic safety inputs remain healthy. No policy may force a minimum number of trades or relax risk merely to meet a return target.
+
+### 3.2 Account-neutral RiskProfile and broker normalization
+
+The released system must not contain owner-specific balance, account identifier, broker server, account denomination, leverage, or personal deployment values. All monetary controls are supplied through an explicit, versioned RiskProfile and resolved against live broker/account capabilities.
+
+Live execution has no implicit RiskProfile. Missing, invalid, or unfingerprinted risk configuration keeps execution disarmed.
+
+At startup and before arming, the system must:
+
+- discover the account currency, denomination, equity, balance, leverage, and broker server from MT5;
+- persist native account-currency values and normalized reporting values without assuming USD or a cent account;
+- reject ambiguous or unexpectedly changed account identity, denomination, or contract metadata;
+- read live symbol volume_min, volume_max, volume_step, trade_contract_size, tick value, stop levels, and margin parameters;
+- use broker-aware profit and margin calculation for the proposed entry and SL;
+- compute loss_at_stop(minimum_legal_volume);
+- reject the order when minimum legal volume exceeds the configured percentage or absolute risk budget;
+- never narrow a technically valid SL merely to make minimum volume fit.
+
+Required configurable RiskProfile fields include:
+
+| Field | Selected rollout profile | Enforcement |
+|---|---:|---|
+| max_risk_per_trade_pct | 1% | Maximum projected loss at SL for one trade intent |
+| max_total_open_risk_pct | 3% | Combined worst-case loss at SL across active exposure |
+| daily_loss_limit_pct | 3% | Blocks new risk for the remainder of the configured trading day |
+| weekly_loss_limit_pct | 5% | Blocks new risk for the remainder of the configured trading week |
+| max_active_orders | 3 | Counts open positions plus pending entry orders |
+| margin_reserve | Configurable | Minimum free-margin or margin-level reserve |
+| correlation_limits | Configurable | Caps shared currency, direction, and factor exposure |
+| consecutive_loss_cooldown | Configurable | Optional pause after a configured loss sequence |
+
+These are selected rollout-profile values, not constants in strategy or execution code. Operators may supply another validated profile before arming. Every active profile must be schema-validated, hashed, audited, and immutable for the lifetime of an order intent.
+
+Risk-limit accounting must include realized loss, current floating loss, remaining worst-case loss to SL, and the proposed order's loss at SL. A new order is rejected when its projected loss would breach per-trade, total-open-risk, daily, weekly, margin, correlation, or active-order limits.
+
+max_active_orders counts every exposure-creating live intent: an open position or a pending entry order. Partial fills belonging to the same broker order intent do not create additional quota, while independent tickets/intents do. Cancelling or closing an order releases quota only after broker reconciliation confirms the terminal state.
+
+If minimum legal volume cannot fit the active RiskProfile, that symbol/setup is not tradeable for that account. Position size and leverage must never be increased merely to satisfy a desired trade frequency.
+
+### 3.3 LLM call economy and opportunity-cost controls
+
+The LLM must not be called on every tick or candle. Required sequence:
+
+1. local technical scan;
+2. deterministic candidate validation;
+3. risk/calendar/spread prefilter;
+4. cached MacroSnapshot lookup;
+5. one batched LLM review only when a valid candidate exists and the snapshot is stale.
+
+Controls:
+
+- Produce zero paid calls when no valid technical candidate exists.
+- Batch all relevant symbols into one bounded request.
+- Cache a structured MacroSnapshot using a configurable TTL selected from strategy horizon, event schedule, and data-freshness requirements; invalidate it on relevant scheduled events or material source changes.
+- Use compact stateless prompts; never resend an accumulating chat history.
+- Require configurable call-rate, token, and cost caps for each provider and deployment profile; no paid-call allowance is hardcoded.
+- Treat paid AI research cost separately from trading equity during canary validation, while still reporting it in total system economics.
+- Persist gross trading P/L, broker cost, data/model cost, and net system P/L separately.
+- Do not let API-budget exhaustion disable an otherwise safe BOT_ONLY trade path.
+
+For every candidate, including vetoed and non-executed candidates, persist counterfactual entry, SL, TP, expiry, hypothetical outcome in R, actual decision, veto reason, model cost, and latency. Weekly evaluation must report:
+
+- technical candidate count;
+- deterministic rejection rate by reason;
+- LLM consultation and veto rates;
+- false-veto rate;
+- expectancy of vetoed candidates;
+- API cost per reviewed and approved trade;
+- incremental expectancy and drawdown effect;
+- net expectancy after broker, data, and AI costs.
+
+If the LLM does not demonstrate positive incremental value after costs, remove it from the live decision path and retain it only for offline research and post-trade review.
 
 ## 4. Delivery roadmap and gates
 
@@ -270,7 +393,7 @@ Make loss containment independent of the signal engine, LLM, and execution adapt
 Use unit, parameterized, property-based, and adversarial tests for:
 
 - boundary rounding;
-- cent-account currency conversion;
+- non-standard account-currency and denomination conversion;
 - minimum-lot risk overflow;
 - XAUUSD versus Forex contract differences;
 - invalid SL/TP direction;
@@ -414,12 +537,15 @@ Prove that the deterministic strategy has measurable out-of-sample edge after re
 
 ### Objective
 
-Measure whether LLM review adds net value without adding execution authority or uncontrolled latency.
+Measure whether selective, cached LLM review adds net value without becoming a mandatory availability dependency, default veto, execution authority, or uncontrolled latency/cost source.
 
 ### Implementation
 
 - Run a controlled paid API smoke test.
-- Add provider timeout, retry limits, circuit breaker, and explicit fallback.
+- Execute local technical and deterministic risk/calendar/spread prefilters before any paid request.
+- Call the LLM only for a valid candidate when no fresh cached MacroSnapshot is available.
+- Batch relevant symbols and use compact stateless context.
+- Add configurable snapshot TTL/invalidation, daily call cap, monthly token/cost cap, provider timeout, bounded retry, and circuit breaker.
 - Validate schema and semantics.
 - Preserve:
   - provider/model;
@@ -431,27 +557,31 @@ Measure whether LLM review adds net value without adding execution authority or 
   - web-search trace and cited sources;
   - final validated decision.
 - Enforce a decision deadline so stale LLM output cannot enter RiskEngine.
-- Define one fixed failure policy:
-  - `NO_TRADE`, or
-  - BOT_ONLY if independently approved.
-- Record BOT_ONLY, BOT_LLM, and counterfactual outcomes using the same signal and risk inputs.
+- Use BOT_ONLY fallback on LLM timeout, provider failure, invalid response, or exhausted budget when deterministic safety inputs are healthy.
+- Fail closed only when market, calendar/event, account, risk, audit, reconciliation, or execution safety state is uncertain.
+- Permit an LLM veto only for a source-backed material conflict accepted by a versioned policy; neutral or uncertain output is not a veto.
+- Record BOT_ONLY, BOT_LLM, and counterfactual outcomes using identical signal and risk inputs.
+- Never enforce a minimum monthly trade count or increase risk to compensate for rejected opportunities.
 - Keep model and pricing configuration versioned; detect provider/model drift.
 - Do not use web claims as broker truth.
 
 ### Metrics
 
-- LLM veto precision and false-veto rate.
+- LLM consultation rate, veto precision, and false-veto rate.
+- Counterfactual expectancy of vetoed candidates.
 - Incremental expectancy and drawdown effect.
 - Added latency and stale-decision rate.
-- API cost per reviewed signal and per unit of added value.
+- API cost per reviewed signal, per approved trade, and per unit of added value.
+- Gross trading P/L, broker/data/model costs, and net system P/L.
 - Performance by strategy, symbol, session, and market regime.
 
 ### Gate acceptance
 
-- No invalid/unvalidated response can reach RiskEngine.
-- Budget and circuit breaker tests pass.
-- Shadow sample demonstrates measurable benefit after API cost; otherwise remove the LLM from the trading decision path.
-- The LLM still has no execution capability.
+- No invalid/unvalidated response can influence RiskEngine.
+- LLM outage and budget exhaustion do not block the independently approved BOT_ONLY path.
+- Budget, cache, batching, timeout, fallback, and circuit-breaker tests pass.
+- Shadow sample demonstrates measurable benefit after all costs; otherwise remove the LLM from the live decision path.
+- The LLM still has no execution or position-sizing capability.
 
 ---
 
@@ -556,19 +686,23 @@ Minimum entry criteria:
 - Timeout, restart, duplicate, partial-fill, and missing-SL fault tests pass.
 - No unresolved broker/local reconciliation mismatch.
 
-### Stage D — CENT_CANARY
+### Stage D — LIVE_CANARY
 
 Initial constraints:
 
 - One approved symbol only.
-- Broker minimum lot, normally `0.01`.
-- Initial risk target: 0.05–0.10% per trade, subject to minimum-lot economics.
-- One simultaneous position.
-- Strict daily loss and drawdown limits.
+- Query the live account and broker contract; do not assume denomination, minimum volume, leverage, or margin behavior.
+- Require an explicit, validated, and fingerprinted RiskProfile before arming.
+- Use the selected rollout profile: 1% risk per trade, 3% maximum total open risk, 3% daily loss limit, 5% weekly loss limit, and max_active_orders of 3.
+- Treat every percentage and order-count limit as configuration, never a hardcoded constant.
+- Reject a trade if minimum legal volume or projected portfolio loss exceeds the active profile.
+- Count open positions and pending entry orders toward max_active_orders.
+- Enforce configured margin reserve and correlation limits.
+- Martingale, grid, and averaging down are prohibited.
 - Manual daily arming.
 - Immediate owner alert for every order, fill, protection change, rejection, and reconciliation mismatch.
 
-### Stage E — CENT_GUARDED
+### Stage E — GUARDED_LIVE
 
 Expand symbols or risk only after:
 
@@ -577,7 +711,7 @@ Expand symbols or risk only after:
 - actual slippage/spread/margin behavior matches the tested envelope;
 - owner approves a versioned risk-policy change.
 
-### Stage F — CENT_EXPERIMENT
+### Stage F — LIVE_EXPERIMENT
 
 - BOT_ONLY and BOT_LLM use the same execution and RiskEngine path.
 - Randomization/allocation policy is fixed in advance.
@@ -628,7 +762,7 @@ The kill switch must be:
 | LLM | Schema, timeout, budget, provider drift, replay fixtures |
 | Integration | MT5 demo account and container |
 | Operations | Restart, network, disk, backup/restore, rollback |
-| Live rollout | Cent canary with strict limits |
+| Live rollout | Account-neutral LIVE_CANARY with explicit validated RiskProfile |
 
 Required CI checks:
 
@@ -659,52 +793,50 @@ Forex-AI V1 is production-ready only when all items below are true:
 - [ ] SL/TP protection is verified after entry.
 - [ ] Broker orders, positions, and deals reconcile with the local journal.
 - [ ] Strategy passes out-of-sample evaluation after realistic costs.
-- [ ] LLM remains optional, bounded, auditable, and execution-incapable.
+- [ ] LLM remains optional, cached, budget-bounded, auditable, and execution-incapable.
+- [ ] LLM/API failure safely falls back to the approved BOT_ONLY path when deterministic safety state is healthy.
+- [ ] Account denomination and minimum-volume loss-at-stop are discovered and verified from live broker data without broker-specific assumptions.
+- [ ] Gross trading P/L, broker cost, AI/data cost, and net system P/L are reported separately.
+- [ ] Counterfactual results show whether LLM vetoes add or destroy value.
 - [ ] Monitoring and owner alerts cover all safety-critical states.
 - [ ] Database backup/restore and integrity drills pass.
 - [ ] OBSERVE and SHADOW soak criteria pass.
 - [ ] Demo lifecycle and fault-injection criteria pass.
-- [ ] Owner explicitly approves CENT_CANARY activation.
+- [ ] Owner explicitly approves LIVE_CANARY activation.
 - [ ] No unresolved P0/P1 safety defect remains.
 
 ## 8. Priority backlog
 
 | Priority | Work package | Depends on |
 |---|---|---|
-| P0 | Initial Git baseline and documentation reconciliation | None |
-| P0 | Reproducible dependency/container/release fingerprint | Git baseline |
-| P0 | MT5 health, reconnect, and reconciliation state machine | Baseline |
-| P0 | Complete deterministic RiskEngine | Data contracts |
-| P0 | Adversarial risk test matrix | RiskEngine |
-| P0 | Execution state machine and idempotency | RiskEngine |
-| P0 | Unknown-outcome recovery and SL/TP verification | Execution adapter |
-| P1 | Replay/backtest and cost model | Stable signal/data contracts |
+| DONE | Initial Git baseline, A/B core merge, integration/persistence boundary | None |
+| DONE/VERIFY-PROD | Reproducible dependency/container/release fingerprint + local deploy/rollback drill | Git baseline |
+| DONE/MAINTENANCE-VERIFY | MT5 health/reconnect/resynchronization in long-running runtime | Integrated health/data contracts |
+| DONE | Deterministic RiskEngine broker-edge/adversarial matrix + live read-only calculator smoke | Integrated RiskEngine |
+| CURRENT | Execution unknown-outcome, retcode, restart, partial-fill and SL/TP fault campaign | Persistent execution lifecycle |
+| DONE/REAL-DATA-PENDING | Immutable replay dataset + reproducible walk-forward/OOS evidence framework | Strategy/replay tooling |
 | P1 | Demo integration and fault injection | Execution adapter |
 | P1 | Metrics, alerting, watchdog, backup/restore | Runtime contracts |
-| P1 | DeepSeek paid smoke and circuit breaker | Stable shadow pipeline |
-| P1 | Shadow BOT_ONLY versus BOT_LLM evaluation | Replay/audit contracts |
-| P2 | Cent canary tooling and daily arming | All previous gates |
+| P1 | Selective DeepSeek review, MacroSnapshot cache, batching, budget, and fallback | Stable shadow pipeline |
+| P1 | Shadow BOT_ONLY versus BOT_LLM counterfactual evaluation | Replay/audit contracts |
+| P2 | Account-neutral live-canary tooling and daily arming | All previous gates |
 | P2 | Post-trade lesson-quality evaluation | Sufficient journal history |
 | P3 | PostgreSQL or distributed architecture | Only if scaling requires it |
 
 ## 9. Recommended implementation sequence
 
-1. Baseline Git commit and reconcile documentation.
-2. Lock dependencies and container image; add release fingerprint.
-3. Harden deployment and rollback.
-4. Implement MT5 health/reconnect/resynchronization.
-5. Add market-data quality and account-identity guards.
-6. Complete broker-aware RiskEngine and tests.
-7. Implement execution lifecycle, idempotency, and reconciliation.
-8. Build replay/backtest and realistic cost model.
-9. Run DeepSeek paid shadow smoke and harden fallback/circuit breaker.
-10. Add observability, alerts, backups, and recovery drills.
-11. Run OBSERVE soak.
-12. Run SHADOW comparison.
-13. Run DEMO execution/fault-injection campaign.
-14. Conduct formal Go/No-Go review.
-15. If approved, enable one-symbol CENT_CANARY.
-16. Expand only through versioned, audited owner approval.
+1. **Current release acceptance blocker:** run the Gate 1 controlled MT5 container/network restart drill and then the seven-day OBSERVE soak during an approved maintenance/deployment window; the active observer/container were deliberately not disrupted during development.
+2. Gate 3 engineering/fake-fault validation is complete. The remaining Gate 3 acceptance work is an explicit DEMO campaign using the same guarded execution path for `order_check/order_send`, timeout-but-accepted, partial fill, restart reconciliation, orphan handling, protection repair, and emergency-close fault scenarios; keep execution disabled outside that approved DEMO campaign.
+3. Before any real production deployment, repeat the already-passed Gate 0 drill from a clean branch synchronized with upstream on the target host; production deploy continues to refuse dirty/ahead/behind source.
+4. Freeze the approved real historical replay dataset using the completed immutable dataset framework, then produce walk-forward/OOS strategy evidence after realistic costs without tuning on the final test split.
+5. Run controlled DeepSeek/advisory paid shadow smoke; verify cache/budget/fallback and counterfactual value.
+6. Add observability, owner alerts, watchdog, backup/restore, disk-full handling, and recovery drills.
+7. Run seven-day OBSERVE soak after Gate 0/1 acceptance.
+8. Run SHADOW comparison with at least 200 candidate decisions and BOT_ONLY/BOT_LLM counterfactuals.
+9. Run DEMO execution campaign with at least 100 complete lifecycles plus required fault injections.
+10. Conduct formal Go/No-Go review.
+11. If approved, enable one-symbol LIVE_CANARY with an explicit validated RiskProfile.
+12. Expand only through a versioned, audited RiskProfile change and owner approval.
 
 ## 10. Rough effort
 
@@ -714,12 +846,13 @@ Code completion may be faster. Soak periods, fault drills, out-of-sample validat
 
 ## 11. Immediate next action
 
-The next development action is Gate 0:
+Gate 0 local release acceptance and Gate 1 software/read-only smoke validation are complete. The remaining Gate 1 acceptance work requires an approved maintenance window because a real OBSERVE process is currently using the MT5 container:
 
-1. review current untracked files;
-2. reconcile stale documentation;
-3. create the initial clean baseline commit;
-4. add reproducible release metadata and dependency/container locking;
-5. verify deployment and rollback without enabling execution.
+1. deploy the resilient observer from a clean synchronized release while execution remains disabled;
+2. confirm startup performs full authoritative resynchronization and publishes healthy heartbeats before normal polling;
+3. deliberately restart the MT5 container and exercise a controlled network interruption; verify `DEGRADED/DISCONNECTED -> CONNECTING -> SYNCING -> HEALTHY` recovery with no decisions during uncertain state;
+4. confirm account/contract fingerprints remain stable and all raw history/journal facts reconcile after recovery;
+5. begin the required seven-day OBSERVE soak and review heartbeat/data-quality incidents at the end of the period;
+6. Gates 2–4 engineering frameworks are complete; prioritize the Gate 1 maintenance drill/OBSERVE soak and Gate 6 operational hardening while collecting the real Gate 4 OOS evidence and preparing the Gate 3 DEMO campaign.
 
-Real-order code must remain disabled until Gates 0–3 pass and the owner explicitly approves progression to demo and later cent-canary stages.
+Real-order execution remains disabled. `execution_enabled=false`, persistent manual arming, reconciliation, and kill-switch controls remain independent gates; no live progression is permitted until Gates 0–3 validation and owner approval are complete.
