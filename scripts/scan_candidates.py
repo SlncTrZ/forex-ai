@@ -35,13 +35,11 @@ def _v1_scan_symbol(client: MT5Client, cfg, base_symbol: str, *, now_utc: dateti
     if actual is None:
         raise ValueError(f"Unable to resolve broker symbol for {base_symbol}")
     constants = client.constants()
-    tick = client.tick(actual)
+    bundle = client.scan_bundle(actual, {label: constants[label] for label in ("M15", "H1", "H4")}, 80)
+    tick = bundle.get("tick")
     if not tick:
         raise RuntimeError(f"TICK_UNAVAILABLE:{actual}")
-    bars_by_timeframe = {
-        label: client.bars(actual, constants[label], 80)
-        for label in ("M15", "H1", "H4")
-    }
+    bars_by_timeframe = bundle.get("bars") or {}
     if any(len(rows) < 2 for rows in bars_by_timeframe.values()):
         raise RuntimeError(f"BARS_UNAVAILABLE:{actual}")
     market = build_market_from_mt5_rows(
