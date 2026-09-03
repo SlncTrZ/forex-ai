@@ -1,0 +1,31 @@
+broker: Exness
+account_type: cent
+expected:
+  server: Exness-MT5Real36
+  account_currency: USC
+  margin_mode: 2
+symbols:
+  XAUUSD:
+    actual: XAUUSDc
+    digits: 3
+    point: 0.001
+    trade_contract_size: 1.0
+    volume_min: 0.01
+    volume_step: 0.01
+  EURUSD:
+    actual: EURUSDc
+    digits: 5
+    point: 0.00001
+    trade_contract_size: 1000.0
+    volume_min: 0.01
+    volume_step: 0.01
+  GBPUSD:
+    actual: GBPUSDc
+    digits: 5
+    point: 0.00001
+    trade_contract_size: 1000.0
+    volume_min: 0.01
+    volume_step: 0.01
+notes:
+  - Runtime must still read account/symbol properties live from MT5; this file is a validated profile/guard, not the sole source of truth.
+  - Account login and balance are intentionally not stored here.

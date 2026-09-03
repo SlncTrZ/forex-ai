@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Runtime data (live DB/logs stay local, never in the repo)
+*.db
+*.db-shm
+*.db-wal
+logs/
+data/runtime/
+
+# Host-specific deployment artifacts (systemd units/timers)
+deploy/
+
+# Local exports/backups
+*.csv
+*.parquet
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store

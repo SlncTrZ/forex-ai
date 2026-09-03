@@ -1,0 +1,50 @@
+enabled: true
+provider: deepseek
+model: deepseek-v4-flash
+base_url: https://api.deepseek.com
+api_mode: responses
+thinking:
+  enabled: false
+  reasoning_effort: none
+response:
+  require_structured_json: true
+  allowed_actions: [BUY, SELL, NO_TRADE]
+  max_tokens: 4000
+  max_tool_rounds: 2
+invocation:
+  event_driven_only: true
+  max_calls_per_day: 100
+  max_cost_usd_per_day: 0.25
+memory:
+  backend: sqlite
+  max_lessons_per_decision: 5
+  vector_store_enabled: false
+tools:
+  current_time: injected_from_forex_ai
+  refresh_market_context: injected_before_call
+  account_state: injected_before_call
+  lessons: injected_before_call
+  deepseek_web_search: true
+pricing:
+  verified_at_utc: 2026-09-03T04:00:00Z
+  peak_hours_utc_weekdays:
+    - [1, 4]
+    - [6, 10]
+  deepseek-v4-flash:
+    off_peak_per_1m:
+      cache_hit_input: 0.007
+      cache_miss_input: 0.22
+      output: 0.66
+    peak_per_1m:
+      cache_hit_input: 0.014
+      cache_miss_input: 0.44
+      output: 1.32
+  deepseek-v4-pro:
+    off_peak_per_1m:
+      cache_hit_input: 0.022
+      cache_miss_input: 0.66
+      output: 1.98
+    peak_per_1m:
+      cache_hit_input: 0.044
+      cache_miss_input: 1.32
+      output: 3.96

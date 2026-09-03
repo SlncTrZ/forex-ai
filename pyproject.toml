@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forex-ai"
+version = "0.1.0"
+description = "Live cent-account Forex research harness for XAUUSD, EURUSD, GBPUSD"
+requires-python = ">=3.12"
+dependencies = [
+  "mt5linux==1.1.1",
+  "pydantic>=2.13,<3",
+  "pydantic-settings>=2.15,<3",
+  "PyYAML>=6,<7",
+  "httpx>=0.28,<1",
+  "tenacity>=9,<10",
+  "python-dotenv>=1.2,<2",
+  "numpy>=2.5,<3",
+  "pandas>=3,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9,<10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
