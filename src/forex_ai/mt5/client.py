@@ -124,15 +124,15 @@ class MT5Client:
     def tick(self, symbol: str) -> dict[str, Any] | None:
         return plain(self._remote_eval(f"(lambda x: None if x is None else dict(x._asdict()))(mt5.symbol_info_tick({symbol!r}))"))
 
-    def bars(self, symbol: str, timeframe: int, count: int = 100) -> list[dict[str, Any]]:
+    def bars(self, symbol: str, timeframe: int, count: int = 100, start_pos: int = 0) -> list[dict[str, Any]]:
         if self._external_conn is not None:
             code = (
                 "(lambda rates: [] if rates is None else ["
                 "{name: (row[name].item() if hasattr(row[name], 'item') else row[name]) for name in rates.dtype.names} "
-                f"for row in rates])(mt5.copy_rates_from_pos({symbol!r},{int(timeframe)!r},0,{int(count)!r}))"
+                f"for row in rates])(mt5.copy_rates_from_pos({symbol!r},{int(timeframe)!r},{int(start_pos)!r},{int(count)!r}))"
             )
             return plain(self._remote_eval(code))
-        rates = self._require().copy_rates_from_pos(symbol, timeframe, 0, count)
+        rates = self._require().copy_rates_from_pos(symbol, timeframe, start_pos, count)
         if rates is None:
             return []
         names = getattr(getattr(rates, "dtype", None), "names", None)
