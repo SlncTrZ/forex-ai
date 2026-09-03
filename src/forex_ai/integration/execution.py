@@ -6,8 +6,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from forex_ai.execution.controller import ExecutionController, SendOutcome
+from forex_ai.execution.reconcile import ReconcileResult, reconcile_intent
 from forex_ai.execution.state import ExecutionState, OrderIntent
-from forex_ai.journal.integration_repository import SQLiteIntentRepository, load_trading_control
+from forex_ai.journal.integration_repository import (
+    SQLiteIntentRepository,
+    load_trading_control,
+    persist_execution_broker_event,
+)
+from forex_ai.mt5.contracts import BrokerDeal, BrokerOrder, BrokerPosition
 from forex_ai.risk.broker_engine import BrokerRiskResult
 
 
@@ -58,8 +64,38 @@ class GuardedExecutionService:
         check: Callable[[dict[str, Any]], dict[str, Any] | None],
         is_passed: Callable[[dict[str, Any] | None], bool],
     ) -> OrderIntent:
-        self._assert_entry_allowed(now_utc.astimezone(timezone.utc), ignore_intent_id=intent_id)
-        return self.controller.preflight(intent_id, request, check, is_passed)
+        now = now_utc.astimezone(timezone.utc)
+        self._assert_entry_allowed(now, ignore_intent_id=intent_id)
+        def audited_check(payload: dict[str, Any]) -> dict[str, Any] | None:
+            try:
+                response = check(payload)
+                return response
+            except Exception:
+                persist_execution_broker_event(
+                    self.db_path,
+                    intent_id=intent_id,
+                    timestamp_utc=now,
+                    phase="PREFLIGHT",
+                    request=payload,
+                    response=None,
+                    outcome_class="EXCEPTION",
+                )
+                raise
+
+        def audited_passed(response: dict[str, Any] | None) -> bool:
+            passed = is_passed(response)
+            persist_execution_broker_event(
+                self.db_path,
+                intent_id=intent_id,
+                timestamp_utc=now,
+                phase="PREFLIGHT",
+                request=request,
+                response=response,
+                outcome_class="PASSED" if passed else "REJECTED",
+            )
+            return passed
+
+        return self.controller.preflight(intent_id, request, audited_check, audited_passed)
 
     def send_once(
         self,
@@ -70,8 +106,74 @@ class GuardedExecutionService:
         send: Callable[[dict[str, Any]], dict[str, Any] | None],
         classify: Callable[[dict[str, Any] | None], SendOutcome],
     ) -> OrderIntent:
-        self._assert_entry_allowed(now_utc.astimezone(timezone.utc), ignore_intent_id=intent_id)
-        return self.controller.send_once(intent_id, request, send, classify)
+        now = now_utc.astimezone(timezone.utc)
+        self._assert_entry_allowed(now, ignore_intent_id=intent_id)
+
+        def audited_send(payload: dict[str, Any]) -> dict[str, Any] | None:
+            try:
+                return send(payload)
+            except Exception:
+                persist_execution_broker_event(
+                    self.db_path,
+                    intent_id=intent_id,
+                    timestamp_utc=now,
+                    phase="SEND",
+                    request=payload,
+                    response=None,
+                    outcome_class="UNKNOWN_EXCEPTION",
+                )
+                raise
+
+        def audited_classify(response: dict[str, Any] | None) -> SendOutcome:
+            try:
+                outcome = classify(response)
+            except Exception:
+                persist_execution_broker_event(
+                    self.db_path,
+                    intent_id=intent_id,
+                    timestamp_utc=now,
+                    phase="SEND",
+                    request=request,
+                    response=response,
+                    outcome_class="CLASSIFIER_EXCEPTION",
+                )
+                raise
+            if outcome.unknown:
+                outcome_class = "UNKNOWN"
+            elif outcome.partial:
+                outcome_class = "PARTIAL"
+            elif outcome.accepted:
+                outcome_class = "ACCEPTED"
+            else:
+                outcome_class = "REJECTED"
+            persist_execution_broker_event(
+                self.db_path,
+                intent_id=intent_id,
+                timestamp_utc=now,
+                phase="SEND",
+                request=request,
+                response=response,
+                outcome_class=outcome_class,
+            )
+            return outcome
+
+        return self.controller.send_once(intent_id, request, audited_send, audited_classify)
+
+    def reconcile(
+        self,
+        intent_id: str,
+        *,
+        orders: tuple[BrokerOrder, ...] = (),
+        deals: tuple[BrokerDeal, ...] = (),
+        positions: tuple[BrokerPosition, ...] = (),
+    ) -> ReconcileResult:
+        current = self.repository.get(intent_id)
+        if current is None:
+            raise KeyError(intent_id)
+        result = reconcile_intent(current, orders=orders, deals=deals, positions=positions)
+        for transition in result.transition_path:
+            self.repository.save(transition)
+        return result
 
     def _assert_entry_allowed(self, now_utc: datetime, *, ignore_intent_id: str | None = None) -> None:
         if not self.execution_enabled:

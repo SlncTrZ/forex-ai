@@ -41,6 +41,7 @@ def symbol_contract(
         digits=int(raw["digits"]),
         point=float(raw["point"]),
         trade_contract_size=float(raw["trade_contract_size"]),
+        trade_tick_size=float(raw["trade_tick_size"]) if raw.get("trade_tick_size") else None,
         volume_min=float(raw["volume_min"]),
         volume_max=float(raw["volume_max"]),
         volume_step=float(raw["volume_step"]),

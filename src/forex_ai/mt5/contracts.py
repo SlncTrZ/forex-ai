@@ -61,6 +61,7 @@ class SymbolContract(FrozenModel):
     digits: int = Field(ge=0)
     point: float = Field(gt=0)
     trade_contract_size: float = Field(gt=0)
+    trade_tick_size: float | None = Field(default=None, gt=0)
     volume_min: float = Field(gt=0)
     volume_max: float = Field(gt=0)
     volume_step: float = Field(gt=0)
@@ -80,6 +81,11 @@ class SymbolContract(FrozenModel):
     @classmethod
     def finite_positive(cls, value: float, info):
         return _finite(value, info.field_name)
+
+    @field_validator("trade_tick_size")
+    @classmethod
+    def finite_optional_tick_size(cls, value: float | None):
+        return None if value is None else _finite(value, "trade_tick_size")
 
     @model_validator(mode="after")
     def check_volume_rules(self):
