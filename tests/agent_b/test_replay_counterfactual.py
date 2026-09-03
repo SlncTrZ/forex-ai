@@ -32,7 +32,8 @@ def test_replay_uses_supplied_strategy_and_applies_costs():
     b1=Candle(t0,100,100.2,99.8,100)
     b2=Candle(t0+timedelta(minutes=15),100,100.2,99.8,100)
     b3=Candle(t0+timedelta(minutes=30),100,102.5,99.9,102)
-    events=[ReplayEvent(t0,_snap(t0,(b1,b2))),ReplayEvent(t0+timedelta(minutes=30),_snap(t0+timedelta(minutes=30),(b1,b2,b3)))]
+    first_clock=t0+timedelta(minutes=15)
+    events=[ReplayEvent(first_clock,_snap(first_clock,(b1,b2))),ReplayEvent(t0+timedelta(minutes=30),_snap(t0+timedelta(minutes=30),(b1,b2,b3)))]
     artifact=ReplayEngine(_strategy,cfg,CostModel(commission_per_trade=0.1)).run(events,account_r_value=10)
     assert artifact.candidate_count>=1
     assert len(artifact.trades)==1

@@ -98,6 +98,9 @@ class MarketSnapshot:
             raise ValueError("invalid bid/ask")
         if self.spread_cost < 0 or self.commission_cost < 0:
             raise ValueError("costs must be non-negative")
+        for timeframe in self.timeframes.values():
+            if any(bar.time_utc > self.captured_at_utc for bar in timeframe.closed_bars):
+                raise ValueError("closed bar cannot be from the future relative to snapshot capture time")
         object.__setattr__(self, "timeframes", MappingProxyType(dict(self.timeframes)))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 

@@ -72,6 +72,13 @@ def test_timeframe_rejects_duplicate_unordered_and_nonfinite_bars():
         Candle(start,100,float('nan'),99,100)
 
 
+def test_snapshot_rejects_future_closed_bar():
+    captured=datetime(2026,1,1,tzinfo=UTC)
+    future=Candle(captured+timedelta(minutes=15),100,101,99,100)
+    with pytest.raises(ValueError, match='future'):
+        MarketSnapshot('TEST',captured,1,100,100.1,{'M15':TimeframeSnapshot('M15',(future,))})
+
+
 def test_breakout_positive_and_cost_rejection():
     now=datetime(2026,1,2,tzinfo=UTC)
     start=now-timedelta(hours=20)
