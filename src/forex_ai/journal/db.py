@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = r"""
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -260,6 +260,103 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_events(epoch_ms);
 CREATE INDEX IF NOT EXISTS idx_audit_correlation ON audit_events(correlation_id, epoch_ms);
 CREATE INDEX IF NOT EXISTS idx_audit_symbol ON audit_events(symbol, epoch_ms);
+
+CREATE TABLE IF NOT EXISTS candidate_decisions (
+    candidate_id TEXT PRIMARY KEY,
+    correlation_id TEXT NOT NULL,
+    strategy_id TEXT NOT NULL,
+    strategy_version TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    generated_at_utc TEXT NOT NULL,
+    expires_at_utc TEXT NOT NULL,
+    evidence_hash TEXT NOT NULL,
+    market_snapshot_fingerprint TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS safety_snapshots_v1 (
+    fingerprint TEXT PRIMARY KEY,
+    captured_at_utc TEXT NOT NULL,
+    reconciled INTEGER NOT NULL,
+    blocking_reasons_json TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS risk_decisions_v1 (
+    candidate_id TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    approved INTEGER NOT NULL,
+    risk_profile_fingerprint TEXT NOT NULL,
+    safety_snapshot_fingerprint TEXT NOT NULL,
+    expires_at_utc TEXT NOT NULL,
+    reason_codes_json TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    PRIMARY KEY(candidate_id, risk_profile_fingerprint, safety_snapshot_fingerprint)
+);
+
+CREATE TABLE IF NOT EXISTS advisories_v1 (
+    candidate_id TEXT NOT NULL,
+    evidence_id TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    action TEXT NOT NULL,
+    risk_multiplier REAL NOT NULL,
+    status TEXT NOT NULL,
+    expires_at_utc TEXT NOT NULL,
+    model_fingerprint TEXT NOT NULL,
+    advisory_cost REAL NOT NULL,
+    payload_json TEXT NOT NULL,
+    PRIMARY KEY(candidate_id, evidence_id, model_fingerprint)
+);
+
+CREATE TABLE IF NOT EXISTS order_intents_v1 (
+    intent_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    volume TEXT NOT NULL,
+    entry TEXT NOT NULL,
+    stop_loss TEXT NOT NULL,
+    take_profit TEXT NOT NULL,
+    state TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    broker_order_ticket INTEGER,
+    broker_position_ticket INTEGER,
+    filled_volume TEXT NOT NULL,
+    last_reason TEXT,
+    updated_at_utc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_order_intents_candidate ON order_intents_v1(candidate_id);
+CREATE INDEX IF NOT EXISTS idx_order_intents_state ON order_intents_v1(state);
+
+CREATE TABLE IF NOT EXISTS execution_transitions_v1 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intent_id TEXT NOT NULL,
+    timestamp_utc TEXT NOT NULL,
+    from_state TEXT,
+    to_state TEXT NOT NULL,
+    reason TEXT,
+    payload_json TEXT NOT NULL,
+    FOREIGN KEY(intent_id) REFERENCES order_intents_v1(intent_id)
+);
+CREATE INDEX IF NOT EXISTS idx_execution_transitions_intent ON execution_transitions_v1(intent_id, id);
+
+CREATE TABLE IF NOT EXISTS counterfactuals_v1 (
+    candidate_id TEXT PRIMARY KEY,
+    updated_at_utc TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS trading_control_state (
+    singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+    armed INTEGER NOT NULL DEFAULT 0,
+    arm_expires_at_utc TEXT,
+    kill_switch INTEGER NOT NULL DEFAULT 1,
+    maintenance_mode INTEGER NOT NULL DEFAULT 0,
+    updated_at_utc TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT ''
+);
 
 CREATE TABLE IF NOT EXISTS system_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

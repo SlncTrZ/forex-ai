@@ -1,5 +1,24 @@
 enabled: true
 execution_enabled: false
+profile:
+  max_risk_per_trade_pct: 1
+  max_total_open_risk_pct: 3
+  daily_loss_limit_pct: 3
+  weekly_loss_limit_pct: 5
+  max_active_orders: 3
+  min_risk_reward: 1.5
+  max_signal_age_seconds: 30
+  max_tick_age_seconds: 5
+  max_price_drift_pct: 0.25
+  max_spread_points: 100
+  max_slippage_points: 50
+  min_margin_reserve_pct: 20
+  max_correlated_risk_pct: 3
+  cooldown_seconds: 0
+  max_drawdown_pct: 10
+  conservative_fee_per_lot: 0
+  enabled: true
+  kill_switch: false
 allowed_symbols:
   - XAUUSD
   - EURUSD
