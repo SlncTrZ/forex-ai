@@ -1,19 +1,19 @@
 # Gate 1 Maintenance Runbook — MT5 Resilience Acceptance
 
-Status: SCHEDULED-PROPOSED / NOT YET EXECUTED
-Owner approval required before destructive fault steps.
-Execution mode must remain disabled for the entire window.
+Status: **MAINTENANCE ACCEPTANCE PASS — 7-DAY OBSERVE SOAK IN PROGRESS**
+Execution remained disabled for the entire maintenance session.
 
-## Proposed maintenance window
+## Executed maintenance window
 
-- Date: 2026-09-04
-- Time: 09:00–10:00 Asia/Ho_Chi_Minh (UTC+7)
-- Pre-check: 08:45–09:00
-- Fault drill: 09:00–09:30
-- Reconciliation / acceptance review: 09:30–09:45
-- Rollback reserve: 09:45–10:00
+- Date: 2026-09-03
+- Runtime: `.227`
+- Mode: `OBSERVE`
+- Final tested source: `6cf220e`
+- Automated suite: 118/118 PASS
+- Soak start: 2026-09-03 17:54:40 +07
+- Earliest soak completion review: 2026-09-10 17:54:40 +07
 
-Reason for this window: market data should be available for fresh-tick/recovery verification, while the drill remains isolated to the test/OBSERVE runtime. No trading execution is permitted.
+The originally proposed 2026-09-04 window was superseded by explicit owner approval to execute immediately on 2026-09-03.
 
 ## Hard prerequisites
 
@@ -137,6 +137,37 @@ The maintenance drill is PASS only when:
 
 After PASS, begin the required seven-day continuous OBSERVE soak. Any unreconciled safety incident resets the soak clock.
 
-## Current scheduling blocker
+## Execution evidence — 2026-09-03
 
-At runbook creation time, local `main` is ahead of `origin/main` and `DEVELOP_PLAN.md` is modified. The hardened production deploy intentionally rejects unsynchronized or dirty source. Therefore the maintenance window is scheduled as proposed but cannot become GO until the exact release candidate is committed, pushed/synchronized, tested, and the prechecks above pass.
+Maintenance exposed and fixed several real production defects before acceptance:
+
+- installed-package config path resolution failed outside the source tree;
+- release dependency installation could inherit test `PYTHONPATH` and produce false dependency satisfaction;
+- MT5 cleanup could throw `EOFError` on a dead socket and crash the observer;
+- upstream `lprett/mt5linux` startup was not restart-safe because stale FIFO state and a non-first-run `apply_mt5_config` return code could terminate the container under `set -e`;
+- managed `mt5linux` reconnects could auto-create auxiliary containers during bridge loss, causing port races;
+- tick future-drift validation incorrectly used cycle-start time instead of wall-clock at tick read.
+
+Accepted fixes include restart-safe MT5 entrypoint handling, best-effort dead-socket cleanup, `mt5.engine: external` ownership separation so the observer only connects to the existing RPyC bridge, and injectable wall-clock validation.
+
+Observed acceptance evidence:
+
+- synchronized-source release deployment succeeded and release audit events were persisted;
+- startup produced `CONNECTING -> SYNCING -> HEALTHY`;
+- real `docker restart forex-mt5` produced degraded/reconnect/resync behavior and returned to `HEALTHY` without observer process failure after fixes;
+- controlled `docker network disconnect/connect bridge forex-mt5` produced `DEGRADED -> CONNECTING -> SYNCING -> HEALTHY` with bounded backoff;
+- no `mt5linux-*` auxiliary container remained after external-bridge conversion;
+- no candidate decision was emitted during the degraded network-fault interval;
+- SQLite `PRAGMA integrity_check` returned `ok`;
+- account identity remained stable (`login/server/currency` unchanged), with current broker positions=0 and pending orders=0;
+- latest safety snapshots were reconciled with no blocking reasons;
+- no local execution order intent existed;
+- broker order/deal persistence uses unique ticket keys, and reconciliation completed without a safety-critical unknown state.
+
+Therefore the **Gate 1 maintenance drill is PASS**.
+
+## Remaining Gate 1 criterion
+
+The only remaining Gate 1 acceptance criterion is the mandatory seven continuous days of OBSERVE operation defined in `DEVELOP_PLAN.md`. The soak clock begins at `2026-09-03 17:54:40 +07` and reaches its earliest valid completion at `2026-09-10 17:54:40 +07`.
+
+Any unreconciled data loss, account/contract drift, duplicate/lost broker fact, stuck degraded state, safety-critical journal failure, or unexpected execution activity resets the soak clock. If the interval is clean, Gate 1 can then be marked **PASS** without another destructive maintenance drill.

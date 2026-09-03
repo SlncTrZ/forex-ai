@@ -46,12 +46,12 @@ Production-ready does **not** mean profitable. Software safety/correctness and s
   - persistent `armed=false`
   - persistent `kill_switch=true` when no explicit control state exists
   - no LLM execution tool
-- Automated suite after A/B/Integration + Gates 0–4 engineering merge: 115 tests passing as of 2026-09-03.
+- Automated suite after A/B/Integration + Gates 0–4 engineering merge and Gate 1 maintenance hardening: 118 tests passing as of 2026-09-03.
 
 ### 2.2 Remaining critical gaps
 
 - Reproducible release controls are implemented and passed local temp-runtime deploy/rollback/audit drills; the remaining release acceptance item is to repeat the synchronized-source deployment drill on the production host before any real deployment.
-- The read-only observer is now wired through the resilient MT5 coordinator with strict symbol resolution, full post-reconnect resynchronization, stale/gap/account/protection guards, cached healthy polling, and persistent heartbeats. Controlled container/network restart drills and the seven-day OBSERVE soak are still pending because the currently running observer/container were not disrupted during development.
+- The read-only observer is wired through the resilient MT5 coordinator with strict symbol resolution, full post-reconnect resynchronization, stale/gap/account/protection guards, cached healthy polling, persistent heartbeats, and external-bridge mode so the application cannot auto-create/manage MT5 containers during reconnect. Controlled container restart and Docker-network interruption drills passed on 2026-09-03 after fault-driven fixes; the remaining Gate 1 acceptance item is the required seven-day continuous OBSERVE soak.
 - Gate 4 immutable dataset/OOS tooling is code-complete and tested, including byte hashes, semantic event fingerprints, overwrite refusal, tamper detection, non-overlapping splits, reproducible evidence fingerprints, and explicit acceptance policy. The remaining strategy blocker is evidence, not framework: freeze an approved real historical dataset and complete walk-forward/final-test OOS evaluation after realistic broker costs.
 - RiskEngine broker-edge validation now covers pending/existing exposure, finite calculator failures, stop/target/freeze boundaries, fees, account-currency neutrality, volume-step flooring, nonlinear broker profit calculation, and live read-only profit/margin calculations on the configured XAUUSD/EURUSD/GBPUSD broker symbols. Filling-mode/retcode behavior belongs to Gate 3 execution validation and remains pending.
 - Persistent effectively-once state exists, but crash-before/after-send, timeout-but-accepted, restart reconciliation, partial-fill, orphan, and missing-protection behavior still require demo/fault-injection evidence.
@@ -65,7 +65,7 @@ Production-ready does **not** mean profitable. Software safety/correctness and s
 |---|---:|---|
 | Core deterministic architecture (Strategy/Risk/Execution) | 97%+ code complete | Risk + execution engineering/fake-fault validation passed; DEMO broker execution campaign pending |
 | Software integration and persistence | 85–90% code complete | Integrated; execution remains disarmed |
-| Observer/research harness | 90–95% code complete | Resilient runtime wired; destructive fault drill + seven-day soak pending |
+| Observer/research harness | 97%+ code complete | Destructive container/network fault drill passed; seven-day soak in progress |
 | Strategy validation evidence | 80–85% framework complete | Immutable/OOS framework passed; real historical dataset + final evidence still required |
 | Controlled LLM experiment | 60–70% | Advisory boundary ready; paid shadow evidence pending |
 | Operations/release/DR | 45–55% | Gate 0 local acceptance passed; Gate 6 work remains |
@@ -76,7 +76,7 @@ Production-ready does **not** mean profitable. Software safety/correctness and s
 | Gate | Software status | Validation status | Current decision |
 |---|---|---|---|
 | Gate 0 — Source/release | Hashed dependency lock, pinned MT5 image digest, canonical release manifest, dirty/sync guards, transactional deploy/rollback implemented | Local temp-runtime deploy/rollback + release audit drill passed; production-host synchronized-source drill remains before any real deployment | **LOCAL ACCEPTANCE PASS** |
-| Gate 1 — MT5/data resilience | Resilient observer, full reconnect resync, strict mapping/data guards, heartbeat persistence implemented | 7/7 fake fault matrix + live read-only broker sync + client-session drop/reconnect passed; destructive container/network drill + seven-day soak pending | **CODE/SAFE-SMOKE PASS — MAINTENANCE DRILL PENDING** |
+| Gate 1 — MT5/data resilience | Resilient observer, external MT5 bridge ownership boundary, full reconnect resync, strict mapping/data guards, restart-safe MT5 entrypoint patch, heartbeat persistence implemented | Fake fault matrix + live read-only broker sync + client-session drop/reconnect + real container restart + controlled Docker-network interruption all passed; DB integrity/reconciliation/account identity remained stable and no candidate was emitted during degraded window. Seven-day OBSERVE soak started 2026-09-03 17:54:40 +07 and is due 2026-09-10 17:54:40 +07 | **MAINTENANCE ACCEPTANCE PASS — 7-DAY SOAK IN PROGRESS** |
 | Gate 2 — RiskEngine | Broker-aware core hardened with structured pending/existing exposure and nonlinear safe-volume search | Expanded adversarial matrix + live read-only `order_calc_profit`/`order_calc_margin` smoke on XAUUSD/EURUSD/GBPUSD passed; XAUUSD correctly remains blocked when live spread exceeds profile | **CODE/READ-ONLY VALIDATION PASS** |
 | Gate 3 — Execution | Normalized MT5 request builders, filling policy, retcode classifier, persistent broker-event hashes, timeout/partial/restart reconciliation, protection repair/emergency-close policy implemented | 17/17 focused fake-fault tests + full suite + live read-only execution-contract build on XAUUSD/EURUSD/GBPUSD passed; real DEMO `order_check/order_send` timeout/partial/protection campaign still pending | **ENGINEERING/FAKE-FAULT PASS — DEMO CAMPAIGN PENDING** |
 | Gate 4 — Strategy/replay | Strategy/replay/reporting + immutable dataset manifest/hash + OOS evidence/acceptance framework implemented | 5/5 focused immutable/OOS tests + 115/115 full suite passed; real historical dataset freeze, realistic-cost walk-forward, untouched final test, sensitivity/Monte Carlo evidence and owner approval remain | **ENGINEERING/IMMUTABILITY PASS — REAL OOS EVIDENCE PENDING** |
@@ -811,7 +811,7 @@ Forex-AI V1 is production-ready only when all items below are true:
 |---|---|---|
 | DONE | Initial Git baseline, A/B core merge, integration/persistence boundary | None |
 | DONE/VERIFY-PROD | Reproducible dependency/container/release fingerprint + local deploy/rollback drill | Git baseline |
-| DONE/MAINTENANCE-VERIFY | MT5 health/reconnect/resynchronization in long-running runtime | Integrated health/data contracts |
+| DONE/SOAK-IN-PROGRESS | MT5 health/reconnect/resynchronization in long-running runtime | Maintenance drill passed; seven-day OBSERVE soak running |
 | DONE | Deterministic RiskEngine broker-edge/adversarial matrix + live read-only calculator smoke | Integrated RiskEngine |
 | CURRENT | Execution unknown-outcome, retcode, restart, partial-fill and SL/TP fault campaign | Persistent execution lifecycle |
 | DONE/REAL-DATA-PENDING | Immutable replay dataset + reproducible walk-forward/OOS evidence framework | Strategy/replay tooling |
@@ -825,13 +825,13 @@ Forex-AI V1 is production-ready only when all items below are true:
 
 ## 9. Recommended implementation sequence
 
-1. **Current release acceptance blocker:** run the Gate 1 controlled MT5 container/network restart drill and then the seven-day OBSERVE soak during an approved maintenance/deployment window; the active observer/container were deliberately not disrupted during development.
+1. **Current release acceptance blocker:** complete the Gate 1 seven-day OBSERVE soak. The controlled MT5 container restart and Docker-network interruption maintenance drills passed on 2026-09-03; any unreconciled safety incident resets the soak clock.
 2. Gate 3 engineering/fake-fault validation is complete. The remaining Gate 3 acceptance work is an explicit DEMO campaign using the same guarded execution path for `order_check/order_send`, timeout-but-accepted, partial fill, restart reconciliation, orphan handling, protection repair, and emergency-close fault scenarios; keep execution disabled outside that approved DEMO campaign.
 3. Before any real production deployment, repeat the already-passed Gate 0 drill from a clean branch synchronized with upstream on the target host; production deploy continues to refuse dirty/ahead/behind source.
 4. Freeze the approved real historical replay dataset using the completed immutable dataset framework, then produce walk-forward/OOS strategy evidence after realistic costs without tuning on the final test split.
 5. Run controlled DeepSeek/advisory paid shadow smoke; verify cache/budget/fallback and counterfactual value.
 6. Add observability, owner alerts, watchdog, backup/restore, disk-full handling, and recovery drills.
-7. Run seven-day OBSERVE soak after Gate 0/1 acceptance.
+7. Complete the seven-day OBSERVE soak that began 2026-09-03 17:54:40 +07; review heartbeat/data-quality/reconciliation incidents at or after 2026-09-10 17:54:40 +07.
 8. Run SHADOW comparison with at least 200 candidate decisions and BOT_ONLY/BOT_LLM counterfactuals.
 9. Run DEMO execution campaign with at least 100 complete lifecycles plus required fault injections.
 10. Conduct formal Go/No-Go review.
@@ -846,13 +846,14 @@ Code completion may be faster. Soak periods, fault drills, out-of-sample validat
 
 ## 11. Immediate next action
 
-Gate 0 local release acceptance and Gate 1 software/read-only smoke validation are complete. The remaining Gate 1 acceptance work requires an approved maintenance window because a real OBSERVE process is currently using the MT5 container:
+Gate 0 local release acceptance and Gate 1 maintenance acceptance are complete. The resilient OBSERVE release is deployed from synchronized source with execution disabled. Real container restart and controlled Docker-network interruption drills recovered automatically through degraded/connect/sync states back to HEALTHY; account identity remained stable, DB integrity stayed `ok`, broker positions/orders were reconciled, no order intent existed, and no candidate was emitted during the degraded fault window.
 
-1. deploy the resilient observer from a clean synchronized release while execution remains disabled;
-2. confirm startup performs full authoritative resynchronization and publishes healthy heartbeats before normal polling;
-3. deliberately restart the MT5 container and exercise a controlled network interruption; verify `DEGRADED/DISCONNECTED -> CONNECTING -> SYNCING -> HEALTHY` recovery with no decisions during uncertain state;
-4. confirm account/contract fingerprints remain stable and all raw history/journal facts reconcile after recovery;
-5. begin the required seven-day OBSERVE soak and review heartbeat/data-quality incidents at the end of the period;
-6. Gates 2–4 engineering frameworks are complete; prioritize the Gate 1 maintenance drill/OBSERVE soak and Gate 6 operational hardening while collecting the real Gate 4 OOS evidence and preparing the Gate 3 DEMO campaign.
+The remaining Gate 1 acceptance work is time-based evidence only:
+
+1. maintain continuous OBSERVE operation from soak start `2026-09-03 17:54:40 +07`;
+2. treat any unreconciled data-loss, account/contract drift, stuck degraded state, duplicate/lost broker fact, or safety-critical journal incident as a soak reset;
+3. at or after `2026-09-10 17:54:40 +07`, review the full heartbeat/data-quality/reconciliation interval;
+4. if clean, mark Gate 1 **PASS**; otherwise reset the soak clock after remediation;
+5. meanwhile continue Gate 6 operational hardening, real Gate 4 OOS evidence collection, and preparation for the Gate 3 DEMO campaign.
 
 Real-order execution remains disabled. `execution_enabled=false`, persistent manual arming, reconciliation, and kill-switch controls remain independent gates; no live progression is permitted until Gates 0–3 validation and owner approval are complete.
