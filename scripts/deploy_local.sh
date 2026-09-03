@@ -114,8 +114,8 @@ cp "$MANIFEST_TMP" "$STAGING/release_manifest.json"
 if [ ! -x "$RUNTIME_VENV/bin/python" ]; then
   python3 -m venv "$RUNTIME_VENV"
 fi
-"$RUNTIME_VENV/bin/python" -m pip install --require-hashes --requirement "$STAGING/requirements.lock"
-"$RUNTIME_VENV/bin/python" -m pip install --no-deps --no-build-isolation "$STAGING"
+env -u PYTHONPATH "$RUNTIME_VENV/bin/python" -m pip install --require-hashes --requirement "$STAGING/requirements.lock"
+env -u PYTHONPATH "$RUNTIME_VENV/bin/python" -m pip install --no-deps --no-build-isolation "$STAGING"
 
 mv "$STAGING" "$RELEASE_DIR"
 OLD_CURRENT="$(current_target || true)"
