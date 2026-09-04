@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Sequence
+from typing import Protocol, Sequence
 
 from forex_ai.strategy.v1.contracts import CandidateEnvelope
 
 from .models import AdvisoryStatus, ProviderResult
 from .provider import AdvisoryProvider, BudgetPolicy, BudgetState, CircuitBreaker, CircuitBreakerPolicy, request_fingerprint
+
+
+class BudgetStore(Protocol):
+    def load(self, *, now_utc: datetime) -> BudgetState: ...
+    def save(self, state: BudgetState, *, now_utc: datetime) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -30,6 +35,7 @@ class AdvisoryRuntime:
     provider_model_id: str
     policy: AdvisoryRuntimePolicy
     budget_state: BudgetState = field(default_factory=BudgetState)
+    budget_store: BudgetStore | None = None
     circuit: CircuitBreaker = field(init=False)
     cache: dict[str, _CacheEntry] = field(default_factory=dict)
 
@@ -75,6 +81,8 @@ class AdvisoryRuntime:
             return cached.results
         if not self.circuit.available(now_utc):
             return self._unavailable(len(rows), reason="ADVISORY_CIRCUIT_OPEN")
+        if self.budget_store is not None:
+            self.budget_state = self.budget_store.load(now_utc=now_utc)
         if not self.budget_state.can_consume(
             self.policy.budget,
             calls=1,
@@ -92,6 +100,8 @@ class AdvisoryRuntime:
             return self._unavailable(len(rows), reason="ADVISORY_PROVIDER_CARDINALITY")
         actual_cost = sum(max(result.cost, 0.0) for result in results)
         self.budget_state.consume(calls=1, tokens=max(estimated_tokens, 0), cost=actual_cost)
+        if self.budget_store is not None:
+            self.budget_store.save(self.budget_state, now_utc=now_utc)
         if all(result.status == AdvisoryStatus.AVAILABLE for result in results):
             self.circuit.record_success()
         else:

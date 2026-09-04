@@ -118,11 +118,79 @@ class MT5Client:
     def symbols(self) -> list[dict[str, Any]]:
         return plain(self._remote_eval("[dict(x._asdict()) for x in (mt5.symbols_get() or ())]"))
 
+    def symbol_names(self) -> list[dict[str, str]]:
+        """Fetch only broker symbol names for strict alias resolution."""
+        return plain(self._remote_eval("[{'name': x.name} for x in (mt5.symbols_get() or ())]"))
+
+    def symbol_candidates(self, bases: tuple[str, ...]) -> list[dict[str, str]]:
+        """Filter likely broker aliases remotely before crossing the RPyC boundary."""
+        if not bases:
+            return []
+        if self._external_conn is not None:
+            upper = tuple(base.upper() for base in bases)
+            code = (
+                "[{'name':x.name} for x in (mt5.symbols_get() or ()) "
+                "if any(base in x.name.upper() for base in " + repr(upper) + ")]"
+            )
+            return plain(self._remote_eval(code))
+        return [
+            row for row in self.symbol_names()
+            if any(base.upper() in str(row.get("name", "")).upper() for base in bases)
+        ]
+
     def symbol_info(self, symbol: str) -> dict[str, Any] | None:
         return plain(self._remote_eval(f"(lambda x: None if x is None else dict(x._asdict()))(mt5.symbol_info({symbol!r}))"))
 
     def tick(self, symbol: str) -> dict[str, Any] | None:
         return plain(self._remote_eval(f"(lambda x: None if x is None else dict(x._asdict()))(mt5.symbol_info_tick({symbol!r}))"))
+
+    def ticks_bundle(self, symbols: tuple[str, ...]) -> dict[str, dict[str, Any] | None]:
+        """Fetch fresh ticks for the configured universe in one small round-trip."""
+        if not symbols:
+            return {}
+        if self._external_conn is not None:
+            code = (
+                "{sym:(lambda x: None if x is None else {'time':x.time,'time_msc':x.time_msc,'bid':x.bid,'ask':x.ask})"
+                "(mt5.symbol_info_tick(sym)) for sym in " + repr(tuple(symbols)) + "}"
+            )
+            return plain(self._remote_eval(code))
+        return {symbol: self.tick(symbol) for symbol in symbols}
+
+    def scan_universe_bundle(
+        self,
+        symbols: tuple[str, ...],
+        timeframes: dict[str, int],
+        count: int = 51,
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch info, tick and bars for all configured symbols in one round-trip."""
+        if not symbols:
+            return {}
+        if self._external_conn is not None:
+            tf_items = ",".join(f"{label!r}:{int(value)!r}" for label, value in timeframes.items())
+            info_fields = (
+                "name", "digits", "point", "trade_contract_size", "trade_tick_size",
+                "volume_min", "volume_max", "volume_step", "trade_stops_level", "trade_freeze_level",
+                "trade_mode", "order_mode", "filling_mode", "currency_base", "currency_profit", "currency_margin",
+            )
+            code = (
+                "(lambda syms,tfs,info_fields: {sym: {"
+                "'info': (lambda x: None if x is None else {k:getattr(x,k) for k in info_fields})(mt5.symbol_info(sym)),"
+                "'tick': (lambda x: None if x is None else {'time':x.time,'time_msc':x.time_msc,'bid':x.bid,'ask':x.ask})(mt5.symbol_info_tick(sym)),"
+                "'bars': {label: (lambda rates: [] if rates is None else ["
+                "{'time':int(row['time']),'open':float(row['open']),'high':float(row['high']),'low':float(row['low']),"
+                "'close':float(row['close']),'tick_volume':int(row['tick_volume'])} for row in rates])"
+                "(mt5.copy_rates_from_pos(sym,tf,0," + repr(int(count)) + ")) for label,tf in tfs.items()}"
+                "} for sym in syms})(" + repr(tuple(symbols)) + ",{" + tf_items + "}," + repr(info_fields) + ")"
+            )
+            return plain(self._remote_eval(code))
+        return {
+            symbol: {
+                "info": self.symbol_info(symbol),
+                "tick": self.tick(symbol),
+                "bars": {label: self.bars(symbol, timeframe, count) for label, timeframe in timeframes.items()},
+            }
+            for symbol in symbols
+        }
 
     def scan_bundle(self, symbol: str, timeframes: dict[str, int], count: int = 80) -> dict[str, Any]:
         """Fetch tick plus multiple timeframe bars in one remote round-trip.

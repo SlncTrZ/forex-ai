@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 from forex_ai.config import RuntimeConfig, load_risk_config, load_risk_profile
 from forex_ai.integration.engine import DecisionOrchestrator
@@ -14,7 +15,11 @@ class IntegrationServices:
     execution: GuardedExecutionService
 
 
-def build_integration_services(cfg: RuntimeConfig) -> IntegrationServices:
+def build_integration_services(
+    cfg: RuntimeConfig,
+    *,
+    identity_guard: Callable[[], None] | None = None,
+) -> IntegrationServices:
     """Build the production-v1 integration graph without arming execution.
 
     Database initialization is additive/idempotent. The execution service reads
@@ -27,5 +32,9 @@ def build_integration_services(cfg: RuntimeConfig) -> IntegrationServices:
     execution_enabled = bool(raw_risk.get("execution_enabled", False))
     return IntegrationServices(
         decisions=DecisionOrchestrator(db_path=cfg.db_path, risk_profile=profile),
-        execution=GuardedExecutionService(db_path=cfg.db_path, execution_enabled=execution_enabled),
+        execution=GuardedExecutionService(
+            db_path=cfg.db_path,
+            execution_enabled=execution_enabled,
+            identity_guard=identity_guard,
+        ),
     )

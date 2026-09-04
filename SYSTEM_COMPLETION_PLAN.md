@@ -1,8 +1,24 @@
 # Forex-AI — System Completion Plan
 
-Status: **ACTIVE — audited against source/runtime on 2026-09-03 20:36 +07**
+Status: **ACTIVE — remediation implementation updated 2026-09-04; deployment/evidence gates still pending**
 
 This plan is the execution checklist for completing the trading system. `DEVELOP_PLAN.md` remains the architectural specification/history. Strategy profitability/tuning is tracked separately from system correctness.
+
+### 2026-09-04 remediation implementation status
+
+The working tree now implements the audited WP-01..WP-07 engineering remediations documented in `AUDIT_REMEDIATION_PLAN.md`:
+
+- persistent account binding verification and owner-only binding command;
+- per-symbol capture timestamps, slim strict symbol discovery and one-universe MT5 scan bundle;
+- database-enforced opportunity identity and stable retry candidate identity;
+- production V1 Strategy -> `BrokerAwareRiskEngine` scanner wiring with persisted risk verdicts;
+- one production `RiskProfile` vocabulary (`limits` removed from production config);
+- V1 candidate -> `AdvisoryRuntime` queue with persistent daily budget and a no-trade-authority legacy DeepSeek bridge;
+- explicit risk side plus mandatory fresh risk revalidation and final broker preflight before send.
+
+Validation in the working tree: **152 tests pass** and `git diff --check` passes. A read-only scanner-mode broker resync with a temporary DB completed HEALTHY in **19.0s** for the configured three-symbol universe. This is one observed runtime sample, not yet a p95 SLO claim.
+
+These changes are not equivalent to live approval. Deployment/soak evidence, explicit account binding, DEMO execution fault campaign, host-reboot DR and new untouched strategy OOS evidence remain separate gates. `execution_enabled: false` remains unchanged.
 
 ## 1. Audited current state
 
@@ -10,7 +26,7 @@ This plan is the execution checklist for completing the trading system. `DEVELOP
 
 - `main` is clean and synchronized with `origin/main` at `9bd6b71ede16eb6b03d3b0f08d293f0e729d53ed`.
 - Active release: `/home/dinhtc/apps/forex-ai/releases/20260903T132901Z-9bd6b71ede16`.
-- Test inventory: **144 tests collected; full suite passes**.
+- Last audited deployed release had 144 tests; current remediation working tree has **152 tests and the full suite passes**.
 - Deployment/rollback hardening is implemented and prior target-host drills passed.
 
 ### Runtime
@@ -44,17 +60,15 @@ Current journal facts:
 - `risk_decisions_v1`: 0
 - production V1 rejection audit rows exist and include `REGIME_NOT_ALIGNED`, `NO_RANGE_BREAK`, and earlier `OVEREXTENDED_BREAKOUT` evidence.
 
-This means Strategy V1 is now observable, but the live timer does **not yet execute the complete Strategy -> RiskEngine decision graph**.
+The deployed release described above remains Strategy-only. The remediation working tree now executes the complete read-only Strategy -> RiskEngine decision graph; deployment verification is still pending.
 
 ## 2. Critical findings from the audit
 
-### P0 — Strategy -> RiskEngine live wiring is incomplete
+### P0 — Strategy -> RiskEngine live wiring — IMPLEMENTED, DEPLOYMENT EVIDENCE PENDING
 
-`DecisionOrchestrator` and `BrokerAwareRiskEngine` exist and are tested, but no deployed timer/service invokes the integrated decision graph. The current candidate timer persists Strategy V1 candidates/verdicts only.
+The remediation working tree now routes the production V1 scanner through `DecisionOrchestrator` + `BrokerAwareRiskEngine`, using synchronized broker state, `SafetySnapshot` and journal-derived `RiskContext`, and persists deterministic `risk_decisions_v1`. OBSERVE/SHADOW still stop before execution and `execution_enabled=false` remains unchanged.
 
-Impact: when the first valid V1 candidate appears, there is currently no automatic persisted `risk_decisions_v1` verdict from the live scanner path.
-
-Required fix: build a read-only production decision service that converts live MT5 state into Strategy V1 + SafetySnapshot + RiskContext and persists deterministic risk approval/rejection. It must never call execution while mode is OBSERVE/SHADOW or `execution_enabled=false`.
+Remaining gate: deploy the synchronized release and prove the path on real V1 candidate/rejection cycles during soak.
 
 ### P0 — Candidate-scan latency must be bounded before RiskEngine integration
 
@@ -70,27 +84,15 @@ Required fix:
 - set and measure a scanner latency SLO; target p95 end-to-end scan latency < 20 seconds for all configured symbols and < 10 seconds per symbol;
 - persist scan latency and reject stale candidates deterministically.
 
-### P0 — Gate 5 runtime is not integrated with production candidates
+### P0 — Gate 5 candidate wiring — IMPLEMENTED WITH ZERO-AUTHORITY COMPATIBILITY BRIDGE
 
-The new advisory runtime (cache/budget/batch/circuit/fallback) is tested, but the deployed `review_pending.py` still consumes legacy `signals` and calls the legacy DeepSeek review schema (`BUY/SELL/NO_TRADE`).
+The remediation working tree moves `review_pending.py` from legacy `signals` to unexpired V1 `candidate_decisions`, uses `AdvisoryRuntime`, persists daily budget state, and makes zero provider calls when no eligible V1 candidate exists. The existing legacy DeepSeek BUY/SELL/NO_TRADE schema is wrapped by a compatibility adapter that collapses every available response to advisory `NO_CHANGE`; it cannot create direction, size, REDUCE_RISK or VETO authority.
 
-Impact: Gate 5 engineering exists, but the active shadow timer is not the production advisory architecture described by the master plan.
+Remaining gate: a native source-backed `NO_CHANGE/REDUCE_RISK/VETO` provider schema may be added later only after separate validation. The compatibility bridge is deliberately safer than granting the legacy model production authority.
 
-Required fix:
+### P1 — Risk policy ambiguity — IMPLEMENTED
 
-- stop using legacy `signals` as the production LLM queue;
-- review only valid/prefiltered V1 candidates;
-- map provider output only into advisory actions (`NO_CHANGE`, `REDUCE_RISK`, policy-backed `VETO`);
-- keep BOT_ONLY fallback when provider/budget/cache path is unavailable;
-- legacy signal + DeepSeek pipeline becomes offline diagnostic/research only.
-
-### P1 — Risk configuration contains two policy vocabularies
-
-`config/risk.yaml` contains the current `profile` (1% per trade, 3% total risk, max 3 active orders) and a legacy `limits` block (0.25% per trade, max 2 simultaneous positions, etc.). Current `load_risk_profile()` uses `profile`, while legacy `risk.engine` references `limits`.
-
-Impact: no current production caller uses the legacy engine, but the file is operationally ambiguous and dangerous for future maintenance.
-
-Required fix: remove/deprecate the legacy policy path, migrate any still-needed non-profile settings into explicitly named production configuration, and add a test that the runtime has exactly one authoritative risk policy.
+`config/risk.yaml` now has one production `profile` authority; the legacy `limits` block is removed. An architecture invariant test rejects production imports of `forex_ai.risk.engine`; production risk remains `BrokerAwareRiskEngine` + `RiskProfile`.
 
 ### P1 — Master plan is stale after the V1 scanner repair
 

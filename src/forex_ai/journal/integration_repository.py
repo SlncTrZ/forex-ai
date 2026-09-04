@@ -146,6 +146,22 @@ def persist_candidate(db_path: Path, candidate: CandidateEnvelope) -> None:
                 candidate.evidence_hash, candidate.market_snapshot_fingerprint, _json(asdict(candidate)),
             ),
         )
+        if candidate.opportunity_key:
+            existing = con.execute(
+                "SELECT candidate_id FROM strategy_opportunities_v1 WHERE opportunity_key=?",
+                (candidate.opportunity_key,),
+            ).fetchone()
+            if existing is not None and str(existing["candidate_id"]) != candidate.candidate_id:
+                raise ValueError("duplicate opportunity_key maps to a different candidate")
+            con.execute(
+                """INSERT INTO strategy_opportunities_v1(
+                    opportunity_key,candidate_id,strategy_id,strategy_version,symbol,created_at_utc
+                ) VALUES(?,?,?,?,?,?) ON CONFLICT(opportunity_key) DO NOTHING""",
+                (
+                    candidate.opportunity_key, candidate.candidate_id, candidate.strategy_id,
+                    candidate.strategy_version, candidate.symbol, utc_now(),
+                ),
+            )
 
 
 def persist_safety_snapshot(db_path: Path, snapshot: SafetySnapshot) -> None:
@@ -191,6 +207,25 @@ def persist_advisory(db_path: Path, advisory: Advisory, *, created_at_utc: datet
                 advisory.model_fingerprint, advisory.advisory_cost, _json(asdict(advisory)),
             ),
         )
+
+
+def pending_v1_candidates(db_path: Path, *, now_utc: datetime, limit: int = 3) -> tuple[CandidateEnvelope, ...]:
+    now = now_utc.astimezone(timezone.utc).isoformat()
+    with session(db_path) as con:
+        rows = con.execute(
+            """SELECT c.payload_json FROM candidate_decisions c
+               WHERE c.expires_at_utc>?
+                 AND NOT EXISTS (SELECT 1 FROM advisories_v1 a WHERE a.candidate_id=c.candidate_id)
+               ORDER BY c.generated_at_utc ASC LIMIT ?""",
+            (now, int(limit)),
+        ).fetchall()
+    out: list[CandidateEnvelope] = []
+    for row in rows:
+        payload = json.loads(row[0])
+        payload["generated_at_utc"] = datetime.fromisoformat(payload["generated_at_utc"])
+        payload["expires_at_utc"] = datetime.fromisoformat(payload["expires_at_utc"])
+        out.append(CandidateEnvelope(**payload))
+    return tuple(out)
 
 
 @dataclass(frozen=True)

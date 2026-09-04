@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 SCHEMA = r"""
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -275,6 +275,17 @@ CREATE TABLE IF NOT EXISTS candidate_decisions (
     payload_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS strategy_opportunities_v1 (
+    opportunity_key TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL UNIQUE,
+    strategy_id TEXT NOT NULL,
+    strategy_version TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    FOREIGN KEY(candidate_id) REFERENCES candidate_decisions(candidate_id)
+);
+CREATE INDEX IF NOT EXISTS idx_strategy_opportunities_symbol ON strategy_opportunities_v1(symbol, created_at_utc);
+
 CREATE TABLE IF NOT EXISTS safety_snapshots_v1 (
     fingerprint TEXT PRIMARY KEY,
     captured_at_utc TEXT NOT NULL,
@@ -307,6 +318,18 @@ CREATE TABLE IF NOT EXISTS advisories_v1 (
     advisory_cost REAL NOT NULL,
     payload_json TEXT NOT NULL,
     PRIMARY KEY(candidate_id, evidence_id, model_fingerprint)
+);
+
+CREATE TABLE IF NOT EXISTS advisory_budget_v1 (
+    budget_date_utc TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    config_fingerprint TEXT NOT NULL,
+    calls INTEGER NOT NULL DEFAULT 0,
+    tokens INTEGER NOT NULL DEFAULT 0,
+    cost REAL NOT NULL DEFAULT 0,
+    updated_at_utc TEXT NOT NULL,
+    PRIMARY KEY(budget_date_utc, provider_id, model_id, config_fingerprint)
 );
 
 CREATE TABLE IF NOT EXISTS order_intents_v1 (

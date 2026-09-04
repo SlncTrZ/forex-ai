@@ -28,9 +28,16 @@ class GuardedExecutionService:
     before send. It also blocks on unresolved SEND_STARTED/UNKNOWN intents.
     """
 
-    def __init__(self, *, db_path: Path, execution_enabled: bool):
+    def __init__(
+        self,
+        *,
+        db_path: Path,
+        execution_enabled: bool,
+        identity_guard: Callable[[], None] | None = None,
+    ):
         self.db_path = db_path
         self.execution_enabled = execution_enabled
+        self.identity_guard = identity_guard
         self.repository = SQLiteIntentRepository(db_path)
         self.controller = ExecutionController(self.repository)
 
@@ -46,7 +53,7 @@ class GuardedExecutionService:
         )
         intent = OrderIntent(
             intent_id=f"intent-{key[:32]}", candidate_id=result.candidate_id, idempotency_key=key,
-            symbol=result.normalized_symbol, side="BUY" if result.stop_loss < result.executable_entry else "SELL",
+            symbol=result.normalized_symbol, side=result.side,
             volume=result.normalized_volume, entry=result.executable_entry, stop_loss=result.stop_loss,
             take_profit=result.take_profit, state=ExecutionState.INTENT_CREATED, created_at_utc=now,
         )
@@ -105,8 +112,50 @@ class GuardedExecutionService:
         request: dict[str, Any],
         send: Callable[[dict[str, Any]], dict[str, Any] | None],
         classify: Callable[[dict[str, Any] | None], SendOutcome],
+        fresh_revalidate: Callable[[OrderIntent], BrokerRiskResult],
+        final_check: Callable[[dict[str, Any]], dict[str, Any] | None],
+        is_final_check_passed: Callable[[dict[str, Any] | None], bool],
     ) -> OrderIntent:
         now = now_utc.astimezone(timezone.utc)
+        self._assert_entry_allowed(now, ignore_intent_id=intent_id)
+        current = self.repository.get(intent_id)
+        if current is None:
+            raise KeyError(intent_id)
+        # Risk approval is a short-lived lease. Refresh broker/account/safety/risk
+        # immediately before the final broker-side order_check and send.
+        try:
+            fresh_result = fresh_revalidate(current)
+        except Exception as exc:
+            return self._reject_before_send(current, f"FRESH_REVALIDATION_EXCEPTION:{type(exc).__name__}")
+        mismatch = self._fresh_risk_mismatch(current, fresh_result, now_utc=now)
+        if mismatch is not None:
+            return self._reject_before_send(current, mismatch)
+
+        try:
+            final_response = final_check(request)
+            final_passed = is_final_check_passed(final_response)
+        except Exception as exc:
+            persist_execution_broker_event(
+                self.db_path,
+                intent_id=intent_id,
+                timestamp_utc=now,
+                phase="FINAL_PREFLIGHT",
+                request=request,
+                response=None,
+                outcome_class="EXCEPTION",
+            )
+            return self._reject_before_send(current, f"FINAL_PREFLIGHT_EXCEPTION:{type(exc).__name__}")
+        persist_execution_broker_event(
+            self.db_path,
+            intent_id=intent_id,
+            timestamp_utc=now,
+            phase="FINAL_PREFLIGHT",
+            request=request,
+            response=final_response,
+            outcome_class="PASSED" if final_passed else "REJECTED",
+        )
+        if not final_passed:
+            return self._reject_before_send(current, "FINAL_PREFLIGHT_REJECTED")
         self._assert_entry_allowed(now, ignore_intent_id=intent_id)
 
         def audited_send(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -159,6 +208,33 @@ class GuardedExecutionService:
 
         return self.controller.send_once(intent_id, request, audited_send, audited_classify)
 
+    @staticmethod
+    def _fresh_risk_mismatch(intent: OrderIntent, result: BrokerRiskResult, *, now_utc: datetime) -> str | None:
+        if not result.approved:
+            return "FRESH_RISK_REJECTED"
+        if result.expires_at_utc.astimezone(timezone.utc) <= now_utc:
+            return "FRESH_RISK_EXPIRED"
+        checks = (
+            (result.candidate_id == intent.candidate_id, "FRESH_CANDIDATE_CHANGED"),
+            (result.side == intent.side, "FRESH_SIDE_CHANGED"),
+            (result.normalized_symbol == intent.symbol, "FRESH_SYMBOL_CHANGED"),
+            (result.normalized_volume == intent.volume, "FRESH_VOLUME_CHANGED"),
+            (result.executable_entry == intent.entry, "FRESH_ENTRY_CHANGED"),
+            (result.stop_loss == intent.stop_loss, "FRESH_STOP_CHANGED"),
+            (result.take_profit == intent.take_profit, "FRESH_TARGET_CHANGED"),
+        )
+        for valid, reason in checks:
+            if not valid:
+                return reason
+        return None
+
+    def _reject_before_send(self, intent: OrderIntent, reason: str) -> OrderIntent:
+        if intent.state not in {ExecutionState.RISK_APPROVED, ExecutionState.PREFLIGHT_PASSED}:
+            raise ExecutionDisarmed(reason)
+        rejected = intent.transition(ExecutionState.REJECTED, reason=reason)
+        self.repository.save(rejected)
+        return rejected
+
     def reconcile(
         self,
         intent_id: str,
@@ -178,6 +254,12 @@ class GuardedExecutionService:
     def _assert_entry_allowed(self, now_utc: datetime, *, ignore_intent_id: str | None = None) -> None:
         if not self.execution_enabled:
             raise ExecutionDisarmed("execution_enabled=false")
+        if self.identity_guard is None:
+            raise ExecutionDisarmed("account identity guard is required")
+        try:
+            self.identity_guard()
+        except Exception as exc:
+            raise ExecutionDisarmed(f"account identity check failed: {exc}") from exc
         control = load_trading_control(self.db_path)
         if not control.allows_new_entries(now_utc=now_utc):
             raise ExecutionDisarmed("trading control is disarmed, expired, in maintenance, or kill-switched")

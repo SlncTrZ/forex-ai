@@ -140,15 +140,16 @@ The DeepSeek key is installed locally with mode `600`; the automatic shadow revi
 - runtime mode: `OBSERVE`
 - `execution_enabled: false`
 - no LLM has an order-execution tool
-- candidate scanner is read-only
-- pending DeepSeek reviewer is shadow-only
-- deterministic risk/execution layer remains the required gate before any future live order path
+- candidate scanner is read-only and now persists deterministic `BrokerAwareRiskEngine` verdicts
+- pending DeepSeek reviewer consumes V1 candidates through `AdvisoryRuntime`; the legacy provider bridge is forced to advisory `NO_CHANGE` and has no trade authority
+- persistent account binding is required for execution-capable paths; binding is never created automatically
+- fresh risk revalidation + final broker preflight are mandatory before any future send
 
 ## Tests
 
-Current suite: **20 passing tests**.
+Current remediation working tree: **152 passing tests** (`pytest -q -p no:cacheprovider`).
 
-It covers:
+It covers the earlier suite plus:
 
 - execution locks / risk modes
 - symbol mapping
@@ -158,6 +159,12 @@ It covers:
 - signal -> LLM correlation
 - feature calculations
 - DeepSeek cost calculations
+- persistent account identity binding/fail-closed mismatch handling
+- database-enforced opportunity deduplication
+- V1 Strategy -> deterministic RiskEngine persistence
+- strict advisory schemas and persistent daily advisory budget
+- fresh-risk drift rejection before broker send
+- narrow broker-rollover gap classification and runtime resilience
 
 ## Next implementation stage
 

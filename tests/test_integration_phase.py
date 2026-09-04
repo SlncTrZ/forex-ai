@@ -174,7 +174,7 @@ def test_orchestrator_persists_candidate_and_reduced_risk_profile(tmp_path):
 
 def _approved_result():
     return BrokerRiskResult(
-        candidate_id="candidate-x", approved=True, reason_codes=(), normalized_symbol="EURUSD",
+        candidate_id="candidate-x", side="BUY", approved=True, reason_codes=(), normalized_symbol="EURUSD",
         normalized_volume=D("0.01"), executable_entry=D("1.1"), stop_loss=D("1.09"), take_profit=D("1.12"),
         projected_loss_account_currency=D("10"), margin_required=D("11"), risk_profile_fingerprint="r"*64,
         safety_snapshot_fingerprint="s"*64, expires_at_utc=NOW+timedelta(minutes=5),
@@ -186,7 +186,7 @@ def test_execution_service_requires_enabled_armed_kill_switch_clear_and_blocks_u
     with pytest.raises(ExecutionDisarmed, match="execution_enabled=false"):
         GuardedExecutionService(db_path=db, execution_enabled=False).create_intent(_approved_result(), now_utc=NOW)
 
-    service = GuardedExecutionService(db_path=db, execution_enabled=True)
+    service = GuardedExecutionService(db_path=db, execution_enabled=True, identity_guard=lambda: None)
     with pytest.raises(ExecutionDisarmed):
         service.create_intent(_approved_result(), now_utc=NOW)
 

@@ -293,6 +293,7 @@ def test_timeout_but_accepted_reconciles_by_stable_comment_after_restart(tmp_pat
 def approved_risk_result(candidate_id="candidate-exec"):
     return BrokerRiskResult(
         candidate_id=candidate_id,
+        side="BUY",
         approved=True,
         reason_codes=(),
         normalized_symbol="EURUSD",
@@ -321,7 +322,7 @@ def armed_service(tmp_path):
             reason="TEST_ARM",
         ),
     )
-    return GuardedExecutionService(db_path=db, execution_enabled=True), db
+    return GuardedExecutionService(db_path=db, execution_enabled=True, identity_guard=lambda: None), db
 
 
 def test_guarded_service_persists_preflight_and_send_hashes(tmp_path):
@@ -341,6 +342,9 @@ def test_guarded_service_persists_preflight_and_send_hashes(tmp_path):
         request=request,
         send=lambda _: {"retcode": 10009, "order": 701, "deal": 702, "volume": 0.1},
         classify=MT5RetcodeClassifier(constants()).classify,
+        fresh_revalidate=lambda _: approved_risk_result(item.candidate_id),
+        final_check=lambda _: {"retcode": 0, "comment": "Done"},
+        is_final_check_passed=order_check_passed,
     )
     assert sent.state is ExecutionState.ACCEPTED
     with session(db) as con:
@@ -351,8 +355,36 @@ def test_guarded_service_persists_preflight_and_send_hashes(tmp_path):
         ).fetchall()
     assert [tuple(row) for row in rows] == [
         ("PREFLIGHT", 64, 64, 0, "PASSED"),
+        ("FINAL_PREFLIGHT", 64, 64, 0, "PASSED"),
         ("SEND", 64, 64, 10009, "ACCEPTED"),
     ]
+
+
+def test_guarded_service_fresh_risk_drift_rejects_before_send(tmp_path):
+    service, _db = armed_service(tmp_path)
+    item = service.create_intent(approved_risk_result("candidate-drift"), now_utc=NOW)
+    service.preflight(item.intent_id, now_utc=NOW, request={}, check=lambda _: {"retcode": 0}, is_passed=order_check_passed)
+    sent = {"called": False}
+
+    def should_not_send(_):
+        sent["called"] = True
+        return {"retcode": 10009}
+
+    fresh = approved_risk_result(item.candidate_id)
+    drifted = BrokerRiskResult(**{**fresh.__dict__, "normalized_volume": D("0.09")})
+    result = service.send_once(
+        item.intent_id,
+        now_utc=NOW,
+        request={},
+        send=should_not_send,
+        classify=MT5RetcodeClassifier(constants()).classify,
+        fresh_revalidate=lambda _: drifted,
+        final_check=lambda _: {"retcode": 0},
+        is_final_check_passed=order_check_passed,
+    )
+    assert result.state is ExecutionState.REJECTED
+    assert result.last_reason == "FRESH_VOLUME_CHANGED"
+    assert not sent["called"]
 
 
 def test_guarded_service_records_send_exception_and_persists_unknown(tmp_path):
@@ -369,6 +401,9 @@ def test_guarded_service_records_send_exception_and_persists_unknown(tmp_path):
         request={"x": 1},
         send=fail_send,
         classify=MT5RetcodeClassifier(constants()).classify,
+        fresh_revalidate=lambda _: approved_risk_result(item.candidate_id),
+        final_check=lambda _: {"retcode": 0},
+        is_final_check_passed=order_check_passed,
     )
     assert result.state is ExecutionState.UNKNOWN
     with session(db) as con:
@@ -389,6 +424,9 @@ def test_guarded_service_persistent_reconcile_records_full_path(tmp_path):
         request={},
         send=lambda _: (_ for _ in ()).throw(TimeoutError()),
         classify=MT5RetcodeClassifier(constants()).classify,
+        fresh_revalidate=lambda _: approved_risk_result(item.candidate_id),
+        final_check=lambda _: {"retcode": 0},
+        is_final_check_passed=order_check_passed,
     )
     assert unknown.state is ExecutionState.UNKNOWN
     position = BrokerPosition(

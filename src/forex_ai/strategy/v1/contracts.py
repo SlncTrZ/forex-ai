@@ -195,6 +195,7 @@ class CandidateEnvelope:
     expires_at_utc: datetime
     evidence_hash: str
     market_snapshot_fingerprint: str
+    opportunity_key: str = ""
 
     def __post_init__(self) -> None:
         if self.side not in {"BUY", "SELL"}:
@@ -214,15 +215,26 @@ class StrategyResult:
 def build_candidate(*, snapshot: MarketSnapshot, config: StrategyConfig, side: str, entry: float, stop_loss: float,
                     take_profit: float, generated_at_utc: datetime, expires_at_utc: datetime,
                     evidence: DecisionEvidence) -> CandidateEnvelope:
-    seed = {
-        "strategy": vars(config.version), "config": config.fingerprint, "snapshot": snapshot.decision_fingerprint,
-        "side": side, "entry": entry, "stop": stop_loss, "target": take_profit,
-        "generated": generated_at_utc, "expires": expires_at_utc, "evidence": evidence.evidence_hash,
-    }
-    candidate_id = fingerprint(seed)[:32]
+    decision_tf = snapshot.timeframes.get("M15")
+    decision_bar_time = (
+        decision_tf.closed_bars[-1].time_utc
+        if decision_tf is not None and decision_tf.closed_bars
+        else generated_at_utc.astimezone(timezone.utc)
+    )
+    opportunity_key = fingerprint({
+        "strategy_id": config.version.strategy_id,
+        "strategy_version": config.version.version,
+        "symbol": snapshot.symbol,
+        "decision_timeframe": "M15",
+        "closed_decision_bar_time": decision_bar_time,
+    })
+    # Candidate identity is stable for one business opportunity. Volatile tick,
+    # capture time and evidence remain in the payload/fingerprints but cannot
+    # manufacture a second tradable candidate on crash/retry.
+    candidate_id = fingerprint({"opportunity_key": opportunity_key, "side": side})[:32]
     return CandidateEnvelope(
         candidate_id, f"candidate-{candidate_id}", config.version.strategy_id, config.version.version,
         snapshot.symbol, side, entry, stop_loss, take_profit, generated_at_utc.astimezone(timezone.utc),
         snapshot.market_time_msc, expires_at_utc.astimezone(timezone.utc), evidence.evidence_hash,
-        snapshot.decision_fingerprint,
+        snapshot.decision_fingerprint, opportunity_key,
     )

@@ -111,6 +111,7 @@ class RiskContext:
 @dataclass(frozen=True)
 class BrokerRiskResult:
     candidate_id: str
+    side: str
     approved: bool
     reason_codes: tuple[str, ...]
     normalized_symbol: str
@@ -194,6 +195,7 @@ class BrokerAwareRiskEngine:
             reasons.append("KILL_SWITCH_ACTIVE")
         if not safety.reconciled or safety.blocking_reasons:
             reasons.append("SAFETY_STATE_BLOCKED")
+            reasons.extend(str(reason) for reason in safety.blocking_reasons)
         if candidate.symbol != contract.symbol or candidate.symbol != tick.symbol:
             reasons.append("SYMBOL_MISMATCH")
         if candidate.side not in {"BUY", "SELL"}:
@@ -207,7 +209,7 @@ class BrokerAwareRiskEngine:
             reasons.append("INVALID_NUMERIC_VALUE")
             unique = tuple(dict.fromkeys(reasons))
             return BrokerRiskResult(
-                candidate_id=candidate.candidate_id, approved=False, reason_codes=unique,
+                candidate_id=candidate.candidate_id, side=candidate.side, approved=False, reason_codes=unique,
                 normalized_symbol=contract.symbol, normalized_volume=D("0"),
                 executable_entry=ask if candidate.side == "BUY" else bid,
                 stop_loss=candidate.stop_loss, take_profit=candidate.take_profit,
@@ -425,6 +427,7 @@ class BrokerAwareRiskEngine:
         approved = not unique
         return BrokerRiskResult(
             candidate_id=candidate.candidate_id,
+            side=candidate.side,
             approved=approved,
             reason_codes=unique,
             normalized_symbol=contract.symbol,

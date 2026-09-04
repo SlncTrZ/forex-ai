@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from forex_ai.journal.db import initialize, session
 from forex_ai.kernel.health import HealthState
-from forex_ai.runtime.resilience import MT5ResyncCoordinator
+from forex_ai.runtime.resilience import MT5ResyncCoordinator, _expected_daily_rollover_gap
 
 UTC = timezone.utc
 NOW = datetime(2026, 9, 3, 8, 0, tzinfo=UTC)
@@ -156,6 +156,16 @@ def test_ambiguous_symbol_mapping_fails_closed(tmp_path):
     out = coord.sync_once(now_utc=NOW)
     assert out.state is HealthState.DEGRADED
     assert "SYMBOL_MAPPING_UNRESOLVED" in out.reason
+
+
+def test_daily_rollover_gap_classifier_is_narrow():
+    left = datetime(2026, 9, 3, 20, 45, tzinfo=UTC)
+    assert _expected_daily_rollover_gap(left, datetime(2026, 9, 3, 22, 0, tzinfo=UTC))
+    assert not _expected_daily_rollover_gap(
+        datetime(2026, 9, 3, 12, 0, tzinfo=UTC),
+        datetime(2026, 9, 3, 13, 15, tzinfo=UTC),
+    )
+    assert not _expected_daily_rollover_gap(left, datetime(2026, 9, 3, 23, 15, tzinfo=UTC))
 
 
 def test_gap_in_closed_bars_fails_closed(tmp_path):

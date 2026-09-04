@@ -18,6 +18,7 @@ from forex_ai.journal.runtime_health import RuntimeHeartbeat, persist_heartbeat
 from forex_ai.kernel.health import BackoffPolicy, HealthKernel, HealthState
 from forex_ai.mt5.contracts import BrokerDeal, BrokerOrder, BrokerState, SafetySnapshot
 from forex_ai.mt5.symbols import resolve_symbol_strict
+from forex_ai.risk.account_guard import assert_account_matches
 from forex_ai.strategy.v1.contracts import MarketSnapshot
 
 
@@ -87,6 +88,23 @@ def _expected_weekend_gap(left: datetime, right: datetime) -> bool:
     return (right - left) >= timedelta(hours=36) and left.weekday() in {4, 5} and right.weekday() in {0, 6}
 
 
+def _expected_daily_rollover_gap(left: datetime, right: datetime) -> bool:
+    """Recognize the short weekday broker maintenance break around FX rollover.
+
+    Keep the window deliberately narrow: a same-day/adjacent-date gap of at most
+    two hours whose endpoints both sit in the 20:00-23:59 UTC rollover window.
+    Arbitrary intraday gaps remain safety failures.
+    """
+    delta = right - left
+    if delta <= timedelta(0) or delta > timedelta(hours=2):
+        return False
+    if left.weekday() >= 5 or right.weekday() >= 5:
+        return False
+    if (right.date() - left.date()).days not in {0, 1}:
+        return False
+    return left.hour in {20, 21, 22, 23} and right.hour in {20, 21, 22, 23}
+
+
 def validate_bar_gaps(market: MarketSnapshot, timeframe_seconds: Mapping[str, int]) -> None:
     for name, tf in market.timeframes.items():
         seconds = timeframe_seconds.get(name)
@@ -95,7 +113,11 @@ def validate_bar_gaps(market: MarketSnapshot, timeframe_seconds: Mapping[str, in
         gaps: list[tuple[object, object, tuple[int, int, int, int, int]]] = []
         for left, right in zip(tf.closed_bars[:-1], tf.closed_bars[1:]):
             delta = (right.time_utc - left.time_utc).total_seconds()
-            if delta <= seconds * 1.5 or _expected_weekend_gap(left.time_utc, right.time_utc):
+            if (
+                delta <= seconds * 1.5
+                or _expected_weekend_gap(left.time_utc, right.time_utc)
+                or _expected_daily_rollover_gap(left.time_utc, right.time_utc)
+            ):
                 continue
             multiples = round(delta / seconds)
             signature = (left.time_utc.hour, left.time_utc.minute, right.time_utc.hour, right.time_utc.minute, multiples)
@@ -124,6 +146,7 @@ class MT5ResyncCoordinator:
         history_lookback_seconds: int = 2 * 86400,
         bars_refresh_seconds: int = 60,
         history_refresh_seconds: int = 60,
+        load_history: bool = True,
         backoff: BackoffPolicy | None = None,
         health: HealthKernel | None = None,
         clock: Callable[[], datetime] | None = None,
@@ -136,6 +159,7 @@ class MT5ResyncCoordinator:
         self.history_lookback_seconds = history_lookback_seconds
         self.bars_refresh_seconds = bars_refresh_seconds
         self.history_refresh_seconds = history_refresh_seconds
+        self.load_history = load_history
         self.backoff = backoff or BackoffPolicy()
         self.health = health or HealthKernel()
         self.clock = clock or (lambda: datetime.now(timezone.utc))
@@ -207,10 +231,18 @@ class MT5ResyncCoordinator:
         raw_account = self.client.account_info()
         if not raw_account:
             raise SyncError("ACCOUNT_UNAVAILABLE")
+        # OBSERVE remains usable before the owner explicitly binds an account, but
+        # once a persistent binding exists every reconnect/resync must match it.
+        assert_account_matches(raw_account, require_binding=False)
         account = account_snapshot(raw_account, captured_at_utc=now)
 
         if not self._mapping:
-            available = self.client.symbols()
+            if hasattr(self.client, "symbol_candidates"):
+                available = self.client.symbol_candidates(self.symbols)
+            elif hasattr(self.client, "symbol_names"):
+                available = self.client.symbol_names()
+            else:
+                available = self.client.symbols()
             if not available:
                 raise SyncError("SYMBOL_LIST_UNAVAILABLE")
             mapping: dict[str, str] = {}
@@ -240,14 +272,35 @@ class MT5ResyncCoordinator:
         contracts = []
         ticks = []
         markets: dict[str, MarketSnapshot] = {}
+        universe_bundle = None
+        if refresh_bars and hasattr(self.client, "scan_universe_bundle"):
+            universe_bundle = self.client.scan_universe_bundle(
+                tuple(mapping.values()),
+                {name: constants[name] for name in ("M15", "H1", "H4")},
+                self.bars_count,
+            )
+            if hasattr(self.client, "ticks_bundle"):
+                fresh_ticks = self.client.ticks_bundle(tuple(mapping.values()))
+                for actual, raw_tick in fresh_ticks.items():
+                    if actual in universe_bundle:
+                        universe_bundle[actual]["tick"] = raw_tick
         for base, actual in mapping.items():
-            info = self.client.symbol_info(actual)
+            symbol_now = self.clock().astimezone(timezone.utc)
+            universe_row = (universe_bundle or {}).get(actual) or {}
+            info = universe_row.get("info") if universe_bundle is not None else self.client.symbol_info(actual)
             if not info:
                 raise SyncError(f"SYMBOL_INFO_UNAVAILABLE:{actual}")
-            raw_tick = self.client.tick(actual)
+            bundled = universe_row if universe_bundle is not None else None
+            if bundled is None and refresh_bars and hasattr(self.client, "scan_bundle"):
+                bundled = self.client.scan_bundle(
+                    actual,
+                    {name: constants[name] for name in ("M15", "H1", "H4")},
+                    self.bars_count,
+                )
+            raw_tick = bundled.get("tick") if bundled is not None else self.client.tick(actual)
             if not raw_tick:
                 raise SyncError(f"TICK_UNAVAILABLE:{actual}")
-            tick = tick_snapshot(raw_tick, symbol=actual, captured_at_utc=now)
+            tick = tick_snapshot(raw_tick, symbol=actual, captured_at_utc=symbol_now)
             tick_reference_utc = self.clock().astimezone(timezone.utc)
             tick_age = (tick_reference_utc.timestamp() * 1000 - tick.time_msc) / 1000.0
             if tick_age < -2:
@@ -270,14 +323,16 @@ class MT5ResyncCoordinator:
 
             if refresh_bars or base not in self._timeframes:
                 timeframes = {}
+                bundled_bars = (bundled or {}).get("bars") or {}
                 for name in ("H4", "H1", "M15"):
-                    rows = self.client.bars(actual, constants[name], self.bars_count)
+                    rows = bundled_bars.get(name) if bundled is not None else self.client.bars(actual, constants[name], self.bars_count)
+                    rows = rows or []
                     if len(rows) < 51:
                         raise SyncError(f"INSUFFICIENT_BARS:{actual}:{name}")
                     timeframes[name] = timeframe_snapshot(name, rows)
                 self._timeframes[base] = timeframes
             timeframes = self._timeframes[base]
-            market = market_snapshot(symbol=actual, tick=tick, captured_at_utc=now, timeframes=timeframes)
+            market = market_snapshot(symbol=actual, tick=tick, captured_at_utc=symbol_now, timeframes=timeframes)
             validate_bar_gaps(market, timeframe_seconds)
             contracts.append(contract)
             ticks.append(tick)
@@ -292,7 +347,7 @@ class MT5ResyncCoordinator:
         )
         raw_active_orders = tuple(self.client.active_orders())
         pending_orders = tuple(_order(raw) for raw in raw_active_orders)
-        refresh_history = (
+        refresh_history = self.load_history and (
             self._last_history_refresh_utc is None
             or (now - self._last_history_refresh_utc).total_seconds() >= self.history_refresh_seconds
         )
