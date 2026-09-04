@@ -8,7 +8,9 @@ from forex_ai.config import load_execution_enabled, load_runtime_config
 from forex_ai.execution.close_service import GuardedCloseService
 from forex_ai.integration.execution import GuardedExecutionService
 from forex_ai.journal.db import initialize, log_audit_event
+from forex_ai.journal.external_positions import trace_external_positions
 from forex_ai.journal.integration_repository import SQLiteIntentRepository
+from forex_ai.journal.repository import insert_position_snapshots
 from forex_ai.mt5.client import MT5Client
 from forex_ai.risk.account_guard import assert_account_matches
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
@@ -16,13 +18,50 @@ from forex_ai.runtime.resilience import MT5ResyncCoordinator
 UTC = timezone.utc
 
 
+def _trace_position_truth(cfg) -> tuple[dict, ...]:
+    """Capture broker positions independently of market-data readiness."""
+    client = MT5Client(cfg)
+    if not client.connect():
+        raise RuntimeError("POSITION_TRACE_MT5_CONNECT_FAILED")
+    try:
+        positions = tuple(client.positions())
+        now = datetime.now(UTC)
+        insert_position_snapshots(cfg.db_path, list(positions))
+        trace_external_positions(cfg.db_path, list(positions), observed_at_utc=now)
+        return positions
+    finally:
+        client.close()
+
+
 def main() -> int:
     cfg = load_runtime_config()
     initialize(cfg.db_path)
+
+    try:
+        raw_positions = _trace_position_truth(cfg)
+    except Exception as exc:
+        log_audit_event(
+            cfg.db_path,
+            event_type="POSITION_TRACE_ERROR",
+            source="execution_reconciler",
+            payload={"error": f"{type(exc).__name__}: {exc}"},
+        )
+        print(json.dumps({"status": "blocked", "reason": f"POSITION_TRACE_ERROR:{type(exc).__name__}"}))
+        return 2
+
     repo = SQLiteIntentRepository(cfg.db_path)
-    intents = tuple(intent for intent in repo.all() if intent.state.value not in {"REJECTED", "CANCELLED", "CLOSED"})
+    intents = tuple(
+        intent
+        for intent in repo.all()
+        if intent.state.value not in {"REJECTED", "CANCELLED", "CLOSED"}
+    )
     if not intents:
-        print(json.dumps({"status": "ok", "reconciled": 0, "reason": "NO_ACTIVE_INTENTS"}))
+        print(json.dumps({
+            "status": "ok",
+            "reconciled": 0,
+            "external_position_count": len(raw_positions),
+            "reason": "NO_ACTIVE_INTENTS",
+        }))
         return 0
 
     client = MT5Client(cfg)
@@ -38,7 +77,7 @@ def main() -> int:
         outcome = coordinator.sync_once(now_utc=datetime.now(UTC))
         if outcome.broker_state is None:
             print(json.dumps({"status": "blocked", "reason": outcome.reason or "BROKER_STATE_UNAVAILABLE"}))
-            return 2
+            return 3
 
         broker = outcome.broker_state
         constants = client.execution_constants()
@@ -74,7 +113,11 @@ def main() -> int:
                 deal_reason_sl=constants.get("DEAL_REASON_SL"),
                 deal_reason_tp=constants.get("DEAL_REASON_TP"),
             )
-            results.append({"intent_id": reconciled.intent_id, "state": reconciled.state.value, "reason": reconciled.last_reason})
+            results.append({
+                "intent_id": reconciled.intent_id,
+                "state": reconciled.state.value,
+                "reason": reconciled.last_reason,
+            })
 
         log_audit_event(
             cfg.db_path,

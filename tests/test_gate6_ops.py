@@ -56,6 +56,23 @@ def test_health_fails_closed_on_stale_heartbeat_low_disk_and_unknown_intent(tmp_
     assert set(report.reasons) >= {"LOW_DISK_SPACE", "HEARTBEAT_STALE", "UNRESOLVED_EXECUTION_INTENTS"}
 
 
+def test_health_reports_unprotected_external_position_ticket(tmp_path, monkeypatch):
+    path = _db(tmp_path)
+    _heartbeat(path)
+    with sqlite3.connect(path) as con:
+        con.execute(
+            """INSERT INTO external_position_state_v1(
+                ticket,symbol,side,volume,sl,tp,magic,comment,ownership,
+                first_seen_at_utc,last_seen_at_utc,active,payload_json
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (77,"XAUUSDc","BUY","0.05","0","0",0,"","EXTERNAL_OR_MANUAL",NOW.isoformat(),NOW.isoformat(),1,"{}"),
+        )
+    monkeypatch.setattr(ops.shutil, "disk_usage", lambda _: SimpleNamespace(free=10**12))
+    report = ops.assess_runtime_health(path, now_utc=NOW)
+    assert not report.healthy
+    assert "UNPROTECTED_POSITION:77" in report.reasons
+
+
 def test_disk_headroom_raises_before_runtime_writes(tmp_path, monkeypatch):
     path = tmp_path / "forex.db"
     monkeypatch.setattr(ops.shutil, "disk_usage", lambda _: SimpleNamespace(free=99))

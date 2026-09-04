@@ -79,6 +79,18 @@ def assess_runtime_health(
                             heartbeat_reason = str(row["reason"] or "")
                             if heartbeat_reason.startswith("SYNC_BLOCKED:"):
                                 reasons.extend(part for part in heartbeat_reason.removeprefix("SYNC_BLOCKED:").split(",") if part)
+                # External/manual broker exposure is an independent execution
+                # blocker and must remain explainable even when market-data sync
+                # is degraded for an unrelated symbol.
+                try:
+                    rows = con.execute(
+                        "SELECT ticket FROM external_position_state_v1 WHERE active=1 AND (CAST(sl AS REAL)<=0 OR CAST(tp AS REAL)<=0)"
+                    ).fetchall()
+                    for position_row in rows:
+                        reasons.append(f"UNPROTECTED_POSITION:{int(position_row['ticket'])}")
+                except sqlite3.OperationalError:
+                    pass
+
                 placeholders = ",".join("?" for _ in NONTERMINAL_EXECUTION_STATES)
                 unresolved = int(con.execute(
                     f"SELECT COUNT(*) FROM order_intents_v1 WHERE state IN ({placeholders})",
