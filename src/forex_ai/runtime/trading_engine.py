@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from forex_ai.config import RuntimeConfig, load_risk_config, load_risk_profile
+from forex_ai.config import RuntimeConfig, load_execution_enabled, load_risk_profile
 from forex_ai.integration.engine import DecisionOrchestrator
 from forex_ai.integration.execution import GuardedExecutionService
 from forex_ai.journal.db import initialize
@@ -28,8 +28,7 @@ def build_integration_services(
     """
     initialize(cfg.db_path)
     profile = load_risk_profile()
-    raw_risk = load_risk_config()
-    execution_enabled = bool(raw_risk.get("execution_enabled", False))
+    execution_enabled = load_execution_enabled()
     return IntegrationServices(
         decisions=DecisionOrchestrator(db_path=cfg.db_path, risk_profile=profile),
         execution=GuardedExecutionService(

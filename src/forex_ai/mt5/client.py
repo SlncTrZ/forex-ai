@@ -338,5 +338,7 @@ class MT5Client:
             "TRADE_RETCODE_SHORT_ONLY",
             "TRADE_RETCODE_CLOSE_ONLY",
             "TRADE_RETCODE_HEDGE_PROHIBITED",
+            "DEAL_REASON_SL",
+            "DEAL_REASON_TP",
         )
         return {name: int(self._remote_eval(f"mt5.{name}")) for name in names}

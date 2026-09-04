@@ -192,6 +192,9 @@ class BrokerDeal(FrozenModel):
     price: float = Field(gt=0)
     profit: float = 0.0
     time_msc: int = Field(gt=0)
+    entry: int | None = None
+    reason: int | None = None
+    comment: str = ""
 
 
 class BrokerPosition(FrozenModel):

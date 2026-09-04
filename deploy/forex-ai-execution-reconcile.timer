@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile Forex-AI execution lifecycle every 15 seconds
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=15s
+AccuracySec=2s
+Unit=forex-ai-execution-reconcile.service
+
+[Install]
+WantedBy=timers.target

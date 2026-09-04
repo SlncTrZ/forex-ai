@@ -79,6 +79,9 @@ def _deal(raw: Mapping[str, Any]) -> BrokerDeal:
         ticket=int(raw["ticket"]), order=int(raw.get("order") or 0), position_id=int(raw.get("position_id") or 0),
         symbol=str(raw["symbol"]), volume=float(raw["volume"]), price=float(raw["price"]),
         profit=float(raw.get("profit") or 0.0), time_msc=int(raw["time_msc"]),
+        entry=int(raw["entry"]) if raw.get("entry") is not None else None,
+        reason=int(raw["reason"]) if raw.get("reason") is not None else None,
+        comment=str(raw.get("comment") or ""),
     )
 
 

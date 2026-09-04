@@ -37,7 +37,7 @@ def approval(tmp_path,approved=True):
 
 def test_live_canary_requires_explicit_strategy_approval_and_one_symbol(tmp_path,monkeypatch):
     db=ready_db(tmp_path,monkeypatch)
-    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD',),risk_profile=profile(),approval_path=approval(tmp_path),now_utc=NOW)
+    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD',),risk_profile=profile(),approval_path=approval(tmp_path),account_trade_mode=2,account_identity_bound=True,now_utc=NOW)
     assert report.ready
     assert report.strategy_version=='trend_pullback_v2'
     assert len(report.risk_profile_fingerprint)==64
@@ -45,12 +45,24 @@ def test_live_canary_requires_explicit_strategy_approval_and_one_symbol(tmp_path
 
 def test_live_canary_blocks_without_strategy_approval(tmp_path,monkeypatch):
     db=ready_db(tmp_path,monkeypatch)
-    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD',),risk_profile=profile(),approval_path=None,now_utc=NOW)
+    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD',),risk_profile=profile(),approval_path=None,account_trade_mode=2,account_identity_bound=True,now_utc=NOW)
     assert not report.ready and 'STRATEGY_APPROVAL_MISSING' in report.reasons
 
 
 def test_live_canary_blocks_failed_strategy_and_multiple_symbols(tmp_path,monkeypatch):
     db=ready_db(tmp_path,monkeypatch)
-    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD','GBPUSD'),risk_profile=profile(),approval_path=approval(tmp_path,False),now_utc=NOW)
+    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD','GBPUSD'),risk_profile=profile(),approval_path=approval(tmp_path,False),account_trade_mode=2,account_identity_bound=True,now_utc=NOW)
     assert not report.ready
     assert set(report.reasons)>={'STRATEGY_NOT_APPROVED','LIVE_CANARY_REQUIRES_ONE_SYMBOL'}
+
+
+def test_live_canary_rejects_demo_account(tmp_path,monkeypatch):
+    db=ready_db(tmp_path,monkeypatch)
+    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD',),risk_profile=profile(),approval_path=approval(tmp_path),account_trade_mode=0,account_identity_bound=True,now_utc=NOW)
+    assert not report.ready and 'ACCOUNT_NOT_REAL' in report.reasons
+
+
+def test_live_canary_rejects_missing_account_binding(tmp_path,monkeypatch):
+    db=ready_db(tmp_path,monkeypatch)
+    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD',),risk_profile=profile(),approval_path=approval(tmp_path),account_trade_mode=2,account_identity_bound=False,now_utc=NOW)
+    assert not report.ready and 'ACCOUNT_BINDING_MISSING' in report.reasons

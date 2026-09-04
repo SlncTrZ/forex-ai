@@ -264,3 +264,63 @@ def save_trading_control(db_path: Path, state: TradingControlState) -> None:
                 int(state.kill_switch), int(state.maintenance_mode), utc_now(), state.reason,
             ),
         )
+
+
+def persist_trade_closure(
+    db_path: Path, *, intent_id: str, requested_at_utc: datetime, exit_reason: str, request: dict,
+    response: dict | None, outcome_class: str, closed_at_utc: datetime | None = None, final_pnl: Decimal | None = None,
+) -> None:
+    if not exit_reason.strip():
+        raise ValueError("exit_reason is required")
+    request_hash = payload_sha256(request)
+    response_hash = payload_sha256(response) if response is not None else None
+    retcode = None
+    if response is not None and response.get("retcode") is not None:
+        try:
+            retcode = int(response["retcode"])
+        except (TypeError, ValueError):
+            retcode = None
+    payload = {"response_present": response is not None, "exit_reason": exit_reason}
+    with session(db_path) as con:
+        con.execute(
+            """INSERT INTO trade_closures_v1(intent_id,requested_at_utc,exit_reason,request_sha256,response_sha256,outcome_class,broker_retcode,closed_at_utc,final_pnl,payload_json)
+               VALUES(?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(intent_id) DO UPDATE SET response_sha256=excluded.response_sha256,outcome_class=excluded.outcome_class,broker_retcode=excluded.broker_retcode,closed_at_utc=COALESCE(excluded.closed_at_utc,trade_closures_v1.closed_at_utc),final_pnl=COALESCE(excluded.final_pnl,trade_closures_v1.final_pnl),payload_json=excluded.payload_json""",
+            (intent_id, requested_at_utc.astimezone(timezone.utc).isoformat(), exit_reason, request_hash, response_hash, outcome_class, retcode, closed_at_utc.astimezone(timezone.utc).isoformat() if closed_at_utc else None, str(final_pnl) if final_pnl is not None else None, _json(payload)),
+        )
+
+def load_trade_closure(db_path: Path, intent_id: str):
+    with session(db_path) as con:
+        return con.execute("SELECT * FROM trade_closures_v1 WHERE intent_id=?", (intent_id,)).fetchone()
+
+
+def load_candidate(db_path: Path, candidate_id: str) -> CandidateEnvelope | None:
+    with session(db_path) as con:
+        row = con.execute("SELECT payload_json FROM candidate_decisions WHERE candidate_id=?", (candidate_id,)).fetchone()
+    if row is None:
+        return None
+    payload = json.loads(row[0])
+    payload["generated_at_utc"] = datetime.fromisoformat(payload["generated_at_utc"])
+    payload["expires_at_utc"] = datetime.fromisoformat(payload["expires_at_utc"])
+    return CandidateEnvelope(**payload)
+
+
+def latest_approved_risk_result(db_path: Path, *, now_utc: datetime, symbol: str | None = None) -> BrokerRiskResult | None:
+    params: list[object] = [now_utc.astimezone(timezone.utc).isoformat()]
+    where = "r.approved=1 AND r.expires_at_utc>?"
+    if symbol is not None:
+        where += " AND c.symbol=?"
+        params.append(symbol)
+    with session(db_path) as con:
+        row = con.execute(
+            f"SELECT r.payload_json FROM risk_decisions_v1 r JOIN candidate_decisions c ON c.candidate_id=r.candidate_id WHERE {where} ORDER BY r.created_at_utc DESC LIMIT 1",
+            tuple(params),
+        ).fetchone()
+    if row is None:
+        return None
+    payload = json.loads(row[0])
+    for key in ("normalized_volume", "executable_entry", "stop_loss", "take_profit", "projected_loss_account_currency", "margin_required"):
+        payload[key] = Decimal(str(payload[key]))
+    payload["reason_codes"] = tuple(payload.get("reason_codes") or ())
+    payload["expires_at_utc"] = datetime.fromisoformat(payload["expires_at_utc"])
+    return BrokerRiskResult(**payload)

@@ -1,287 +1,355 @@
 # Forex-AI — System Completion Plan
 
-Status: **ACTIVE — remediation implementation updated 2026-09-04; deployment/evidence gates still pending**
+Status: **ACTIVE — execution-first direction adopted 2026-09-04**
 
-This plan is the execution checklist for completing the trading system. `DEVELOP_PLAN.md` remains the architectural specification/history. Strategy profitability/tuning is tracked separately from system correctness.
+This plan defines the shortest auditable path from the current OBSERVE system to a real, controlled trading lifecycle. `DEVELOP_PLAN.md` remains architectural/history documentation. Strategy research, profitability and LLM value are separate workstreams and must not block basic execution validation unless they are directly required for safe order placement.
 
-### 2026-09-04 remediation implementation status
+## 0. Project direction
 
-The working tree now implements the audited WP-01..WP-07 engineering remediations documented in `AUDIT_REMEDIATION_PLAN.md`:
+The project is **not** trying to build a strategy with 100% win rate. That is neither realistic nor a valid engineering target for a market system.
 
-- persistent account binding verification and owner-only binding command;
-- per-symbol capture timestamps, slim strict symbol discovery and one-universe MT5 scan bundle;
-- database-enforced opportunity identity and stable retry candidate identity;
-- production V1 Strategy -> `BrokerAwareRiskEngine` scanner wiring with persisted risk verdicts;
-- one production `RiskProfile` vocabulary (`limits` removed from production config);
-- V1 candidate -> `AdvisoryRuntime` queue with persistent daily budget and a no-trade-authority legacy DeepSeek bridge;
-- explicit risk side plus mandatory fresh risk revalidation and final broker preflight before send.
+The first required capability is much simpler and more concrete:
 
-Validation in the working tree: **152 tests pass** and `git diff --check` passes. A read-only scanner-mode broker resync with a temporary DB completed HEALTHY in **19.0s** for the configured three-symbol universe. This is one observed runtime sample, not yet a p95 SLO claim.
+> **The system must be able to place an order, manage it, exit it, and explain why every material action happened.**
 
-These changes are not equivalent to live approval. Deployment/soak evidence, explicit account binding, DEMO execution fault campaign, host-reboot DR and new untouched strategy OOS evidence remain separate gates. `execution_enabled: false` remains unchanged.
+A losing trade can be a successful system test if the complete lifecycle is correct, controlled and auditable. A profitable trade is still a system failure if the system cannot explain why it entered, how risk was determined, what the broker actually did, and why the position exited.
 
-## 1. Audited current state
+From this point forward, development is execution-first:
 
-### Source / release
+1. prove a complete trading lifecycle;
+2. prove deterministic risk and broker reconciliation around that lifecycle;
+3. then measure whether a strategy has positive edge;
+4. then expand live exposure gradually.
 
-- `main` is clean and synchronized with `origin/main` at `9bd6b71ede16eb6b03d3b0f08d293f0e729d53ed`.
-- Active release: `/home/dinhtc/apps/forex-ai/releases/20260903T132901Z-9bd6b71ede16`.
-- Last audited deployed release had 144 tests; current remediation working tree has **152 tests and the full suite passes**.
-- Deployment/rollback hardening is implemented and prior target-host drills passed.
+Anything that does not directly move the system toward a correct complete trade lifecycle is not a blocker for the first controlled trade unless it protects a critical execution boundary.
 
-### Runtime
+## 1. Primary milestone — First Complete Trade Lifecycle
 
-- `forex-ai-observe.service`: active.
-- DB `PRAGMA integrity_check`: `ok`.
-- Recent runtime heartbeat cycles: `SYNCING -> HEALTHY`.
-- Health timer: active every minute.
-- DB backup timer: active daily at 03:15 local time.
-- Candidate scan timer: active.
-- Review-pending timer: active.
-- Trading control row: absent, therefore the code default is disarmed + kill switch active.
-- `execution_enabled: false` in `config/risk.yaml`.
-- `order_intents_v1`: empty.
+The next milestone is:
 
-### Production decision pipeline
+**signal -> explained decision -> risk decision -> order intent -> broker preflight -> order send -> broker acknowledgement/fill -> open-position tracking -> exit -> explained outcome -> full journal**
 
-Production Strategy V1 scanning is now wired and deployed:
+### Required evidence at each step
 
-- `trend_pullback_v1`
-- `volatility_breakout_v1`
-- accepted setup -> `candidate_decisions`
-- rejected setup -> `V1_STRATEGY_REJECTED` with stable reason codes
-- one canonical verdict per `strategy + symbol + closed M15 candle`
-- forming candle excluded
-- legacy signal scanner disabled by default in the production candidate timer
+#### 1. Signal / setup
 
-Current journal facts:
+The journal must record:
 
-- `candidate_decisions`: 0
-- `risk_decisions_v1`: 0
-- production V1 rejection audit rows exist and include `REGIME_NOT_ALIGNED`, `NO_RANGE_BREAK`, and earlier `OVEREXTENDED_BREAKOUT` evidence.
+- strategy id and version;
+- symbol and timeframe;
+- market timestamp / closed decision candle;
+- side under consideration;
+- exact setup conditions that passed;
+- exact setup conditions that failed or were not required;
+- relevant market evidence used by the strategy.
 
-The deployed release described above remains Strategy-only. The remediation working tree now executes the complete read-only Strategy -> RiskEngine decision graph; deployment verification is still pending.
+#### 2. Entry decision
 
-## 2. Critical findings from the audit
+The system must record why the trade is allowed or rejected:
 
-### P0 — Strategy -> RiskEngine live wiring — IMPLEMENTED, DEPLOYMENT EVIDENCE PENDING
+- candidate id / opportunity id;
+- BUY or SELL explicitly;
+- intended entry;
+- stop loss;
+- take profit / exit objective if applicable;
+- risk amount / risk fraction;
+- strategy reason codes;
+- market snapshot fingerprint.
 
-The remediation working tree now routes the production V1 scanner through `DecisionOrchestrator` + `BrokerAwareRiskEngine`, using synchronized broker state, `SafetySnapshot` and journal-derived `RiskContext`, and persists deterministic `risk_decisions_v1`. OBSERVE/SHADOW still stop before execution and `execution_enabled=false` remains unchanged.
+#### 3. Risk decision
 
-Remaining gate: deploy the synchronized release and prove the path on real V1 candidate/rejection cycles during soak.
+The deterministic risk engine must record:
 
-### P0 — Candidate-scan latency must be bounded before RiskEngine integration
+- approval or rejection;
+- normalized volume;
+- account / equity context;
+- existing exposure;
+- daily / weekly limits;
+- spread / price / safety checks;
+- all reason codes;
+- risk-profile fingerprint.
 
-The first bundled live scan measured about 39 seconds for the configured three symbols. The active RiskProfile has `max_signal_age_seconds: 30`.
+Win probability is not part of execution correctness.
 
-Impact: using one scan-start timestamp across all symbols can make later-symbol decisions stale before RiskEngine evaluation.
+#### 4. Broker order placement
 
-Required fix:
+Before send:
 
-- timestamp each symbol at its actual capture/evaluation time;
-- retain one MT5 bundle call per symbol;
-- remove unnecessary symbol/constants round-trips through caching or startup resolution;
-- set and measure a scanner latency SLO; target p95 end-to-end scan latency < 20 seconds for all configured symbols and < 10 seconds per symbol;
-- persist scan latency and reject stale candidates deterministically.
+- account identity must match the explicitly bound account;
+- fresh risk revalidation must pass;
+- final broker `order_check` / equivalent preflight must pass;
+- the send intent must be persisted before the broker call.
 
-### P0 — Gate 5 candidate wiring — IMPLEMENTED WITH ZERO-AUTHORITY COMPATIBILITY BRIDGE
+After send, the journal must capture the broker response exactly:
 
-The remediation working tree moves `review_pending.py` from legacy `signals` to unexpired V1 `candidate_decisions`, uses `AdvisoryRuntime`, persists daily budget state, and makes zero provider calls when no eligible V1 candidate exists. The existing legacy DeepSeek BUY/SELL/NO_TRADE schema is wrapped by a compatibility adapter that collapses every available response to advisory `NO_CHANGE`; it cannot create direction, size, REDUCE_RISK or VETO authority.
+- accepted;
+- rejected;
+- partially filled;
+- timeout / UNKNOWN;
+- ticket / order / deal identifiers when available;
+- broker retcode and message.
 
-Remaining gate: a native source-backed `NO_CHANGE/REDUCE_RISK/VETO` provider schema may be added later only after separate validation. The compatibility bridge is deliberately safer than granting the legacy model production authority.
+No blind retry is allowed after an ambiguous send.
 
-### P1 — Risk policy ambiguity — IMPLEMENTED
+#### 5. Open-position management
 
-`config/risk.yaml` now has one production `profile` authority; the legacy `limits` block is removed. An architecture invariant test rejects production imports of `forex_ai.risk.engine`; production risk remains `BrokerAwareRiskEngine` + `RiskProfile`.
+While a position is open, the system must always be able to answer:
 
-### P1 — Master plan is stale after the V1 scanner repair
+- why this position exists;
+- what its current protection is;
+- whether SL/TP is present and valid;
+- whether the original setup is still valid if the strategy uses invalidation exits;
+- whether a risk kill / emergency condition exists;
+- whether broker state matches journal state.
 
-`DEVELOP_PLAN.md` still lists 139 tests and older release identifiers/status wording. It also overstates some Gate 5 integration readiness.
+#### 6. Exit
 
-Required fix: reconcile it only after the P0 wiring changes above, so the master status reflects the actual deployed graph rather than code modules in isolation.
+Every exit must have one explicit reason category, for example:
 
-## 3. Execution sequence
-
-### Phase A — Close production decision wiring (do now, during Gate 1 soak)
-
-1. Optimize live MT5 scan latency and timestamp semantics.
-2. Build one read-only `production_decision_scan` path using the existing `DecisionOrchestrator`.
-3. For each configured symbol, capture atomically enough for one decision cycle:
-   - tick;
-   - required closed M15/H1/H4 bars;
-   - account snapshot;
-   - symbol contract;
-   - positions + pending orders;
-   - current safety snapshot/reconciliation state;
-   - realized/open-risk context.
-4. Evaluate Strategy V1 and persist every strategy rejection.
-5. Persist accepted candidates.
-6. Run deterministic RiskEngine for accepted candidates and persist every approval/rejection in `risk_decisions_v1`.
-7. Do **not** create an order intent in OBSERVE/SHADOW.
-8. Add audit chain IDs so one opportunity can be traced:
-   `market clock -> strategy verdict -> candidate -> risk verdict -> advisory/counterfactual`.
-9. Add integration tests for a valid synthetic candidate proving `candidate_decisions` and `risk_decisions_v1` are both persisted while execution remains untouched.
-
-**Phase A acceptance**
+- `STOP_LOSS`;
+- `TAKE_PROFIT`;
+- `STRATEGY_INVALIDATION`;
+- `RISK_KILL`;
+- `PROTECTION_FAILURE`;
+- `MANUAL_OWNER_EXIT`;
+- `BROKER_FORCED_EXIT`;
+- other deterministic, documented reason code.
 
-- A deliberately constructed valid setup produces a persisted candidate and persisted risk verdict through the same deployed scanner path.
-- A rejected setup has a stable reason code.
-- A degraded/stale state produces no candidate/risk approval.
-- `order_intents_v1` remains unchanged in OBSERVE/SHADOW.
-- p95 scan latency satisfies the defined SLO.
+The system must not infer a vague reason after the fact if the reason was knowable at decision time.
 
-### Phase B — Replace legacy LLM shadow wiring
+#### 7. Final trade record
 
-1. Disable `forex-ai-review-pending.timer` from consuming legacy signals as the normal production shadow workflow.
-2. Add V1 candidate advisory queue/selection.
-3. Apply deterministic risk/calendar/spread prefilter before paid review.
-4. Use the tested AdvisoryRuntime cache/budget/circuit-breaker layer.
-5. Persist BOT_ONLY baseline for every eligible candidate.
-6. Persist BOT_LLM advisory and counterfactual separately.
-7. Provider failure/budget exhaustion must yield BOT_ONLY-compatible `NO_CHANGE`, never invent trade direction or size.
+The complete chain must be reconstructable from the journal:
 
-**Phase B acceptance**
+**setup -> candidate -> risk verdict -> order intent -> broker events -> fills -> position -> exit decision -> closed result -> P/L / R result**
 
-- Zero paid calls when there is no eligible V1 candidate.
-- Legacy BUY/SELL/NO_TRADE output cannot enter RiskEngine.
-- Provider timeout/budget exhaustion leaves deterministic BOT_ONLY path available.
-- Candidate/advisory/risk records share the same correlation chain.
+The outcome may be a win or a loss. Both are acceptable for this milestone if the lifecycle is technically correct.
 
-### Phase C — Configuration and operational cleanup
+## 2. Acceptance criteria for the primary milestone
 
-1. Collapse risk config to one authoritative production schema.
-2. Add config provenance/fingerprint to candidate/risk/advisory audit records where missing.
-3. Measure candidate scanner/service duration and timer behavior continuously.
-4. Add scanner-stalled/overrun alert.
-5. Reconcile `DEVELOP_PLAN.md`, README/status docs and test count.
-6. Keep legacy scanner available only behind an explicit research flag.
+The First Complete Trade Lifecycle is PASS when at least one controlled DEMO trade completes the full loop and all of the following are true:
 
-**Phase C acceptance**
+- the system independently creates a valid order intent from a strategy decision;
+- the entry reason is explicit and persisted;
+- deterministic risk approves the exact order parameters;
+- account identity guard passes;
+- fresh revalidation and final preflight pass;
+- the broker accepts and opens the position;
+- the position is reconciled from broker truth rather than assumed from the send response;
+- the system tracks the open position and its protection;
+- the position exits normally or by an explicit controlled exit path;
+- the exit reason is persisted;
+- all broker order/deal/position identifiers are mapped back to the same lifecycle;
+- no duplicate exposure is created;
+- there is no unresolved UNKNOWN state at completion;
+- the full causal chain can be explained from journal records without reading source code or guessing.
 
-- One authoritative risk profile.
-- No production service imports legacy risk/signal decision authority.
-- Full suite + deploy smoke pass.
-- Runtime source/release/config fingerprints are traceable.
+**Profitability is explicitly NOT an acceptance criterion for this milestone.**
 
-### Phase D — Finish Gate 1 and Gate 6 validation
+## 3. Immediate execution roadmap
 
-Gate 1 soak remains time-based and must not be shortened.
+There are four practical stages between the current system and the first controlled live canary.
 
-- Soak start: `2026-09-03 17:54:40 +07`.
-- Earliest review: `2026-09-10 17:54:40 +07`.
-- Review full interval for unreconciled data loss, account/contract drift, duplicate/lost broker facts, stuck degraded state, journal failure, stale-decision leakage and unexpected execution.
+### Stage 1 — Make the execution path operational
 
-After Gate 1 is closed:
+Goal: prove the real code path can place and close orders in DEMO.
 
-1. perform host-reboot DR;
-2. verify MT5, observer, timers and scanner recover automatically;
-3. verify startup reconciliation occurs before any trade-capable state;
-4. verify DB integrity and no duplicate/lost facts;
-5. complete owner alert transport choice if an external webhook/mail transport is desired.
+Work:
 
-**Phase D acceptance**
+1. explicitly bind the intended DEMO account;
+2. wire the production candidate/risk result into the guarded execution service;
+3. create the order intent from the approved deterministic risk result;
+4. run fresh broker/account/safety/risk revalidation immediately before send;
+5. run final broker preflight;
+6. persist `SEND_STARTED` before the broker send;
+7. reconcile broker order/deal/position truth after send;
+8. implement / verify explicit close-position path;
+9. persist entry and exit reason codes end-to-end;
+10. ensure OBSERVE remains the default mode and trade-capable mode requires explicit owner arming.
 
-- Gate 1 = PASS only after the complete seven-day interval is clean.
-- Gate 6 = PASS after host reboot recovery/reconciliation evidence is recorded.
+**Acceptance:** the code is capable of opening and closing one DEMO position through the guarded path without any manual database edits or hidden bypasses.
 
-### Phase E — Gate 3 broker execution validation
+### Stage 2 — First Complete DEMO Trade
 
-This is separate from strategy profitability.
+Goal: execute one full lifecycle using the real runtime graph.
 
-Use the guarded execution path in a DEMO environment for:
+The first trade does not need to be profitable and does not need to prove strategy edge.
 
-- accepted/rejected `order_check`/`order_send` retcodes;
-- timeout-but-accepted reconciliation;
-- partial fills;
-- restart mid-lifecycle;
-- duplicate/idempotency test;
-- orphan broker state;
-- missing SL/TP repair;
-- emergency close;
-- at least 100 complete DEMO lifecycles.
+Required trace:
 
-**Phase E acceptance**
+`market evidence -> strategy reason -> risk reason -> broker request -> broker response -> fill -> live position -> exit reason -> broker close -> final P/L`
 
-- zero duplicate exposure;
-- no unresolved UNKNOWN/orphan state;
-- every broker fact maps to one intent or explicit orphan alert;
-- protection failure blocks new entries and triggers the configured recovery path.
+After completion, audit the trace and fix only defects that break lifecycle correctness, safety, reconciliation or explainability.
 
-### Phase F — Strategy tuning/evidence (separate workstream)
+### Stage 3 — Short DEMO execution campaign
 
-Current V1 strategy evidence remains FAIL. Do not rewrite that fact as a system defect.
+Goal: prove the lifecycle is repeatable and does not fail on basic broker/runtime edge cases.
 
-- `trend_pullback_v1`: untouched test expectancy negative.
-- `volatility_breakout_v1`: insufficient test sample and negative observed test result.
+Do not require 100 trades before learning from live canary. Target approximately **10–20 complete DEMO lifecycles**, while deliberately covering the important execution classes:
 
-For any tuning:
+- normal fill and normal close;
+- broker rejection;
+- timeout-but-accepted / ambiguous send reconciliation;
+- partial fill if broker behavior allows reproduction;
+- process/service restart during a lifecycle;
+- UNKNOWN recovery;
+- protection verification / missing SL-TP handling;
+- explicit emergency close;
+- duplicate/idempotency protection.
 
-1. create a new strategy/config version;
-2. use train/validation only for tuning;
-3. reserve a new untouched period or formally extend the dataset with a new final boundary;
-4. repeat realistic-cost sensitivity and Monte Carlo;
-5. create a strategy-approval artifact only if acceptance passes.
+**Acceptance:** no duplicate exposure, no unexplained order, no unresolved broker state, and every lifecycle is reconstructable from the journal.
 
-No production approval may be created from the already-consumed final-test window.
+### Stage 4 — LIVE_CANARY
 
-### Phase G — Rollout
+Goal: learn from the real market with the smallest practical financial exposure after the execution loop is proven.
 
-Rollout stages remain:
+Initial live scope:
 
-1. OBSERVE — current.
-2. SHADOW — complete production V1 BOT_ONLY/BOT_LLM evidence.
-3. DEMO — complete execution lifecycle evidence.
-4. LIVE_CANARY — only after system gates and strategy approval satisfy the configured release policy.
-5. GUARDED_LIVE — expand only after canary operational evidence.
+- one explicitly approved account;
+- one symbol;
+- one strategy version;
+- broker-minimum or otherwise deliberately tiny volume;
+- strict daily loss cap;
+- explicit manual owner arm;
+- active kill switch;
+- full event journal and alerting;
+- no autonomous LLM trading authority.
 
-The small account may be useful as a later owner-controlled canary for broker/runtime learning, but it must not be used to bypass missing deterministic risk, execution, reconciliation or strategy-approval gates.
+The canary is not expected to prove profitability immediately. Its first purpose is to validate real-market execution, slippage, broker behavior, reconciliation and operational reliability under real exposure.
 
-## 4. Gate status after this audit
+Expansion beyond canary requires evidence, not optimism.
 
-| Gate | Accurate current status | Remaining blocker |
+## 4. Strategy profitability is a separate workstream
+
+Current Strategy V1 evidence remains FAIL and must be represented accurately:
+
+- `trend_pullback_v1`: negative untouched-test expectancy;
+- `volatility_breakout_v1`: insufficient sample and negative observed test result.
+
+That means Strategy V1 must not be promoted as a proven profitable strategy.
+
+However, a failed or mediocre strategy does **not** prevent us from proving the execution lifecycle in DEMO.
+
+Strategy work proceeds separately:
+
+1. create Strategy V2 / new configuration version;
+2. tune only on train/validation data;
+3. preserve a new untouched future OOS period;
+4. include realistic costs and slippage assumptions;
+5. evaluate expectancy, drawdown, stability and sample size;
+6. freeze the version before live-canary strategy approval.
+
+The target is not 100% win rate. The target is a robust positive expectancy after realistic costs with acceptable downside behavior.
+
+## 5. LLM is not on the critical path to first live trading
+
+LLM/advisory remains optional and must not block execution validation.
+
+For the initial execution and live-canary path:
+
+- deterministic strategy + deterministic risk remain authoritative;
+- LLM may observe or produce shadow advisory;
+- LLM may not invent trade direction, position size or execution commands;
+- provider failure must not break the deterministic lifecycle;
+- BOT_ONLY must always remain viable.
+
+Whether LLM adds measurable value is a later experiment, not a prerequisite for placing the first controlled order.
+
+## 6. What remains safety-critical before any real-money order
+
+The following are still hard blockers because they protect the execution boundary directly:
+
+- explicit account binding / account identity match;
+- deterministic risk decision for the exact intended order;
+- execution enablement requiring explicit owner action;
+- fresh risk revalidation immediately before send;
+- final broker preflight;
+- persistence-before-send / idempotency discipline;
+- no blind retry after ambiguous send;
+- broker reconciliation after send/restart;
+- working stop/protection semantics;
+- working emergency close / kill switch;
+- complete journal linkage for entry and exit.
+
+These are not “paper hardening”; they are part of making a real trade safely and explainably.
+
+## 7. Items moved out of the critical path
+
+The following may improve production quality, but they are **not blockers for the first complete DEMO lifecycle** and generally are not blockers for the first tiny LIVE_CANARY unless a concrete defect is discovered:
+
+- 100 DEMO lifecycle target;
+- long BOT_ONLY vs BOT_LLM evidence campaign;
+- proving LLM alpha;
+- architectural cleanup unrelated to execution correctness;
+- full production-perfect observability;
+- every rare broker edge case before the first canary;
+- strategy win-rate targets;
+- strategy statistical perfection;
+- broad multi-symbol rollout;
+- broad multi-strategy rollout.
+
+Some prior operational evidence such as soak, reboot/DR, latency telemetry and shutdown hygiene remains valuable. It should continue in parallel and become a blocker only if it reveals a defect capable of corrupting execution, reconciliation or risk control.
+
+## 8. Current deployed state — 2026-09-04
+
+Current source/release:
+
+- branch `main` synchronized with `origin/main`;
+- commit `df5b0d8246f893738905c90ac3b03356ab5724db`;
+- active release `/home/dinhtc/apps/forex-ai/releases/20260904T104215Z-df5b0d8246f8`;
+- database schema version `10`;
+- DB integrity check `ok`;
+- observer active;
+- candidate/review/ops timers active;
+- `execution_enabled: false`;
+- `order_intents_v1: 0` at deployment validation;
+- account was not automatically bound;
+- no live order was sent during remediation/deployment.
+
+Production scanner telemetry immediately after deployment observed total three-symbol scan latency around **14.5–14.6 seconds** for two cycles. This is useful runtime evidence but is not yet a long-window p95 claim.
+
+The execution boundary already includes explicit side, identity-guard support, fresh risk revalidation, final broker preflight and ambiguous-send protection. The next development work must connect these pieces into the first real controlled DEMO lifecycle rather than adding unrelated architecture.
+
+## 9. Current milestone status
+
+| Milestone | Status | Meaning |
 |---|---|---|
-| Gate 0 Release | **PASS** | Maintain invariant |
-| Gate 1 MT5/data | **Maintenance PASS; soak running** | Seven-day interval review |
-| Gate 2 Risk core | **Code/read-only tests PASS** | Production timer integration must exercise it on real V1 candidates |
-| Gate 3 Execution | **Engineering/fake-fault PASS** | Real DEMO lifecycle/fault evidence |
-| Gate 4 Strategy | **Research pipeline PASS; current strategies FAIL** | New strategy version + new untouched evidence after tuning |
-| Gate 5 Advisory | **Module engineering PASS; live integration INCOMPLETE** | Replace legacy review queue with V1 candidate advisory path |
-| Gate 6 Ops/DR | **Deployed except host reboot** | Host-reboot reconciliation drill after soak |
-| Gate 7 Rollout | **BLOCKED** | Gates 1/3/4/5/6 acceptance |
+| Release/deploy integrity | **PASS** | Current release deployed and healthy |
+| Deterministic Strategy -> Risk | **PASS in deployed read-only path** | Candidate/rejection/risk chain available |
+| Account binding | **NOT YET ARMED** | Must explicitly bind intended DEMO account before execution |
+| Real order open path | **NOT YET PROVEN** | Next implementation target |
+| Real order close path | **NOT YET PROVEN** | Must be part of same lifecycle target |
+| Full entry/exit reason trace | **PARTIAL** | Decision/risk tracing exists; broker lifecycle trace must be completed |
+| First Complete DEMO Trade | **NOT YET DONE** | Primary project milestone |
+| Repeatable DEMO campaign | **NOT YET DONE** | Follows first successful lifecycle |
+| Strategy profitability approval | **FAIL for current V1** | Separate strategy workstream |
+| LIVE_CANARY | **NOT YET APPROVED** | Follows execution proof + owner Go decision |
 
-## 5. Definition of system-complete vs strategy-approved
+## 10. Development decision rule
 
-### System-complete
+For every new task, ask:
 
-The software system may be called **system-complete** when:
+> **Does this directly help the system place, manage, exit or explain a real trade, or protect a critical risk/reconciliation boundary?**
 
-- production V1 scanner -> RiskEngine -> advisory/counterfactual graph is deployed and auditable;
-- execution remains correctly isolated/guarded;
-- Gate 1 soak passes;
-- Gate 3 DEMO execution acceptance passes;
-- Gate 5 production advisory integration behaves correctly (whether or not LLM adds value);
-- Gate 6 host DR passes;
-- no unresolved P0/P1 safety/integration defect exists.
+If yes, it belongs on the execution path.
 
-### Strategy-approved
+If no, it goes to backlog or a parallel research/hardening workstream and must not indefinitely delay the first complete controlled lifecycle.
 
-A strategy is **strategy-approved** only when its own new OOS evidence passes after realistic costs.
+The project must avoid becoming a perfectly documented system that never trades.
 
-These labels must never be merged. A safe complete system can contain an unapproved strategy and therefore remain blocked from production trading.
 
-## 6. Immediate next work
+## 11. Full audit update — 2026-09-04
 
-**Do not tune strategy yet.**
+Source implementation now includes the guarded execution runner, explicit close/exit journal, broker-driven SL/TP exit reconciliation, REAL/DEMO account-mode guards, account-binding readiness checks, execution lifecycle reconciliation, and schema v11. Full verification: **159 tests collected, all pass**, compileall PASS, `git diff --check` PASS.
 
-Execute in this order:
+Audit decision remains **LIVE NO-GO** for concrete runtime reasons, not because of unfinished architecture:
 
-1. **P0: optimize scanner latency/timestamping.**
-2. **P0: wire deployed V1 candidates into deterministic RiskEngine and persist risk verdicts.**
-3. **P0: replace legacy LLM review timer with V1 advisory shadow integration.**
-4. **P1: remove dual risk-policy ambiguity and add provenance/latency alerts.**
-5. Update master docs and deploy the synchronized release.
-6. Let Gate 1 soak continue uninterrupted to 2026-09-10 17:54:40 +07.
-7. After soak: host-reboot DR.
-8. Then run the guarded DEMO execution campaign.
-9. Tune/version strategy separately and produce new untouched OOS evidence.
-10. Formal Go/No-Go before any production live rollout.
+- current connected account is REAL;
+- one existing XAUUSDc 0.05 position is present without SL/TP and does not appear to be Forex-AI-owned;
+- runtime correctly blocks new entries with `UNPROTECTED_POSITION`;
+- account binding is missing;
+- persistent trading control is disarmed/kill-switched by default;
+- no approved live strategy/canary artifact exists;
+- no complete Forex-AI broker lifecycle has yet been observed.
+
+The code may be deployed disarmed. The read-only execution reconciliation timer should run in production. The guarded execution timer must remain disabled until these direct P0 conditions are resolved. See `FULL_AUDIT_2026-09-04.md`.

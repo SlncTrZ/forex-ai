@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Sequence
 
 from forex_ai.journal.integration_repository import load_trading_control
+from forex_ai.execution.account_mode import MT5AccountTradeMode
 from forex_ai.risk.profile import RiskProfile
 from forex_ai.runtime.ops import assess_runtime_health
 
@@ -54,6 +55,8 @@ def assess_live_canary_readiness(
     symbols: Sequence[str],
     risk_profile: RiskProfile,
     approval_path: Path | None,
+    account_trade_mode: int | None,
+    account_identity_bound: bool,
     now_utc: datetime | None = None,
 ) -> LiveCanaryReadiness:
     now = (now_utc or datetime.now(UTC)).astimezone(UTC)
@@ -65,6 +68,12 @@ def assess_live_canary_readiness(
     normalized_symbols = tuple(symbols)
     if len(normalized_symbols) != 1:
         reasons.append("LIVE_CANARY_REQUIRES_ONE_SYMBOL")
+    if account_trade_mode is None:
+        reasons.append("ACCOUNT_TRADE_MODE_UNAVAILABLE")
+    elif int(account_trade_mode) != int(MT5AccountTradeMode.REAL):
+        reasons.append("ACCOUNT_NOT_REAL")
+    if not account_identity_bound:
+        reasons.append("ACCOUNT_BINDING_MISSING")
 
     health = assess_runtime_health(db_path, now_utc=now)
     if not health.healthy:

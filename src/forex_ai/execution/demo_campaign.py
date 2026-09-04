@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from forex_ai.journal.integration_repository import load_trading_control
+from forex_ai.execution.account_mode import MT5AccountTradeMode
 from forex_ai.runtime.ops import assess_runtime_health
 
 UTC = timezone.utc
@@ -25,6 +26,8 @@ def assess_demo_campaign_readiness(
     mode: str,
     execution_enabled: bool,
     campaign_id: str,
+    account_trade_mode: int | None,
+    account_identity_bound: bool,
     now_utc: datetime | None = None,
 ) -> DemoCampaignReadiness:
     now = (now_utc or datetime.now(UTC)).astimezone(UTC)
@@ -35,6 +38,12 @@ def assess_demo_campaign_readiness(
         reasons.append("EXECUTION_DISABLED")
     if not campaign_id.strip():
         reasons.append("CAMPAIGN_ID_REQUIRED")
+    if account_trade_mode is None:
+        reasons.append("ACCOUNT_TRADE_MODE_UNAVAILABLE")
+    elif int(account_trade_mode) != int(MT5AccountTradeMode.DEMO):
+        reasons.append("ACCOUNT_NOT_DEMO")
+    if not account_identity_bound:
+        reasons.append("ACCOUNT_BINDING_MISSING")
     health = assess_runtime_health(db_path, now_utc=now)
     if not health.healthy:
         reasons.extend(f"OPS_{reason}" for reason in health.reasons)

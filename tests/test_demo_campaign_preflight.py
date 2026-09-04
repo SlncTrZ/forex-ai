@@ -24,13 +24,13 @@ def ready_db(tmp_path,monkeypatch):
 
 def test_demo_campaign_requires_all_independent_interlocks(tmp_path,monkeypatch):
     db=ready_db(tmp_path,monkeypatch)
-    report=assess_demo_campaign_readiness(db_path=db,mode='DEMO',execution_enabled=True,campaign_id='demo-1',now_utc=NOW)
+    report=assess_demo_campaign_readiness(db_path=db,mode='DEMO',execution_enabled=True,campaign_id='demo-1',account_trade_mode=0,account_identity_bound=True,now_utc=NOW)
     assert report.ready and report.reasons==()
 
 
 def test_demo_campaign_fails_closed_on_wrong_mode_disabled_and_missing_id(tmp_path,monkeypatch):
     db=ready_db(tmp_path,monkeypatch)
-    report=assess_demo_campaign_readiness(db_path=db,mode='OBSERVE',execution_enabled=False,campaign_id='',now_utc=NOW)
+    report=assess_demo_campaign_readiness(db_path=db,mode='OBSERVE',execution_enabled=False,campaign_id='',account_trade_mode=0,account_identity_bound=True,now_utc=NOW)
     assert not report.ready
     assert set(report.reasons)>={'MODE_NOT_DEMO','EXECUTION_DISABLED','CAMPAIGN_ID_REQUIRED'}
 
@@ -38,6 +38,18 @@ def test_demo_campaign_fails_closed_on_wrong_mode_disabled_and_missing_id(tmp_pa
 def test_demo_campaign_fails_on_kill_switch_and_disarm(tmp_path,monkeypatch):
     db=ready_db(tmp_path,monkeypatch)
     save_trading_control(db,TradingControlState(False,None,True,False,'safe'))
-    report=assess_demo_campaign_readiness(db_path=db,mode='DEMO',execution_enabled=True,campaign_id='demo-1',now_utc=NOW)
+    report=assess_demo_campaign_readiness(db_path=db,mode='DEMO',execution_enabled=True,campaign_id='demo-1',account_trade_mode=0,account_identity_bound=True,now_utc=NOW)
     assert not report.ready
     assert set(report.reasons)>={'CONTROL_DISARMED','KILL_SWITCH_ACTIVE','ARM_EXPIRED'}
+
+
+def test_demo_campaign_rejects_real_account(tmp_path,monkeypatch):
+    db=ready_db(tmp_path,monkeypatch)
+    report=assess_demo_campaign_readiness(db_path=db,mode='DEMO',execution_enabled=True,campaign_id='demo-1',account_trade_mode=2,account_identity_bound=True,now_utc=NOW)
+    assert not report.ready and 'ACCOUNT_NOT_DEMO' in report.reasons
+
+
+def test_demo_campaign_rejects_missing_account_binding(tmp_path,monkeypatch):
+    db=ready_db(tmp_path,monkeypatch)
+    report=assess_demo_campaign_readiness(db_path=db,mode='DEMO',execution_enabled=True,campaign_id='demo-1',account_trade_mode=0,account_identity_bound=False,now_utc=NOW)
+    assert not report.ready and 'ACCOUNT_BINDING_MISSING' in report.reasons

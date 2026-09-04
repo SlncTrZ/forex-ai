@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Forex-AI guarded execution runner every 15 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15s
+AccuracySec=2s
+Unit=forex-ai-execute-pending.service
+
+[Install]
+WantedBy=timers.target

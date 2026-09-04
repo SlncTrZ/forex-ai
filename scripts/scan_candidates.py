@@ -169,7 +169,7 @@ def main() -> int:
             payload={"reasons": list(health.reasons), "latest_heartbeat_state": health.latest_heartbeat_state},
         )
         print(json.dumps({"status": "blocked", "reasons": list(health.reasons)}))
-        return 3
+        return 0
 
     client = MT5Client(cfg)
     # Strategy V1 needs 50 closed bars; 51 raw MT5 bars leaves exactly 50 after
@@ -186,7 +186,7 @@ def main() -> int:
         outcome = coordinator.sync_once(now_utc=datetime.now(UTC))
         if not outcome.ready:
             print(json.dumps({"status": "sync_blocked", "reason": outcome.reason}))
-            return 2
+            return 0
         constants = client.constants()
         orchestrator = DecisionOrchestrator(db_path=cfg.db_path, risk_profile=load_risk_profile())
         output = []

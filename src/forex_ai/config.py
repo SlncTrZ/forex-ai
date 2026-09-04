@@ -73,9 +73,13 @@ def load_runtime_config(path: Path | None = None) -> RuntimeConfig:
 
     db_path = _resolve_path(os.getenv("FOREX_AI_DB_PATH", runtime.get("db_path", "~/.local/share/forex-ai/forex.db")))
     log_dir = _resolve_path(os.getenv("FOREX_AI_LOG_DIR", runtime.get("log_dir", "~/.local/state/forex-ai/logs")))
+    symbols_env = os.getenv("FOREX_AI_SYMBOLS")
+    symbols = tuple(item.strip() for item in symbols_env.split(",") if item.strip()) if symbols_env else tuple(raw.get("symbols", ["XAUUSD", "EURUSD", "GBPUSD"]))
+    if not symbols:
+        raise ValueError("At least one trading symbol is required")
     return RuntimeConfig(
         mode=mode,
-        symbols=tuple(raw.get("symbols", ["XAUUSD", "EURUSD", "GBPUSD"])),
+        symbols=symbols,
         db_path=db_path,
         log_dir=log_dir,
         poll_seconds=int(os.getenv("FOREX_AI_POLL_SECONDS", str(runtime.get("poll_seconds", 5)))),
@@ -100,6 +104,15 @@ def load_risk_profile(path: Path | None = None):
     if not isinstance(profile, dict):
         raise ValueError("risk profile is missing; execution remains disarmed")
     return RiskProfile.model_validate(profile)
+
+
+
+def load_execution_enabled(path: Path | None = None) -> bool:
+    raw_env = os.getenv("FOREX_AI_EXECUTION_ENABLED")
+    if raw_env is not None:
+        return raw_env.strip().lower() in {"1", "true", "yes", "on"}
+    raw = load_risk_config(path)
+    return bool(raw.get("execution_enabled", False))
 
 
 def load_llm_config(path: Path | None = None) -> dict[str, Any]:
