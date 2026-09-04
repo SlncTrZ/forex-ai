@@ -299,7 +299,7 @@ class MT5Client:
         }
 
     def execution_constants(self) -> dict[str, int]:
-        names = (
+        required_names = (
             "TRADE_ACTION_DEAL",
             "TRADE_ACTION_SLTP",
             "TRADE_ACTION_REMOVE",
@@ -337,8 +337,16 @@ class MT5Client:
             "TRADE_RETCODE_LONG_ONLY",
             "TRADE_RETCODE_SHORT_ONLY",
             "TRADE_RETCODE_CLOSE_ONLY",
+        )
+        optional_names = (
             "TRADE_RETCODE_HEDGE_PROHIBITED",
+            "TRADE_RETCODE_LOCKED",
             "DEAL_REASON_SL",
             "DEAL_REASON_TP",
         )
-        return {name: int(self._remote_eval(f"mt5.{name}")) for name in names}
+        values = {name: int(self._remote_eval(f"mt5.{name}")) for name in required_names}
+        for name in optional_names:
+            value = self._remote_eval(f"getattr(mt5, '{name}', None)")
+            if value is not None:
+                values[name] = int(value)
+        return values
