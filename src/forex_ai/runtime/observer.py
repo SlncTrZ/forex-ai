@@ -10,6 +10,7 @@ from forex_ai.config import RuntimeConfig
 from forex_ai.journal.db import initialize, log_event
 from forex_ai.journal.deal_audit import audit_mt5_deals
 from forex_ai.journal.integration_repository import persist_safety_snapshot
+from forex_ai.journal.external_positions import trace_external_positions
 from forex_ai.journal.repository import (
     insert_account,
     insert_market_snapshot,
@@ -81,13 +82,32 @@ def run_observer(cfg: RuntimeConfig) -> int:
             ensure_disk_headroom(cfg.db_path, min_free_bytes=min_free_bytes)
             now = datetime.now(timezone.utc)
             outcome = coordinator.sync_once(now_utc=now)
+
+            # Broker/account/position truth remains observable even when safety
+            # deliberately blocks new entries. Persist and trace that evidence
+            # before deciding whether strategy/market processing may continue.
+            if outcome.broker_state is not None:
+                if outcome.safety is not None:
+                    persist_safety_snapshot(cfg.db_path, outcome.safety)
+                if outcome.raw_account:
+                    insert_account(cfg.db_path, outcome.raw_account)
+                insert_position_snapshots(cfg.db_path, list(outcome.raw_positions))
+                trace_external_positions(cfg.db_path, list(outcome.raw_positions), observed_at_utc=now)
+                upsert_mt5_deals(cfg.db_path, list(outcome.raw_deals))
+                audit_mt5_deals(cfg.db_path, list(outcome.raw_deals))
+                upsert_mt5_orders(cfg.db_path, list(outcome.raw_orders))
+
             if not outcome.ready:
                 log_event(
                     cfg.db_path,
                     "WARN",
                     "observer",
                     "sync_not_ready",
-                    {"health_state": outcome.state.value, "reason": outcome.reason},
+                    {
+                        "health_state": outcome.state.value,
+                        "reason": outcome.reason,
+                        "blocking_reasons": list(outcome.safety.blocking_reasons) if outcome.safety else [],
+                    },
                 )
                 delay = coordinator.backoff.delay(failure_attempt)
                 failure_attempt += 1
@@ -96,13 +116,6 @@ def run_observer(cfg: RuntimeConfig) -> int:
 
             failure_attempt = 0
             assert outcome.safety is not None and outcome.broker_state is not None
-            persist_safety_snapshot(cfg.db_path, outcome.safety)
-            if outcome.raw_account:
-                insert_account(cfg.db_path, outcome.raw_account)
-            insert_position_snapshots(cfg.db_path, list(outcome.raw_positions))
-            upsert_mt5_deals(cfg.db_path, list(outcome.raw_deals))
-            audit_mt5_deals(cfg.db_path, list(outcome.raw_deals))
-            upsert_mt5_orders(cfg.db_path, list(outcome.raw_orders))
 
             tick_by_symbol = {tick.symbol: tick for tick in outcome.broker_state.ticks}
             for base, market in outcome.markets.items():

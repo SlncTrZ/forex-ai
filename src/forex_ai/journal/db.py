@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 SCHEMA = r"""
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -244,6 +244,23 @@ CREATE TABLE IF NOT EXISTS position_snapshots (
     raw_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_position_snapshots_ticket_time ON position_snapshots(ticket, timestamp);
+
+CREATE TABLE IF NOT EXISTS external_position_state_v1 (
+    ticket INTEGER PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    volume TEXT NOT NULL,
+    sl TEXT NOT NULL,
+    tp TEXT NOT NULL,
+    magic INTEGER,
+    comment TEXT NOT NULL,
+    ownership TEXT NOT NULL,
+    first_seen_at_utc TEXT NOT NULL,
+    last_seen_at_utc TEXT NOT NULL,
+    active INTEGER NOT NULL,
+    payload_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_external_position_active ON external_position_state_v1(active,last_seen_at_utc);
 
 CREATE TABLE IF NOT EXISTS audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -201,6 +201,23 @@ def test_health_kernel_blocks_account_drift_and_unprotected_position():
     assert {"ACCOUNT_IDENTITY_DRIFT", "UNPROTECTED_POSITION"}.issubset(second.blocking_reasons)
 
 
+def test_health_kernel_can_recover_after_blocker_is_removed():
+    hk = HealthKernel()
+    hk.begin_connect(); hk.begin_sync()
+    pos = BrokerPosition(ticket=77, symbol="EURUSD", side="BUY", volume=0.01, price_open=1.1, price_current=1.1, sl=0, tp=0)
+    blocked_state = BrokerState(account=account(), contracts=(contract(),), ticks=(tick(),), positions=(pos,), reconciled_at_utc=NOW)
+    blocked = hk.complete_sync(blocked_state)
+    assert hk.state is HealthState.BLOCKED
+    assert "UNPROTECTED_POSITION:77" in blocked.blocking_reasons
+
+    hk.begin_sync()
+    protected = pos.model_copy(update={"sl": 1.09, "tp": 1.12})
+    recovered = hk.complete_sync(blocked_state.model_copy(update={"positions": (protected,)}))
+    assert hk.state is HealthState.HEALTHY
+    assert recovered.reconciled
+    assert recovered.blocking_reasons == ()
+
+
 def test_dynamic_session_state_does_not_change_contract_fingerprint_or_block_health():
     open_contract = contract().model_copy(update={"session_open": True})
     closed_contract = contract().model_copy(update={"session_open": False})

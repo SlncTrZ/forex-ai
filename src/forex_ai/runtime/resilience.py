@@ -196,7 +196,9 @@ class MT5ResyncCoordinator:
             outcome = self._resync(now)
             self.last_mt5_success_utc = now
             self.last_market_time_msc = max((tick.time_msc for tick in outcome.broker_state.ticks), default=None) if outcome.broker_state else None
-            self._heartbeat(now, "SYNC_COMPLETE", payload={"symbols": dict(outcome.symbol_mapping)})
+            blockers = list(outcome.safety.blocking_reasons) if outcome.safety is not None else []
+            heartbeat_reason = "SYNC_COMPLETE" if not blockers else "SYNC_BLOCKED:" + ",".join(blockers)
+            self._heartbeat(now, heartbeat_reason, payload={"symbols": dict(outcome.symbol_mapping), "blocking_reasons": blockers})
             return outcome
         except Exception as exc:
             reason = str(exc) or exc.__class__.__name__

@@ -58,7 +58,7 @@ def assess_runtime_health(
                 if integrity != "ok":
                     reasons.append("DB_INTEGRITY_FAILED")
                 row = con.execute(
-                    "SELECT health_state,timestamp_utc FROM runtime_heartbeats ORDER BY id DESC LIMIT 1"
+                    "SELECT health_state,timestamp_utc,reason,payload_json FROM runtime_heartbeats ORDER BY id DESC LIMIT 1"
                 ).fetchone()
                 if row is None:
                     reasons.append("HEARTBEAT_MISSING")
@@ -70,6 +70,15 @@ def assess_runtime_health(
                         reasons.append("HEARTBEAT_STALE")
                     if latest_state not in {"HEALTHY", "SYNCING", "CONNECTING", "DEGRADED"}:
                         reasons.append(f"RUNTIME_STATE_{latest_state}")
+                        try:
+                            import json
+                            payload = json.loads(str(row["payload_json"]))
+                            for blocker in payload.get("blocking_reasons") or ():
+                                reasons.append(str(blocker))
+                        except Exception:
+                            heartbeat_reason = str(row["reason"] or "")
+                            if heartbeat_reason.startswith("SYNC_BLOCKED:"):
+                                reasons.extend(part for part in heartbeat_reason.removeprefix("SYNC_BLOCKED:").split(",") if part)
                 placeholders = ",".join("?" for _ in NONTERMINAL_EXECUTION_STATES)
                 unresolved = int(con.execute(
                     f"SELECT COUNT(*) FROM order_intents_v1 WHERE state IN ({placeholders})",
@@ -83,7 +92,7 @@ def assess_runtime_health(
 
     return OpsHealth(
         healthy=not reasons,
-        reasons=tuple(reasons),
+        reasons=tuple(dict.fromkeys(reasons)),
         latest_heartbeat_state=latest_state,
         latest_heartbeat_age_seconds=latest_age,
         db_integrity=integrity,
