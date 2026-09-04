@@ -8,9 +8,10 @@ from typing import Callable
 
 from forex_ai.advisory.models import Advisory, AdvisoryAction
 from forex_ai.mt5.contracts import AccountSnapshot, SafetySnapshot, SymbolContract, TickSnapshot
-from forex_ai.risk.broker_engine import BrokerAwareRiskEngine, BrokerRiskResult, MarginCalculator, ProfitCalculator, RiskContext
+from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine, BrokerRiskResult, MarginCalculator, ProfitCalculator, RiskContext
 from forex_ai.risk.profile import RiskProfile
 from forex_ai.strategy.v1.contracts import MarketSnapshot, StrategyConfig, StrategyResult
+from forex_ai.config import load_fixed_lot
 from forex_ai.strategy.v1.trend_pullback import DEFAULT_CONFIG as PULLBACK_CONFIG, evaluate as evaluate_pullback
 from forex_ai.strategy.v1.volatility_breakout import DEFAULT_CONFIG as BREAKOUT_CONFIG, evaluate as evaluate_breakout
 
@@ -119,6 +120,8 @@ class DecisionOrchestrator:
                 calc_margin=calc_margin,
                 now_utc=now,
             )
+            fixed_lot_raw = load_fixed_lot()
+            risk_result = apply_fixed_volume(risk_result, fixed_volume=Decimal(fixed_lot_raw) if fixed_lot_raw is not None else None, calc_profit=calc_profit, calc_margin=calc_margin)
             persist_risk_result(self.db_path, risk_result, created_at_utc=now)
             decisions.append(IntegratedDecision(strategy_result, advisory, risk_result, risk_result.reason_codes))
 

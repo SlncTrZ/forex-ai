@@ -3,6 +3,7 @@ Description=Forex-AI read-only MT5 candidate scanner
 After=network-online.target docker.service forex-ai-observe.service
 
 [Service]
+EnvironmentFile=-%h/.config/forex-ai/execution.env
 Type=oneshot
 Environment=FOREX_AI_MODE=OBSERVE
 ExecStartPre=/bin/sh -lc '/usr/bin/docker inspect --format={{.State.Running}} forex-mt5 | /usr/bin/grep -qx true'

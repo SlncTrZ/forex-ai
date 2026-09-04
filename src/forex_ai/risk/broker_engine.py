@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_FLOOR
 from typing import Callable
@@ -128,6 +128,22 @@ class BrokerRiskResult:
 
 ProfitCalculator = Callable[[str, str, Decimal, Decimal, Decimal], Decimal]
 MarginCalculator = Callable[[str, str, Decimal, Decimal], Decimal]
+
+
+def apply_fixed_volume(result: BrokerRiskResult, *, fixed_volume: Decimal | None, calc_profit: ProfitCalculator, calc_margin: MarginCalculator) -> BrokerRiskResult:
+    if fixed_volume is None:
+        return result
+    volume = Decimal(str(fixed_volume))
+    if not volume.is_finite() or volume <= 0:
+        raise ValueError("fixed volume must be finite and > 0")
+    if not result.approved:
+        return result
+    if volume > result.normalized_volume:
+        return replace(result, approved=False, normalized_volume=Decimal("0"), projected_loss_account_currency=Decimal("0"), margin_required=Decimal("0"), reason_codes=tuple(dict.fromkeys((*result.reason_codes, "FIXED_VOLUME_EXCEEDS_RISK_APPROVAL"))))
+    pnl = calc_profit(result.side, result.normalized_symbol, volume, result.executable_entry, result.stop_loss)
+    margin = calc_margin(result.side, result.normalized_symbol, volume, result.executable_entry)
+    projected_loss = abs(Decimal(str(pnl)))
+    return replace(result, normalized_volume=volume, projected_loss_account_currency=projected_loss, margin_required=Decimal(str(margin)), reason_codes=tuple(dict.fromkeys((*result.reason_codes, f"FIXED_VOLUME_{volume}"))))
 
 
 class BrokerAwareRiskEngine:

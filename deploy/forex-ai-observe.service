@@ -4,6 +4,7 @@ After=network-online.target docker.service
 Wants=network-online.target
 
 [Service]
+EnvironmentFile=-%h/.config/forex-ai/execution.env
 Type=simple
 Environment=FOREX_AI_MODE=OBSERVE
 Environment=FOREX_AI_CONFIG_DIR=%h/apps/forex-ai/current/config

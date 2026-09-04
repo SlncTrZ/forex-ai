@@ -107,6 +107,11 @@ def load_risk_profile(path: Path | None = None):
 
 
 
+def load_fixed_lot() -> str | None:
+    raw = os.getenv("FOREX_AI_FIXED_LOT")
+    return raw.strip() if raw is not None and raw.strip() else None
+
+
 def load_execution_enabled(path: Path | None = None) -> bool:
     raw_env = os.getenv("FOREX_AI_EXECUTION_ENABLED")
     if raw_env is not None:

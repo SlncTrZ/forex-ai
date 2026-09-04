@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from forex_ai.config import load_execution_enabled, load_risk_profile, load_runtime_config
+from forex_ai.config import load_execution_enabled, load_fixed_lot, load_risk_profile, load_runtime_config
 from forex_ai.execution.account_mode import expected_trade_mode_for_runtime, require_account_trade_mode
 from forex_ai.execution.live_canary import assess_live_canary_readiness
 from forex_ai.execution.demo_campaign import assess_demo_campaign_readiness
@@ -19,7 +19,7 @@ from forex_ai.journal.db import initialize, log_audit_event
 from forex_ai.journal.integration_repository import latest_approved_risk_result, load_candidate
 from forex_ai.mt5.client import MT5Client
 from forex_ai.risk.account_guard import account_matches, assert_account_matches
-from forex_ai.risk.broker_engine import BrokerAwareRiskEngine
+from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
 from forex_ai.runtime.risk_context import build_risk_context
 
@@ -105,7 +105,7 @@ def main() -> int:
             assert_account_matches(raw, require_binding=True)
 
         identity_guard()
-        risk_result = latest_approved_risk_result(cfg.db_path, now_utc=datetime.now(UTC))
+        risk_result = latest_approved_risk_result(cfg.db_path, now_utc=datetime.now(UTC), symbol=cfg.symbols[0] if len(cfg.symbols) == 1 else None)
         if risk_result is None:
             print(json.dumps({"status": "idle", "reason": "NO_UNEXPIRED_APPROVED_RISK"}))
             return 0
@@ -170,7 +170,7 @@ def main() -> int:
                     raise RuntimeError("order_calc_margin returned None")
                 return D(str(value))
 
-            return BrokerAwareRiskEngine(profile).evaluate(
+            refreshed = BrokerAwareRiskEngine(profile).evaluate(
                 candidate_input(candidate, now_utc=fresh_now),
                 account=fresh_broker.account,
                 contract=fresh_contract,
@@ -181,6 +181,8 @@ def main() -> int:
                 calc_margin=calc_margin,
                 now_utc=fresh_now,
             )
+            fixed_lot_raw = load_fixed_lot()
+            return apply_fixed_volume(refreshed, fixed_volume=D(fixed_lot_raw) if fixed_lot_raw is not None else None, calc_profit=calc_profit, calc_margin=calc_margin)
 
         classifier = MT5RetcodeClassifier(constants)
         intent = service.send_once(
