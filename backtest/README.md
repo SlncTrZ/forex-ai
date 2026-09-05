@@ -71,3 +71,12 @@ PYTHONPATH=src python backtest/run_standard_backtest.py
 ```
 
 The result is written to `<standard-dataset>/standard_benchmark.json` and is the regression baseline for future strategy changes.
+
+## Trend-pullback research tools
+
+These scripts are read-only counterfactual research tools. They resolve the canonical dataset pointer and never mutate live strategy parameters:
+
+- `analyze_entry_timing.py` — candidate ordinal, MFE/MAE, side/day/session and expiry behavior.
+- `analyze_cluster_entry_policy.py` — compare entering the 1st/2nd/3rd/4th confirmation inside one setup cluster.
+- `analyze_trend_exit_grid.py` — target-R × expiry robustness, including week-by-week expectancy.
+- `analyze_session_filter.py` — UTC-session behavior with per-week breakdown.
