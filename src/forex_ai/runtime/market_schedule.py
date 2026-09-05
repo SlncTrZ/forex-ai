@@ -5,6 +5,9 @@ from zoneinfo import ZoneInfo
 
 NEW_YORK = ZoneInfo("America/New_York")
 FRIDAY = 4
+SATURDAY = 5
+SUNDAY = 6
+WEEK_OPEN = time(17, 5)
 ENTRY_CUTOFF = time(16, 0)
 FORCE_CLOSE = time(16, 30)
 
@@ -18,9 +21,12 @@ def _new_york(now_utc: datetime) -> datetime:
 def new_entries_allowed(now_utc: datetime) -> bool:
     local = _new_york(now_utc)
     weekday = local.weekday()
-    if weekday >= 5:
+    clock = local.time().replace(tzinfo=None)
+    if weekday == SATURDAY:
         return False
-    if weekday == FRIDAY and local.time().replace(tzinfo=None) >= ENTRY_CUTOFF:
+    if weekday == SUNDAY:
+        return clock >= WEEK_OPEN
+    if weekday == FRIDAY and clock >= ENTRY_CUTOFF:
         return False
     return True
 

@@ -17,7 +17,7 @@
   },
   "auto_week": {
     "timezone": "America/New_York",
-    "start": "MONDAY 00:05",
+    "start": "SUNDAY 17:05",
     "entry_cutoff": "FRIDAY 16:00",
     "force_close": "FRIDAY 16:30"
   },

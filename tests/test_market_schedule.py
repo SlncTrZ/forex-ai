@@ -21,7 +21,9 @@ def test_friday_cutoff_uses_new_york_standard_time_in_winter():
     assert weekend_force_close_due(datetime(2026, 12, 4, 21, 30, tzinfo=UTC))
 
 
-def test_weekend_blocks_new_entries_but_does_not_repeat_force_close():
+def test_weekend_and_sunday_reopen_window():
     assert not new_entries_allowed(datetime(2026, 9, 5, 12, 0, tzinfo=UTC))
-    assert not new_entries_allowed(datetime(2026, 9, 6, 12, 0, tzinfo=UTC))
+    # Sunday 17:05 New York is Monday 04:05 in Vietnam while EDT is active.
+    assert not new_entries_allowed(datetime(2026, 9, 6, 21, 4, tzinfo=UTC))
+    assert new_entries_allowed(datetime(2026, 9, 6, 21, 5, tzinfo=UTC))
     assert not weekend_force_close_due(datetime(2026, 9, 5, 12, 0, tzinfo=UTC))

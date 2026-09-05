@@ -17,9 +17,10 @@ UTC = timezone.utc
 APPROVAL = Path("config/live-prospective-approval.json")
 
 
-def test_auto_live_window_uses_new_york_time_and_monday_delay():
-    # 2026-09-07 is Monday; New York is UTC-4.
-    assert not auto_live_window(datetime(2026, 9, 7, 4, 4, tzinfo=UTC))
+def test_auto_live_window_uses_sunday_new_york_reopen():
+    # 2026-09-06 Sunday: New York is UTC-4; 17:05 ET = Monday 04:05 Vietnam.
+    assert not auto_live_window(datetime(2026, 9, 6, 21, 4, tzinfo=UTC))
+    assert auto_live_window(datetime(2026, 9, 6, 21, 5, tzinfo=UTC))
     assert auto_live_window(datetime(2026, 9, 7, 4, 5, tzinfo=UTC))
     assert auto_live_window(datetime(2026, 9, 11, 19, 59, tzinfo=UTC))
     assert not auto_live_window(datetime(2026, 9, 11, 20, 0, tzinfo=UTC))
@@ -27,6 +28,8 @@ def test_auto_live_window_uses_new_york_time_and_monday_delay():
 
 
 def test_auto_week_expiry_is_friday_1600_new_york():
+    sunday_expiry = auto_week_expiry(datetime(2026, 9, 6, 21, 5, tzinfo=UTC))
+    assert sunday_expiry == datetime(2026, 9, 11, 20, 0, tzinfo=UTC)
     expiry = auto_week_expiry(datetime(2026, 9, 8, 12, 0, tzinfo=UTC))
     assert expiry == datetime(2026, 9, 11, 20, 0, tzinfo=UTC)
 

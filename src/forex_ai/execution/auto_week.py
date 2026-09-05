@@ -17,7 +17,9 @@ UTC = timezone.utc
 NEW_YORK = ZoneInfo("America/New_York")
 MONDAY = 0
 FRIDAY = 4
-AUTO_START = time(0, 5)
+SATURDAY = 5
+SUNDAY = 6
+AUTO_START = time(17, 5)
 ENTRY_CUTOFF = time(16, 0)
 AUTO_REASON_PREFIXES = ("AUTO_WEEK_ARM:", "AUTO_WEEKEND_DISARM", "AUTO_PREFLIGHT_BLOCKED:")
 AUTO_RECOVERABLE_REASONS = ("UNINITIALIZED", "AUTO_WEEKEND_DISARM")
@@ -51,9 +53,9 @@ def auto_live_window(now_utc: datetime) -> bool:
     local = now_utc.astimezone(NEW_YORK)
     weekday = local.weekday()
     clock = local.time().replace(tzinfo=None)
-    if weekday == MONDAY:
+    if weekday == SUNDAY:
         return clock >= AUTO_START
-    if MONDAY < weekday < FRIDAY:
+    if MONDAY <= weekday < FRIDAY:
         return True
     if weekday == FRIDAY:
         return clock < ENTRY_CUTOFF
@@ -64,9 +66,13 @@ def auto_week_expiry(now_utc: datetime) -> datetime:
     if now_utc.tzinfo is None:
         raise ValueError("now_utc must be timezone-aware")
     local = now_utc.astimezone(NEW_YORK)
-    if local.weekday() > FRIDAY:
+    weekday = local.weekday()
+    if weekday == SATURDAY:
         raise ValueError("auto_week_expiry requires an active trading week")
-    friday_date = local.date() + timedelta(days=FRIDAY - local.weekday())
+    if weekday == SUNDAY:
+        friday_date = local.date() + timedelta(days=5)
+    else:
+        friday_date = local.date() + timedelta(days=FRIDAY - weekday)
     local_expiry = datetime.combine(friday_date, ENTRY_CUTOFF, tzinfo=NEW_YORK)
     return local_expiry.astimezone(UTC)
 
