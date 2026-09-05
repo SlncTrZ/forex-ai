@@ -83,6 +83,24 @@ fi
 test -s "$SRC/requirements.lock" || { echo "Missing requirements.lock" >&2; exit 13; }
 
 "$TEST_PYTHON" -m pytest "$SRC/tests" -q
+LIVE_APPROVAL="$SRC/config/live-prospective-approval.json"
+if [ -f "$LIVE_APPROVAL" ]; then
+  FOREX_AI_CONFIG_DIR="$SRC/config" PYTHONPATH="$SRC/src" "$TEST_PYTHON" - "$LIVE_APPROVAL" <<'PY'
+import sys
+from pathlib import Path
+from forex_ai.execution.auto_week import AutoWeekApproval
+from forex_ai.strategy.config import bundled_strategy_snapshot
+approval = AutoWeekApproval.load(Path(sys.argv[1]))
+snapshot = bundled_strategy_snapshot()
+if not approval.strategy_approval.approved:
+    raise SystemExit("live prospective approval is not approved")
+if approval.strategy_approval.strategy_config_fingerprint != snapshot.production_fingerprint:
+    raise SystemExit(
+        "live prospective approval fingerprint mismatch: "
+        f"approval={approval.strategy_approval.strategy_config_fingerprint} active={snapshot.production_fingerprint}"
+    )
+PY
+fi
 PREFLIGHT_DB="$(mktemp --suffix=.db)"
 MANIFEST_TMP="$(mktemp --suffix=.json)"
 cleanup() { rm -f "$PREFLIGHT_DB" "$MANIFEST_TMP"; }
@@ -99,7 +117,12 @@ MARKET_CONTEXT_CONFIG="${FOREX_AI_MARKET_CONTEXT_CONFIG:-$HOME_DIR/.config/forex
 RELEASE_DIR="$RELEASES/$RELEASE_ID"
 STAGING="$RELEASES/.staging-$RELEASE_ID-$$"
 mkdir -p "$RELEASES" "$BACKTEST_ROOT/data" "$(dirname "$STRATEGY_CONFIG")" "$(dirname "$MARKET_CONTEXT_CONFIG")"
-if [ ! -f "$STRATEGY_CONFIG" ]; then
+if [ -f "$LIVE_APPROVAL" ]; then
+  STRATEGY_TMP="${STRATEGY_CONFIG}.approved.$$"
+  cp "$SRC/config/strategy.yaml" "$STRATEGY_TMP"
+  chmod 0644 "$STRATEGY_TMP"
+  mv -f "$STRATEGY_TMP" "$STRATEGY_CONFIG"
+elif [ ! -f "$STRATEGY_CONFIG" ]; then
   cp "$SRC/config/strategy.yaml" "$STRATEGY_CONFIG"
 fi
 if [ ! -f "$MARKET_CONTEXT_CONFIG" ]; then
@@ -137,6 +160,29 @@ ln -sfn "$RELEASE_DIR" "$RUNTIME_ROOT/current.new"
 mv -Tf "$RUNTIME_ROOT/current.new" "$RUNTIME_ROOT/current"
 
 audit_release "RELEASE_START" "$RELEASE_DIR"
+
+if [ -f "$LIVE_APPROVAL" ]; then
+  USER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  USER_BUS="$USER_RUNTIME_DIR/bus"
+  test -S "$USER_BUS" || { echo "Refusing live-approved deploy: user systemd bus unavailable at $USER_BUS" >&2; exit 15; }
+  export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$USER_BUS}"
+  USER_UNIT_DIR="$HOME_DIR/.config/systemd/user"
+  mkdir -p "$USER_UNIT_DIR"
+  for unit in \
+    forex-ai-auto-live-week.service forex-ai-auto-live-week.timer \
+    forex-ai-execute-pending.service forex-ai-execute-pending.timer \
+    forex-ai-weekend-close.service forex-ai-weekend-close.timer; do
+    cp "$RELEASE_DIR/deploy/$unit" "$USER_UNIT_DIR/$unit"
+    chmod 0644 "$USER_UNIT_DIR/$unit"
+  done
+  systemctl --user daemon-reload
+  systemctl --user enable --now \
+    forex-ai-auto-live-week.timer \
+    forex-ai-execute-pending.timer \
+    forex-ai-weekend-close.timer
+  systemctl --user start forex-ai-auto-live-week.service
+fi
 
 mapfile -t OLD_RELEASES < <(find "$RELEASES" -mindepth 1 -maxdepth 1 -type d ! -name '.staging-*' -printf '%T@ %p\n' | sort -nr | tail -n +$((KEEP_RELEASES + 1)) | cut -d' ' -f2-)
 for old in "${OLD_RELEASES[@]:-}"; do

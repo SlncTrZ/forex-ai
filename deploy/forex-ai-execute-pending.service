@@ -3,8 +3,11 @@ Description=Forex-AI guarded execution runner
 After=network-online.target docker.service forex-ai-observe.service
 
 [Service]
-Environment=FOREX_AI_MODE=LIVE_CANARY
 Type=oneshot
 EnvironmentFile=-%h/.config/forex-ai/execution.env
+Environment=FOREX_AI_MODE=LIVE_CANARY
+Environment=FOREX_AI_EXECUTION_ENABLED=true
+Environment=FOREX_AI_CONFIG_DIR=%h/apps/forex-ai/current/config
+Environment=FOREX_AI_STRATEGY_APPROVAL_FILE=%h/apps/forex-ai/current/config/live-prospective-approval.json
 ExecStartPre=/bin/sh -lc '/usr/bin/docker inspect --format={{.State.Running}} forex-mt5 | /usr/bin/grep -qx true'
 ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/execute_pending.py

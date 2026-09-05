@@ -1,0 +1,45 @@
+{
+  "schema": "forex-ai-live-prospective-approval-v1",
+  "approved": true,
+  "strategy_version": "2026-W37-prospective-multi-v1",
+  "strategy_config_fingerprint": "2803ead52108f0e3dbb12405384b9c01be1bca58cd554554ee6cb7971d01aa8b",
+  "evidence_fingerprint": "227ea1c128a7816bb228b6c866d0e52276f40a78e5af23ca0cdc9ff5a8d79067",
+  "approved_at_utc": "2026-09-05T10:46:30+00:00",
+  "symbols": ["XAUUSD"],
+  "risk_profile": {
+    "max_risk_per_trade_pct": "1",
+    "max_total_open_risk_pct": "1",
+    "daily_loss_limit_pct": "3",
+    "weekly_loss_limit_pct": "5",
+    "max_active_orders": 1,
+    "max_correlated_risk_pct": "1",
+    "max_drawdown_pct": "10"
+  },
+  "auto_week": {
+    "timezone": "America/New_York",
+    "start": "MONDAY 00:05",
+    "entry_cutoff": "FRIDAY 16:00",
+    "force_close": "FRIDAY 16:30"
+  },
+  "strategies": {
+    "inside_bar_momentum_breakout_v1": {
+      "stop_buffer_atr": 0.10,
+      "target_r": 1.75,
+      "expiry_minutes": 360
+    },
+    "breakout_retest_v1": {
+      "stop_buffer_atr": 0.50,
+      "target_r": 1.50,
+      "expiry_minutes": 360
+    },
+    "trend_pullback_v1": {
+      "ema_fast": 20,
+      "ema_slow": 50,
+      "pullback_atr": 0.60,
+      "volatility_buffer_atr": 0.40,
+      "structure_lookback_bars": 5,
+      "target_r": 2.0,
+      "expiry_minutes": 45
+    }
+  }
+}

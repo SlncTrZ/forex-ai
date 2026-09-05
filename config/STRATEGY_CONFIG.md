@@ -6,7 +6,7 @@
 
 or the path specified by `FOREX_AI_STRATEGY_CONFIG`.
 
-Deployment seeds the persistent file only when it does not exist. Subsequent deploys never overwrite the active strategy configuration.
+Deployment normally preserves the persistent strategy file. When `config/live-prospective-approval.json` is present and its approved production fingerprint exactly matches the repository strategy snapshot, deployment atomically syncs the approved `config/strategy.yaml` into the persistent runtime file. A fingerprint mismatch aborts deployment instead of silently changing live strategy parameters.
 
 ## Hot reload semantics
 
@@ -60,7 +60,9 @@ The repository template currently freezes three XAUUSD strategies for the next p
 
 `volatility_breakout_v1` remains available in the platform but is disabled in the prospective production set.
 
-The live deployment profile is XAUUSD-only and remains fail-closed: `execution_enabled: false` in the repository, `1%` maximum risk per trade, one active order, `1%` total/correlated open risk, plus the existing daily/weekly/drawdown gates. Enabling real execution and creating a matching LIVE_CANARY approval are separate Monday operations.
+The live deployment profile is XAUUSD-only and remains fail-closed at rest: `execution_enabled: false` in the repository, `1%` maximum risk per trade, one active order, `1%` total/correlated open risk, plus the existing daily/weekly/drawdown gates. Real execution is enabled only inside the dedicated LIVE_CANARY systemd units and still requires the approved fingerprint, account binding, real-account mode, healthy runtime state, and an armed trading-control state.
+
+`forex-ai-auto-live-week.timer` continuously enforces the weekly state machine rather than relying on a manual Monday action. It auto-arms from Monday 00:05 ET through Friday 16:00 ET when every preflight check passes, restores the arm after a safe reboot or transient preflight failure, and disarms outside that window. Manual kill-switch and maintenance states always override automation and are never cleared automatically.
 
 M5 is now part of the production market snapshot because the Inside Bar and Breakout Retest strategies make M5 decisions. Same-scan tie-break priority is deterministic: Inside Bar, then Breakout Retest, then Trend Pullback. Once one candidate is approved, it is represented as an in-scan pending exposure so later candidates are risk-rejected and journaled instead of creating duplicate XAU exposure.
 

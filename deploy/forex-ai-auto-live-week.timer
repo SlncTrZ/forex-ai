@@ -1,0 +1,12 @@
+[Unit]
+Description=Continuously enforce Forex-AI automatic prospective live-week state
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=forex-ai-auto-live-week.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target
