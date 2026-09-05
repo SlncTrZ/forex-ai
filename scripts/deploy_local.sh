@@ -101,6 +101,7 @@ mkdir -p "$RELEASES" "$BACKTEST_ROOT/data" "$(dirname "$STRATEGY_CONFIG")"
 if [ ! -f "$STRATEGY_CONFIG" ]; then
   cp "$SRC/config/strategy.yaml" "$STRATEGY_CONFIG"
 fi
+chmod 0644 "$STRATEGY_CONFIG"
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
 
