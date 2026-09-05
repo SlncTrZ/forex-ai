@@ -13,6 +13,7 @@ from forex_ai.journal.db import initialize, log_audit_event, session
 from forex_ai.market.context_config import load_market_context_snapshot
 from forex_ai.mt5.client import MT5Client
 from forex_ai.risk.account_guard import AccountBindingError, assert_account_matches
+from forex_ai.runtime.market_schedule import new_entries_allowed
 from forex_ai.runtime.ops import assess_runtime_health
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
 from forex_ai.runtime.risk_context import build_risk_context
@@ -79,6 +80,7 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
             raise RuntimeError("order_calc_margin returned None")
         return D(str(value))
 
+    entry_window_open = new_entries_allowed(now)
     decisions = orchestrator.scan(
         market,
         account=broker.account,
@@ -89,6 +91,8 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
         calc_profit=calc_profit,
         calc_margin=calc_margin,
         now_utc=now,
+        deterministic_gate_ok=entry_window_open,
+        deterministic_gate_reason="WEEKEND_ENTRY_CUTOFF",
     )
 
     latest_closed_m15 = market.timeframes["M15"].closed_bars[-1].time_utc

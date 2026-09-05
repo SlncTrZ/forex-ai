@@ -48,3 +48,22 @@ LIVE_CANARY approval is also bound to the aggregate production-strategy fingerpr
 Strategy evaluator code contains algorithm logic only. Tactical values such as EMA periods, ATR periods, range lookbacks, expansion thresholds, efficiency thresholds, target R, expiry and structure lookbacks are loaded from YAML and validated before use.
 
 The scanner derives its MT5 history requirement from active parameters. For example, changing a slow EMA from 50 to 100 automatically increases requested raw history rather than requiring a source-code change.
+
+
+## 2026-W37 prospective freeze
+
+The repository template currently freezes three XAUUSD strategies for the next prospective observation window:
+
+- `inside_bar_momentum_breakout_v1`: M5, stop buffer `0.10 ATR`, target `1.75R`, expiry `360m`;
+- `breakout_retest_v1`: M5, stop buffer `0.50 ATR`, target `1.50R`, expiry `360m`;
+- `trend_pullback_v1`: EMA `20/50`, pullback `0.60 ATR`, stop buffer `0.40 ATR`, structure lookback `5`, target `2.0R`, expiry `45m`.
+
+`volatility_breakout_v1` remains available in the platform but is disabled in the prospective production set.
+
+The live deployment profile is XAUUSD-only and remains fail-closed: `execution_enabled: false` in the repository, `1%` maximum risk per trade, one active order, `1%` total/correlated open risk, plus the existing daily/weekly/drawdown gates. Enabling real execution and creating a matching LIVE_CANARY approval are separate Monday operations.
+
+M5 is now part of the production market snapshot because the Inside Bar and Breakout Retest strategies make M5 decisions. Same-scan tie-break priority is deterministic: Inside Bar, then Breakout Retest, then Trend Pullback. Once one candidate is approved, it is represented as an in-scan pending exposure so later candidates are risk-rejected and journaled instead of creating duplicate XAU exposure.
+
+Friday schedule guard uses `America/New_York` to remain DST-aware: new entries stop at 16:00 ET and managed Forex-AI positions are eligible for guarded forced close from 16:30 ET. External/manual broker positions are never closed by that path.
+
+Research remains separate from this freeze. `config/scalping-strategies.yaml`, `backtest/run_scalping_experiment.py`, and `backtest/run_trend_pullback_sweetspot.py` can continue to test the three families, but research parameter changes do not mutate the prospective production YAML automatically.

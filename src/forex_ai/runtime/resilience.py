@@ -271,14 +271,14 @@ class MT5ResyncCoordinator:
 
         constants = self.client.constants()
         required_constants = {
-            "M15", "H1", "H4", "POSITION_TYPE_BUY", "POSITION_TYPE_SELL",
+            "M5", "M15", "H1", "H4", "POSITION_TYPE_BUY", "POSITION_TYPE_SELL",
             "SYMBOL_TRADE_MODE_DISABLED", "SYMBOL_ORDER_MARKET",
         }
         missing_constants = sorted(required_constants - constants.keys())
         if missing_constants:
             raise SyncError(f"MISSING_MT5_CONSTANTS:{','.join(missing_constants)}")
 
-        timeframe_seconds = {"M15": 900, "H1": 3600, "H4": 14400}
+        timeframe_seconds = {"M5": 300, "M15": 900, "H1": 3600, "H4": 14400}
         refresh_bars = (
             not self._timeframes
             or self._last_bars_refresh_utc is None
@@ -341,7 +341,7 @@ class MT5ResyncCoordinator:
         if refresh_bars and hasattr(self.client, "scan_universe_bundle"):
             universe_bundle = self.client.scan_universe_bundle(
                 tuple(mapping.values()),
-                {name: constants[name] for name in ("M15", "H1", "H4")},
+                {name: constants[name] for name in ("M5", "M15", "H1", "H4")},
                 self.bars_count,
             )
             if hasattr(self.client, "ticks_bundle"):
@@ -359,7 +359,7 @@ class MT5ResyncCoordinator:
             if bundled is None and refresh_bars and hasattr(self.client, "scan_bundle"):
                 bundled = self.client.scan_bundle(
                     actual,
-                    {name: constants[name] for name in ("M15", "H1", "H4")},
+                    {name: constants[name] for name in ("M5", "M15", "H1", "H4")},
                     self.bars_count,
                 )
             raw_tick = bundled.get("tick") if bundled is not None else self.client.tick(actual)
@@ -389,7 +389,7 @@ class MT5ResyncCoordinator:
             if refresh_bars or base not in self._timeframes:
                 timeframes = {}
                 bundled_bars = (bundled or {}).get("bars") or {}
-                for name in ("H4", "H1", "M15"):
+                for name in ("H4", "H1", "M15", "M5"):
                     rows = bundled_bars.get(name) if bundled is not None else self.client.bars(actual, constants[name], self.bars_count)
                     rows = rows or []
                     if len(rows) < 51:

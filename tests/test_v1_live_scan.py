@@ -25,11 +25,15 @@ def test_live_market_excludes_current_forming_bar():
         assert market.timeframes[name].current_bar.time_utc == datetime.fromtimestamp(rows[-1]["time"],UTC)
 
 
-def test_v1_scan_returns_both_strategy_verdicts_with_reason_payload():
+def test_v1_scan_returns_frozen_prospective_strategy_verdicts_with_reason_payload():
     bars={"M5":_rows(300,80),"M15":_rows(900,80),"H1":_rows(3600,80),"H4":_rows(14400,80)}
     market=build_market_from_mt5_rows(symbol="EURUSDc",tick_raw={"bid":1.2,"ask":1.2001,"time_msc":int((START+timedelta(days=20)).timestamp()*1000)},bars_by_timeframe=bars,captured_at_utc=START+timedelta(days=20))
     results=evaluate_v1_market(market,now_utc=START+timedelta(days=20))
-    assert {r.strategy_id for r in results}=={"trend_pullback_v1","volatility_breakout_v1"}
+    assert {r.strategy_id for r in results}=={
+        "inside_bar_momentum_breakout_v1",
+        "breakout_retest_v1",
+        "trend_pullback_v1",
+    }
     for row in results:
         payload=scan_result_payload(row)
         assert payload["strategy_id"]==row.strategy_id

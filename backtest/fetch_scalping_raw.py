@@ -18,7 +18,7 @@ from fetch_scalping_dataset import (
     _utc_midnight,
     default_output_root,
 )
-from forex_ai.config import ALLOWED_TRADING_SYMBOLS, load_runtime_config
+from forex_ai.config import load_runtime_config
 from forex_ai.market.context_config import load_market_context_snapshot
 from forex_ai.mt5.client import MT5Client
 from forex_ai.mt5.symbols import resolve_symbol_strict
@@ -79,7 +79,7 @@ def _validate_final_range(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch one raw symbol/timeframe slice using resumable historical segments.")
-    parser.add_argument("--symbol", required=True, choices=ALLOWED_TRADING_SYMBOLS)
+    parser.add_argument("--symbol", required=True)
     parser.add_argument("--timeframe", required=True, choices=ALL_TIMEFRAMES)
     parser.add_argument("--week-start", default=DEFAULT_START.isoformat())
     parser.add_argument("--weeks", type=int, default=DEFAULT_WEEKS)
@@ -89,6 +89,8 @@ def main() -> int:
     parser.add_argument("--overwrite", action="store_true", help="Refetch segment checkpoints and replace final raw file.")
     args = parser.parse_args()
 
+    if not args.symbol or len(args.symbol) > 64 or any(ch.isspace() for ch in args.symbol):
+        raise ValueError(f"Invalid symbol: {args.symbol!r}")
     start_day = date.fromisoformat(args.week_start)
     if start_day.weekday() != 0:
         raise ValueError("week-start must be a Monday")

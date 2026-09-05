@@ -15,7 +15,12 @@ from forex_ai.config import PROJECT_ROOT
 from forex_ai.strategy.v1.contracts import StrategyConfig, StrategyVersion, fingerprint
 
 SCHEMA_VERSION = 1
-PRODUCTION_STRATEGY_IDS = ("trend_pullback_v1", "volatility_breakout_v1")
+PRODUCTION_STRATEGY_IDS = (
+    "inside_bar_momentum_breakout_v1",
+    "breakout_retest_v1",
+    "trend_pullback_v1",
+    "volatility_breakout_v1",
+)
 EXPLORATION_STRATEGY_IDS = ("exploration_trend_v1", "exploration_breakout_v1")
 ALL_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS + EXPLORATION_STRATEGY_IDS
 
@@ -39,6 +44,43 @@ class TrendParameters(_StrictModel):
     def _ema_order(self) -> "TrendParameters":
         if self.ema_fast >= self.ema_slow:
             raise ValueError("ema_fast must be smaller than ema_slow")
+        return self
+
+
+class InsideBarMomentumParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    atr_period: int = Field(ge=2)
+    mother_min_range_atr: float = Field(ge=0)
+    mother_min_body_ratio: float = Field(ge=0, le=1)
+    require_mother_direction: bool = True
+    breakout_buffer_atr: float = Field(ge=0)
+    stop_buffer_atr: float = Field(ge=0)
+    target_r: float = Field(gt=0)
+    expiry_minutes: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _timeframe(self) -> "InsideBarMomentumParameters":
+        if self.decision_timeframe != "M5":
+            raise ValueError("inside_bar_momentum_breakout_v1 decision_timeframe must be M5")
+        return self
+
+
+class BreakoutRetestParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    range_bars: int = Field(ge=2)
+    atr_period: int = Field(ge=2)
+    breakout_search_bars: int = Field(ge=2)
+    min_breakout_close_atr: float = Field(ge=0)
+    retest_tolerance_atr: float = Field(ge=0)
+    confirmation_buffer_atr: float = Field(ge=0)
+    stop_buffer_atr: float = Field(ge=0)
+    target_r: float = Field(gt=0)
+    expiry_minutes: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _timeframe(self) -> "BreakoutRetestParameters":
+        if self.decision_timeframe != "M5":
+            raise ValueError("breakout_retest_v1 decision_timeframe must be M5")
         return self
 
 
@@ -82,6 +124,8 @@ class BreakoutParameters(_StrictModel):
 
 
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
+    "inside_bar_momentum_breakout_v1": InsideBarMomentumParameters,
+    "breakout_retest_v1": BreakoutRetestParameters,
     "trend_pullback_v1": TrendParameters,
     "volatility_breakout_v1": BreakoutParameters,
     "exploration_trend_v1": ExplorationTrendParameters,
@@ -277,6 +321,14 @@ def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: b
                 int(p["ema_slow"]),
                 int(p["atr_period"]) + 1,
                 int(p["structure_lookback_bars"]) + 1,
+            )
+        elif strategy_id == "inside_bar_momentum_breakout_v1":
+            required = max(required, int(p["atr_period"]) + 1, 3)
+        elif strategy_id == "breakout_retest_v1":
+            required = max(
+                required,
+                int(p["range_bars"]) + int(p["breakout_search_bars"]) + 2,
+                int(p["atr_period"]) + 2,
             )
         else:
             required = max(

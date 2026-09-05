@@ -34,7 +34,11 @@ def test_bundled_strategy_config_is_valid_and_production_fingerprint_is_stable()
     assert len(a.production_fingerprint) == 64
     assert a.config_for("trend_pullback_v1").parameters["ema_fast"] == 20
     assert a.config_for("trend_pullback_v1").parameters["ema_slow"] == 50
-    assert required_raw_bars(a) == 52
+    assert a.config_for("trend_pullback_v1").parameters["pullback_atr"] == 0.60
+    assert a.config_for("inside_bar_momentum_breakout_v1").parameters["target_r"] == 1.75
+    assert a.config_for("breakout_retest_v1").parameters["stop_buffer_atr"] == 0.50
+    assert not a.enabled("volatility_breakout_v1")
+    assert required_raw_bars(a) == 51
 
 
 def test_hot_reload_changes_config_fingerprint_without_changing_strategy_version(tmp_path, monkeypatch):

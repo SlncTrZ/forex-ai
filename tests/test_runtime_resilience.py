@@ -65,7 +65,7 @@ class FakeMT5:
 
     def bars(self, symbol, timeframe, count=100):
         self.bar_calls += 1
-        seconds = {15: 900, 60: 3600, 240: 14400}[timeframe]
+        seconds = {5: 300, 15: 900, 60: 3600, 240: 14400}[timeframe]
         start = NOW - timedelta(seconds=seconds * 60)
         rows = []
         for i in range(60):
@@ -96,7 +96,7 @@ class FakeMT5:
 
     def constants(self):
         return {
-            "M15": 15, "H1": 60, "H4": 240,
+            "M5": 5, "M15": 15, "H1": 60, "H4": 240,
             "POSITION_TYPE_BUY": 0, "POSITION_TYPE_SELL": 1,
             "SYMBOL_TRADE_MODE_DISABLED": 0, "SYMBOL_ORDER_MARKET": 1,
         }
@@ -126,7 +126,7 @@ def test_full_sync_is_healthy_and_can_repeat_from_healthy_state(tmp_path):
     assert first.symbol_mapping == {"EURUSD": "EURUSD.a"}
     assert len(first.markets["EURUSD"].timeframes["M15"].closed_bars) == 59
     assert fake.symbol_calls == 1
-    assert fake.bar_calls == 3
+    assert fake.bar_calls == 4
     assert fake.history_order_calls == 1
     assert fake.history_deal_calls == 1
     with session(db) as con:

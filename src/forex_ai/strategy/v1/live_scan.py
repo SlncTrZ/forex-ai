@@ -5,9 +5,12 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from forex_ai.integration.adapters import market_snapshot, tick_snapshot, timeframe_snapshot
+from forex_ai.strategy.config import bundled_strategy_snapshot
+from forex_ai.strategy.v1.breakout_retest import evaluate as evaluate_breakout_retest
 from forex_ai.strategy.v1.contracts import StrategyResult
-from forex_ai.strategy.v1.trend_pullback import DEFAULT_CONFIG as PULLBACK_CONFIG, evaluate as evaluate_pullback
-from forex_ai.strategy.v1.volatility_breakout import DEFAULT_CONFIG as BREAKOUT_CONFIG, evaluate as evaluate_breakout
+from forex_ai.strategy.v1.inside_bar_momentum_breakout import evaluate as evaluate_inside_bar
+from forex_ai.strategy.v1.trend_pullback import evaluate as evaluate_pullback
+from forex_ai.strategy.v1.volatility_breakout import evaluate as evaluate_breakout
 
 UTC = timezone.utc
 
@@ -46,12 +49,18 @@ def build_market_from_mt5_rows(
 
 def evaluate_v1_market(market, *, now_utc: datetime) -> tuple[V1ScanResult, ...]:
     now = now_utc.astimezone(UTC)
+    snapshot = bundled_strategy_snapshot()
     rows = (
-        (evaluate_pullback, PULLBACK_CONFIG),
-        (evaluate_breakout, BREAKOUT_CONFIG),
+        ("inside_bar_momentum_breakout_v1", evaluate_inside_bar),
+        ("breakout_retest_v1", evaluate_breakout_retest),
+        ("trend_pullback_v1", evaluate_pullback),
+        ("volatility_breakout_v1", evaluate_breakout),
     )
     out: list[V1ScanResult] = []
-    for evaluate, config in rows:
+    for strategy_id, evaluate in rows:
+        if not snapshot.enabled(strategy_id):
+            continue
+        config = snapshot.config_for(strategy_id)
         result = evaluate(market, config, now)
         out.append(V1ScanResult(config.version.strategy_id, config.version.version, result))
     return tuple(out)

@@ -1,0 +1,78 @@
+schema_version: 1
+
+harness:
+  horizons_minutes: [15, 30, 45, 60, 90, 120]
+  intrabar_policy: stop_first
+  max_market_gap_minutes: 30
+  h1_ema_fast: 9
+  h1_ema_slow: 21
+  sr_feature_atr_period: 14
+  regime_timeframe: M15
+  regime_ema_fast: 9
+  regime_ema_slow: 21
+  regime_atr_period: 14
+  regime_adx_period: 14
+  regime_min_adx: 20
+  regime_min_separation_atr: 0.10
+  regime_slope_lookback_bars: 3
+  regime_min_slow_slope_atr: 0.02
+
+strategies:
+  inside_bar_momentum_breakout_v1:
+    enabled: true
+    version: "1.0.0"
+    parameters:
+      decision_timeframe: M5
+      atr_period: 14
+      mother_min_range_atr: 0.90
+      mother_min_body_ratio: 0.55
+      require_mother_direction: true
+      breakout_buffer_atr: 0.00
+      stop_buffer_atr: 0.10
+      target_r: 1.75
+      expiry_minutes: 360
+
+  ema_cross_scalp_v1:
+    enabled: true
+    version: "1.1.0"
+    parameters:
+      decision_timeframe: M5
+      ema_trigger: 5
+      ema_signal: 9
+      ema_trend: 21
+      atr_period: 14
+      stop_lookback_bars: 1
+      stop_buffer_atr: 0.10
+      target_r: 1.50
+      expiry_minutes: 360
+
+  breakout_retest_v1:
+    enabled: true
+    version: "1.0.0"
+    parameters:
+      decision_timeframe: M5
+      range_bars: 20
+      atr_period: 14
+      breakout_search_bars: 6
+      min_breakout_close_atr: 0.05
+      retest_tolerance_atr: 0.20
+      confirmation_buffer_atr: 0.00
+      stop_buffer_atr: 0.50
+      target_r: 1.50
+      expiry_minutes: 360
+
+  pinbar_reversal_v1:
+    enabled: true
+    version: "1.0.0"
+    parameters:
+      decision_timeframe: M5
+      atr_period: 14
+      min_range_atr: 0.50
+      max_body_ratio: 0.35
+      min_primary_wick_ratio: 0.55
+      max_opposite_wick_ratio: 0.25
+      min_close_extreme_ratio: 0.65
+      max_sr_distance_atr: 1.50
+      stop_buffer_atr: 0.10
+      target_r: 1.50
+      expiry_minutes: 360

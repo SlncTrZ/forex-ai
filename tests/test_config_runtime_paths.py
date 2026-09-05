@@ -27,11 +27,20 @@ def test_config_dir_env_overrides_installed_package_location(tmp_path, monkeypat
     assert config.load_llm_config()["model"] == "test-model"
 
 
-def test_runtime_rejects_retired_symbol(tmp_path, monkeypatch):
+def test_runtime_accepts_user_configured_symbol_without_platform_allowlist(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     (config_dir / "app.yaml").write_text("mode: OBSERVE\nsymbols: [GBPUSD]\n", encoding="utf-8")
     monkeypatch.setenv("FOREX_AI_CONFIG_DIR", str(config_dir))
+    runtime = config.load_runtime_config()
+    assert runtime.symbols == ("GBPUSD",)
+
+
+def test_runtime_rejects_malformed_symbol(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "app.yaml").write_text("mode: OBSERVE\nsymbols: ['BAD SYMBOL']\n", encoding="utf-8")
+    monkeypatch.setenv("FOREX_AI_CONFIG_DIR", str(config_dir))
     import pytest
-    with pytest.raises(ValueError, match="Unsupported trading symbols"):
+    with pytest.raises(ValueError, match="Invalid trading symbols"):
         config.load_runtime_config()

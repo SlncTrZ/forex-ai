@@ -10,7 +10,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from forex_ai.config import ALLOWED_TRADING_SYMBOLS, load_runtime_config
+from forex_ai.config import load_runtime_config
 from forex_ai.market.context_config import load_market_context_snapshot
 from forex_ai.market.structure import build_higher_timeframe_structure
 from forex_ai.mt5.client import MT5Client
@@ -237,9 +237,9 @@ def main() -> int:
 
     if args.weeks <= 0 or args.history_bars < 50:
         raise ValueError("invalid scalping dataset arguments")
-    unsupported = tuple(symbol for symbol in args.symbols if symbol not in ALLOWED_TRADING_SYMBOLS)
-    if unsupported:
-        raise ValueError(f"Unsupported backtest symbols: {unsupported}; allowed={ALLOWED_TRADING_SYMBOLS}")
+    invalid_symbols = tuple(symbol for symbol in args.symbols if not symbol or len(symbol) > 64 or any(ch.isspace() for ch in symbol))
+    if invalid_symbols:
+        raise ValueError(f"Invalid backtest symbols: {invalid_symbols}")
     start_day = date.fromisoformat(args.week_start)
     if start_day.weekday() != 0:
         raise ValueError("week-start must be a Monday")

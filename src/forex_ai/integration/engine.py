@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -8,11 +8,13 @@ from typing import Callable
 
 from forex_ai.advisory.models import Advisory, AdvisoryAction
 from forex_ai.mt5.contracts import AccountSnapshot, SafetySnapshot, SymbolContract, TickSnapshot
-from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine, BrokerRiskResult, MarginCalculator, ProfitCalculator, RiskContext
+from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine, BrokerRiskResult, MarginCalculator, PendingExposure, ProfitCalculator, RiskContext
 from forex_ai.risk.profile import RiskProfile
 from forex_ai.strategy.v1.contracts import MarketSnapshot, StrategyConfig, StrategyResult
 from forex_ai.config import load_fixed_lot
 from forex_ai.strategy.config import StrategyConfigSnapshot, bundled_strategy_snapshot
+from forex_ai.strategy.v1.breakout_retest import evaluate as evaluate_breakout_retest
+from forex_ai.strategy.v1.inside_bar_momentum_breakout import evaluate as evaluate_inside_bar
 from forex_ai.strategy.v1.trend_pullback import evaluate as evaluate_pullback
 from forex_ai.strategy.v1.volatility_breakout import evaluate as evaluate_breakout
 
@@ -43,6 +45,13 @@ class IntegratedDecision:
 
 def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[StrategyBinding, ...]:
     bindings: list[StrategyBinding] = []
+    # Same-scan tie-break priority for the prospective XAU portfolio. This does
+    # not override time priority: an already-open broker position is still
+    # authoritative and blocks all later signals through the risk context.
+    if snapshot.enabled("inside_bar_momentum_breakout_v1"):
+        bindings.append(StrategyBinding(evaluate_inside_bar, snapshot.config_for("inside_bar_momentum_breakout_v1")))
+    if snapshot.enabled("breakout_retest_v1"):
+        bindings.append(StrategyBinding(evaluate_breakout_retest, snapshot.config_for("breakout_retest_v1")))
     if snapshot.enabled("trend_pullback_v1"):
         bindings.append(StrategyBinding(evaluate_pullback, snapshot.config_for("trend_pullback_v1")))
     if snapshot.enabled("volatility_breakout_v1"):
@@ -89,6 +98,8 @@ class DecisionOrchestrator:
         now = now_utc.astimezone(timezone.utc)
         persist_safety_snapshot(self.db_path, safety)
         decisions: list[IntegratedDecision] = []
+        rolling_context = risk_context
+        claimed_in_scan = False
 
         for binding in self.strategies:
             strategy_result = binding.evaluate(market, binding.config, now)
@@ -124,15 +135,38 @@ class DecisionOrchestrator:
                 contract=contract,
                 tick=tick,
                 safety=safety,
-                context=risk_context,
+                context=rolling_context,
                 calc_profit=calc_profit,
                 calc_margin=calc_margin,
                 now_utc=now,
             )
             fixed_lot_raw = load_fixed_lot()
             risk_result = apply_fixed_volume(risk_result, fixed_volume=Decimal(fixed_lot_raw) if fixed_lot_raw is not None else None, calc_profit=calc_profit, calc_margin=calc_margin)
+            if claimed_in_scan and not risk_result.approved:
+                risk_result = replace(
+                    risk_result,
+                    reason_codes=tuple(dict.fromkeys((*risk_result.reason_codes, "PORTFOLIO_SLOT_CLAIMED"))),
+                )
             persist_risk_result(self.db_path, risk_result, created_at_utc=now)
             decisions.append(IntegratedDecision(strategy_result, advisory, risk_result, risk_result.reason_codes))
+            if risk_result.approved:
+                rolling_context = replace(
+                    rolling_context,
+                    pending_exposures=(
+                        *rolling_context.pending_exposures,
+                        PendingExposure(
+                            intent_id=f"scan-approved:{candidate.candidate_id}",
+                            symbol=risk_result.normalized_symbol,
+                            side=risk_result.side,
+                            volume=risk_result.normalized_volume,
+                            entry=risk_result.executable_entry,
+                            stop_loss=risk_result.stop_loss,
+                            take_profit=risk_result.take_profit,
+                            correlation_group=rolling_context.proposed_correlation_group,
+                        ),
+                    ),
+                )
+                claimed_in_scan = True
 
         return tuple(decisions)
 

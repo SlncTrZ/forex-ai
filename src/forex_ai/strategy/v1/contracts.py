@@ -218,8 +218,8 @@ class StrategyResult:
 
 def build_candidate(*, snapshot: MarketSnapshot, config: StrategyConfig, side: str, entry: float, stop_loss: float,
                     take_profit: float, generated_at_utc: datetime, expires_at_utc: datetime,
-                    evidence: DecisionEvidence) -> CandidateEnvelope:
-    decision_tf = snapshot.timeframes.get("M15")
+                    evidence: DecisionEvidence, decision_timeframe: str = "M15") -> CandidateEnvelope:
+    decision_tf = snapshot.timeframes.get(decision_timeframe)
     decision_bar_time = (
         decision_tf.closed_bars[-1].time_utc
         if decision_tf is not None and decision_tf.closed_bars
@@ -229,7 +229,7 @@ def build_candidate(*, snapshot: MarketSnapshot, config: StrategyConfig, side: s
         "strategy_id": config.version.strategy_id,
         "strategy_version": config.version.version,
         "symbol": snapshot.symbol,
-        "decision_timeframe": "M15",
+        "decision_timeframe": decision_timeframe,
         "closed_decision_bar_time": decision_bar_time,
     })
     # Candidate identity is stable for one business opportunity. Volatile tick,

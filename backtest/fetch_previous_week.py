@@ -9,7 +9,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
-from forex_ai.config import ALLOWED_TRADING_SYMBOLS, load_runtime_config
+from forex_ai.config import load_runtime_config
 from forex_ai.mt5.client import MT5Client
 from forex_ai.mt5.symbols import resolve_symbol_strict
 from forex_ai.research.dataset import freeze_replay_dataset
@@ -139,9 +139,9 @@ def main() -> int:
     if args.weeks <= 0:
         raise ValueError("weeks must be positive")
 
-    unsupported = tuple(symbol for symbol in args.symbols if symbol not in ALLOWED_TRADING_SYMBOLS)
-    if unsupported:
-        raise ValueError(f"Unsupported backtest symbols: {unsupported}; allowed={ALLOWED_TRADING_SYMBOLS}")
+    invalid_symbols = tuple(symbol for symbol in args.symbols if not symbol or len(symbol) > 64 or any(ch.isspace() for ch in symbol))
+    if invalid_symbols:
+        raise ValueError(f"Invalid backtest symbols: {invalid_symbols}")
 
     start_day = date.fromisoformat(args.week_start) if args.week_start else default_range_start(datetime.now(UTC), args.weeks)
     if start_day.weekday() != 0:
@@ -267,10 +267,7 @@ def main() -> int:
             raise RuntimeError("SOURCE_MANIFEST_WARMUP_MISMATCH")
         if int(existing.get("history_bars", args.history_bars)) != args.history_bars:
             raise RuntimeError("SOURCE_MANIFEST_HISTORY_MISMATCH")
-        merged_symbols = {
-            key: value for key, value in dict(existing.get("symbols") or {}).items()
-            if key in ALLOWED_TRADING_SYMBOLS
-        }
+        merged_symbols = dict(existing.get("symbols") or {})
         merged_symbols.update(metadata["symbols"])
         metadata["symbols"] = merged_symbols
     metadata["created_at_utc"] = datetime.now(UTC).isoformat()

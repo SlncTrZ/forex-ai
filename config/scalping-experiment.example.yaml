@@ -1,0 +1,73 @@
+# Unified scalping experiment example.
+# Run with:
+#   PYTHONPATH=src python -B backtest/run_scalping_experiment.py \
+#     --experiment config/scalping-experiment.example.yaml
+
+name: xau_inside_bar_tp_check
+symbols: [XAUUSD]
+strategies:
+  - inside_bar_momentum_breakout_v1
+
+# Fixed overrides applied to every run.
+# Any existing key in config/scalping-strategies.yaml can be overridden.
+set:
+  strategies.inside_bar_momentum_breakout_v1.parameters.expiry_minutes: 360
+  strategies.inside_bar_momentum_breakout_v1.parameters.stop_buffer_atr: 0.10
+
+# Matrix overrides create a Cartesian product.
+# Keep experiments intentionally small; the runner caps the matrix at 64 runs.
+matrix:
+  strategies.inside_bar_momentum_breakout_v1.parameters.target_r: [1.25, 1.50, 1.75]
+
+# Other useful paths you can move into `set` or `matrix`:
+#
+# Harness / regime audit:
+#   harness.intrabar_policy
+#   harness.max_market_gap_minutes
+#   harness.regime_timeframe
+#   harness.regime_ema_fast
+#   harness.regime_ema_slow
+#   harness.regime_min_adx
+#   harness.regime_min_separation_atr
+#   harness.regime_slope_lookback_bars
+#   harness.regime_min_slow_slope_atr
+#
+# Inside Bar:
+#   strategies.inside_bar_momentum_breakout_v1.parameters.atr_period
+#   strategies.inside_bar_momentum_breakout_v1.parameters.mother_min_range_atr
+#   strategies.inside_bar_momentum_breakout_v1.parameters.mother_min_body_ratio
+#   strategies.inside_bar_momentum_breakout_v1.parameters.require_mother_direction
+#   strategies.inside_bar_momentum_breakout_v1.parameters.breakout_buffer_atr
+#   strategies.inside_bar_momentum_breakout_v1.parameters.stop_buffer_atr
+#   strategies.inside_bar_momentum_breakout_v1.parameters.target_r
+#   strategies.inside_bar_momentum_breakout_v1.parameters.expiry_minutes
+#
+# EMA 5/9/21:
+#   strategies.ema_cross_scalp_v1.parameters.ema_trigger
+#   strategies.ema_cross_scalp_v1.parameters.ema_signal
+#   strategies.ema_cross_scalp_v1.parameters.ema_trend
+#   strategies.ema_cross_scalp_v1.parameters.stop_lookback_bars
+#   strategies.ema_cross_scalp_v1.parameters.stop_buffer_atr
+#   strategies.ema_cross_scalp_v1.parameters.target_r
+#   strategies.ema_cross_scalp_v1.parameters.expiry_minutes
+#
+# Breakout Retest:
+#   strategies.breakout_retest_v1.parameters.range_bars
+#   strategies.breakout_retest_v1.parameters.breakout_search_bars
+#   strategies.breakout_retest_v1.parameters.min_breakout_close_atr
+#   strategies.breakout_retest_v1.parameters.retest_tolerance_atr
+#   strategies.breakout_retest_v1.parameters.confirmation_buffer_atr
+#   strategies.breakout_retest_v1.parameters.stop_buffer_atr
+#   strategies.breakout_retest_v1.parameters.target_r
+#   strategies.breakout_retest_v1.parameters.expiry_minutes
+#
+# Pinbar:
+#   strategies.pinbar_reversal_v1.parameters.min_range_atr
+#   strategies.pinbar_reversal_v1.parameters.max_body_ratio
+#   strategies.pinbar_reversal_v1.parameters.min_primary_wick_ratio
+#   strategies.pinbar_reversal_v1.parameters.max_opposite_wick_ratio
+#   strategies.pinbar_reversal_v1.parameters.min_close_extreme_ratio
+#   strategies.pinbar_reversal_v1.parameters.max_sr_distance_atr
+#   strategies.pinbar_reversal_v1.parameters.stop_buffer_atr
+#   strategies.pinbar_reversal_v1.parameters.target_r
+#   strategies.pinbar_reversal_v1.parameters.expiry_minutes

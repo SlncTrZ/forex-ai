@@ -181,6 +181,35 @@ def _approved_result():
     )
 
 
+def test_orchestrator_claims_one_same_scan_portfolio_slot(tmp_path):
+    db = tmp_path / "test.db"; initialize(db)
+    cfg_a = StrategyConfig(StrategyVersion("fixture-a", "1"), {})
+    cfg_b = StrategyConfig(StrategyVersion("fixture-b", "1"), {})
+    profile = _profile().model_copy(update={
+        "max_total_open_risk_pct": D("1"),
+        "max_active_orders": 1,
+    })
+    orchestrator = DecisionOrchestrator(
+        db_path=db,
+        risk_profile=profile,
+        strategies=(StrategyBinding(_fixture_strategy, cfg_a), StrategyBinding(_fixture_strategy, cfg_b)),
+    )
+    market = MarketSnapshot("EURUSD", NOW, int(NOW.timestamp()*1000), 1.0999, 1.1, {})
+    decisions = orchestrator.scan(
+        market, account=_account(), contract=_contract(), tick=_tick(), safety=_safety(),
+        risk_context=RiskContext(daily_reference_equity=D("10000"), weekly_reference_equity=D("10000")),
+        calc_profit=_calc_profit, calc_margin=_calc_margin, now_utc=NOW,
+    )
+    assert len(decisions) == 2
+    assert decisions[0].risk_result is not None and decisions[0].risk_result.approved
+    assert decisions[1].risk_result is not None and not decisions[1].risk_result.approved
+    assert "MAX_ACTIVE_ORDERS" in decisions[1].risk_result.reason_codes
+    assert "PORTFOLIO_SLOT_CLAIMED" in decisions[1].risk_result.reason_codes
+    with session(db) as con:
+        assert con.execute("SELECT count(*) FROM candidate_decisions").fetchone()[0] == 2
+        assert con.execute("SELECT count(*) FROM risk_decisions_v1").fetchone()[0] == 2
+
+
 def test_execution_service_requires_enabled_armed_kill_switch_clear_and_blocks_unknown(tmp_path):
     db = tmp_path / "test.db"; initialize(db)
     with pytest.raises(ExecutionDisarmed, match="execution_enabled=false"):
@@ -212,7 +241,7 @@ def test_runtime_composition_builds_disarmed_services(tmp_path):
         mt5_engine="docker",
     )
     services = build_integration_services(cfg)
-    assert services.decisions.risk_profile.max_active_orders == 3
+    assert services.decisions.risk_profile.max_active_orders == 1
     assert not services.execution.execution_enabled
     assert load_trading_control(cfg.db_path).kill_switch
 
@@ -220,7 +249,7 @@ def test_runtime_composition_builds_disarmed_services(tmp_path):
 def test_repository_risk_profile_loader_uses_explicit_profile():
     loaded = load_risk_profile()
     assert loaded.max_risk_per_trade_pct == D("1")
-    assert loaded.max_total_open_risk_pct == D("3")
+    assert loaded.max_total_open_risk_pct == D("1")
     assert loaded.daily_loss_limit_pct == D("3")
     assert loaded.weekly_loss_limit_pct == D("5")
-    assert loaded.max_active_orders == 3
+    assert loaded.max_active_orders == 1
