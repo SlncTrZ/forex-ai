@@ -25,3 +25,13 @@ def test_config_dir_env_overrides_installed_package_location(tmp_path, monkeypat
     assert runtime.symbols == ("EURUSD",)
     assert config.load_risk_config()["profile"]["max_active_orders"] == 3
     assert config.load_llm_config()["model"] == "test-model"
+
+
+def test_runtime_rejects_retired_symbol(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "app.yaml").write_text("mode: OBSERVE\nsymbols: [GBPUSD]\n", encoding="utf-8")
+    monkeypatch.setenv("FOREX_AI_CONFIG_DIR", str(config_dir))
+    import pytest
+    with pytest.raises(ValueError, match="Unsupported trading symbols"):
+        config.load_runtime_config()

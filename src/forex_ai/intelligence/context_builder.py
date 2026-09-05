@@ -33,12 +33,6 @@ MACRO_REQUIREMENTS = {
         "US and Euro-area inflation/labor/growth releases",
         "USD broad direction / DXY context",
     ],
-    "GBPUSD": [
-        "Federal Reserve vs Bank of England policy expectations",
-        "US vs UK rates/yields",
-        "US and UK inflation/labor/growth releases",
-        "USD broad direction / DXY context",
-    ],
 }
 
 SYMBOL_FIELDS = [

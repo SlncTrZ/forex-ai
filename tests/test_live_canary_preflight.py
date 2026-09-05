@@ -51,7 +51,7 @@ def test_live_canary_blocks_without_strategy_approval(tmp_path,monkeypatch):
 
 def test_live_canary_blocks_failed_strategy_and_multiple_symbols(tmp_path,monkeypatch):
     db=ready_db(tmp_path,monkeypatch)
-    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD','GBPUSD'),risk_profile=profile(),approval_path=approval(tmp_path,False),account_trade_mode=2,account_identity_bound=True,now_utc=NOW)
+    report=assess_live_canary_readiness(db_path=db,mode='LIVE_CANARY',execution_enabled=True,symbols=('EURUSD','XAUUSD'),risk_profile=profile(),approval_path=approval(tmp_path,False),account_trade_mode=2,account_identity_bound=True,now_utc=NOW)
     assert not report.ready
     assert set(report.reasons)>={'STRATEGY_NOT_APPROVED','LIVE_CANARY_REQUIRES_ONE_SYMBOL'}
 

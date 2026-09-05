@@ -12,7 +12,7 @@ PYTHONPATH=src python backtest/fetch_previous_week.py
 
 On Saturday/Sunday this selects the Monday-Friday week that just ended. On Monday-Friday it selects the previous full week. Use `--week-start YYYY-MM-DD` to choose another Monday.
 
-The default universe is `EURUSD GBPUSD XAUUSD`. Data is requested from MT5 in small chunks and includes warm-up history before Monday for M15/H1/H4 indicators.
+The permanent backtest universe is `EURUSD XAUUSD` only. Data is requested from MT5 in small chunks and includes warm-up history before Monday for M15/H1/H4 indicators.
 
 Output is written under `backtest/data/<monday>_<friday>/` and includes:
 
@@ -21,3 +21,15 @@ Output is written under `backtest/data/<monday>_<friday>/` and includes:
 - `source_manifest.json` with date boundaries, symbol mapping, row counts and hashes.
 
 Use `--overwrite` to intentionally rebuild an existing weekly dataset.
+
+## Sensitivity / setup-lifecycle analysis
+
+Run the frozen week through the V1 strategies with a one-position-per-symbol policy and a counterfactual one-trade-per-setup-cluster view:
+
+```bash
+PYTHONPATH=src python backtest/analyze_sensitivity.py \
+  --dataset-root ~/apps/forex-ai/backtest/data/2026-08-31_2026-09-04 \
+  --output ~/apps/forex-ai/backtest/data/2026-08-31_2026-09-04/sensitivity_report.json
+```
+
+The sensitivity tool is research-only and never changes live strategy parameters.

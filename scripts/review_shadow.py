@@ -18,7 +18,7 @@ from forex_ai.mt5.client import MT5Client
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one DeepSeek shadow review. No order execution.")
-    parser.add_argument("symbol", choices=["XAUUSD", "EURUSD", "GBPUSD"])
+    parser.add_argument("symbol", choices=["XAUUSD", "EURUSD"])
     parser.add_argument("--signal-id", type=int, default=None)
     parser.add_argument("--correlation-id", default=None)
     args = parser.parse_args()

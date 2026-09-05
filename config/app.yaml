@@ -2,7 +2,6 @@ mode: OBSERVE
 symbols:
   - XAUUSD
   - EURUSD
-  - GBPUSD
 runtime:
   poll_seconds: 15
   db_path: ~/.local/share/forex-ai/forex.db

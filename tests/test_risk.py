@@ -20,7 +20,7 @@ def base_config(execution_enabled=False):
     return {
         "enabled": True,
         "execution_enabled": execution_enabled,
-        "allowed_symbols": ["XAUUSD", "EURUSD", "GBPUSD"],
+        "allowed_symbols": ["XAUUSD", "EURUSD"],
         "limits": {
             "min_risk_reward": 1.5,
             "max_signal_age_seconds": 30,

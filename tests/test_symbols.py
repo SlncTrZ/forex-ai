@@ -12,4 +12,4 @@ def test_shortest_suffix_is_selected():
 
 
 def test_missing_returns_none():
-    assert resolve_symbol("GBPUSD", [{"name": "USDJPY"}]) is None
+    assert resolve_symbol("AUDUSD", [{"name": "USDJPY"}]) is None

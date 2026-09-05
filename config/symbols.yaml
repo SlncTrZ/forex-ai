@@ -7,10 +7,6 @@ symbols:
     enabled: true
     aliases: [EURUSD]
     timeframes: [M5, M15, H1, H4]
-  GBPUSD:
-    enabled: true
-    aliases: [GBPUSD]
-    timeframes: [M5, M15, H1, H4]
 
 # Actual broker symbol names are discovered after account login and should be
 # persisted separately; do not hard-code suffixes until the broker is known.

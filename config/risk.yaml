@@ -22,11 +22,8 @@ profile:
 allowed_symbols:
   - XAUUSD
   - EURUSD
-  - GBPUSD
 symbol_overrides:
   XAUUSD:
     max_spread_points: null
   EURUSD:
-    max_spread_points: null
-  GBPUSD:
     max_spread_points: null

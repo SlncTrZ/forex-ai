@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ALLOWED_TRADING_SYMBOLS = ("XAUUSD", "EURUSD")
 
 
 def _default_config_path(filename: str) -> Path:
@@ -74,9 +75,12 @@ def load_runtime_config(path: Path | None = None) -> RuntimeConfig:
     db_path = _resolve_path(os.getenv("FOREX_AI_DB_PATH", runtime.get("db_path", "~/.local/share/forex-ai/forex.db")))
     log_dir = _resolve_path(os.getenv("FOREX_AI_LOG_DIR", runtime.get("log_dir", "~/.local/state/forex-ai/logs")))
     symbols_env = os.getenv("FOREX_AI_SYMBOLS")
-    symbols = tuple(item.strip() for item in symbols_env.split(",") if item.strip()) if symbols_env else tuple(raw.get("symbols", ["XAUUSD", "EURUSD", "GBPUSD"]))
+    symbols = tuple(item.strip() for item in symbols_env.split(",") if item.strip()) if symbols_env else tuple(raw.get("symbols", list(ALLOWED_TRADING_SYMBOLS)))
     if not symbols:
         raise ValueError("At least one trading symbol is required")
+    unsupported = tuple(symbol for symbol in symbols if symbol not in ALLOWED_TRADING_SYMBOLS)
+    if unsupported:
+        raise ValueError(f"Unsupported trading symbols: {unsupported}; allowed={ALLOWED_TRADING_SYMBOLS}")
     return RuntimeConfig(
         mode=mode,
         symbols=symbols,

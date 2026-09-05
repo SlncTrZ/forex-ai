@@ -4,7 +4,6 @@ Live cent-account Forex research harness for:
 
 - XAUUSD
 - EURUSD
-- GBPUSD
 
 The project compares deterministic bot decisions with LLM-assisted decisions while keeping execution behind a deterministic risk gate.
 
@@ -142,15 +141,15 @@ Expected final status:
 STATUS=READY_READ_ONLY
 ```
 
-The script resolves broker-specific variants of XAUUSD/EURUSD/GBPUSD and prints account/symbol contract details without placing any orders.
+The script resolves broker-specific variants of XAUUSD/EURUSD and prints account/symbol contract details without placing any orders.
 
 Validated live account profile on 2026-09-03:
 
 - Broker/server: Exness / `Exness-MT5Real36`
 - Account currency: `USC` (cent account)
-- Symbol mapping: `XAUUSD -> XAUUSDc`, `EURUSD -> EURUSDc`, `GBPUSD -> GBPUSDc`
-- Minimum volume: `0.01` for all three symbols
-- `EURUSDc` and `GBPUSDc` contract size: `1000`
+- Symbol mapping: `XAUUSD -> XAUUSDc`, `EURUSD -> EURUSDc`
+- Minimum volume: `0.01` for both supported symbols
+- `EURUSDc` contract size: `1000`
 - `XAUUSDc` contract size: `1`
 - Current observer mode: read-only; no order path enabled
 

@@ -21,8 +21,7 @@ Last updated: 2026-09-03
 - Account currency: `USC` (cent account)
 - `XAUUSD -> XAUUSDc`
 - `EURUSD -> EURUSDc`
-- `GBPUSD -> GBPUSDc`
-- Minimum lot: 0.01 for all three
+- Minimum lot: 0.01 for both supported symbols
 - Forex-AI real execution remains disabled
 
 ## Logging / audit guarantees

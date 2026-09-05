@@ -2,11 +2,10 @@
 
 ## 1. Goal
 
-Build a low-cost live Forex research/trading system for exactly three primary symbols:
+Build a low-cost live Forex research/trading system for exactly two primary symbols:
 
 - XAUUSD
 - EURUSD
-- GBPUSD
 
 The first objective is not to maximize profit. The first objective is to measure whether an LLM adds net value after API cost when trading a real cent account with strict deterministic risk controls.
 
@@ -86,7 +85,7 @@ The deterministic risk engine has final authority and can reject, resize, or blo
 
 Initial controls to implement before the first real order:
 
-- allowlist symbols only: XAUUSD, EURUSD, GBPUSD
+- allowlist symbols only: XAUUSD, EURUSD
 - account-login allowlist
 - cent-account confirmation flag
 - max risk per trade
@@ -513,7 +512,7 @@ Acceptance:
 
 - continuous read-only operation for at least one full session without duplicate/broken records
 - reconnect after MT5 restart/network interruption
-- symbols XAUUSD/EURUSD/GBPUSD mapped correctly even if broker uses suffixes (for example XAUUSD.a)
+- symbols XAUUSD/EURUSD mapped correctly even if broker uses suffixes (for example XAUUSD.a)
 
 ### Phase 2 — Journal and metrics
 
@@ -736,7 +735,7 @@ V1 is complete when:
 
 - MT5 operates reliably on RUNTIME_HOST
 - Forex-AI reads all required live account and market state
-- XAUUSD/EURUSD/GBPUSD symbol mapping is stable
+- XAUUSD/EURUSD symbol mapping is stable
 - SQLite is the authoritative journal
 - BOT_ONLY and BOT_LLM modes share the same risk/execution path
 - LLM requests and cost are measurable

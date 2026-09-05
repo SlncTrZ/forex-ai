@@ -9,7 +9,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
-from forex_ai.config import load_runtime_config
+from forex_ai.config import ALLOWED_TRADING_SYMBOLS, load_runtime_config
 from forex_ai.mt5.client import MT5Client
 from forex_ai.mt5.symbols import resolve_symbol_strict
 from forex_ai.research.dataset import freeze_replay_dataset
@@ -17,7 +17,7 @@ from forex_ai.research.mt5_dataset import build_replay_events_from_mt5_bars
 
 UTC = timezone.utc
 TIMEFRAMES = ("M15", "H1", "H4")
-DEFAULT_SYMBOLS = ("EURUSD", "GBPUSD", "XAUUSD")
+DEFAULT_SYMBOLS = ("EURUSD", "XAUUSD")
 
 
 def default_week_start(now_utc: datetime) -> date:
@@ -125,6 +125,10 @@ def main() -> int:
     if args.chunk_size <= 0 or args.max_chunks <= 0:
         raise ValueError("chunk-size and max-chunks must be positive")
 
+    unsupported = tuple(symbol for symbol in args.symbols if symbol not in ALLOWED_TRADING_SYMBOLS)
+    if unsupported:
+        raise ValueError(f"Unsupported backtest symbols: {unsupported}; allowed={ALLOWED_TRADING_SYMBOLS}")
+
     start_day = date.fromisoformat(args.week_start) if args.week_start else default_week_start(datetime.now(UTC))
     if start_day.weekday() != 0:
         raise ValueError("week-start must be a Monday")
@@ -231,7 +235,10 @@ def main() -> int:
             or existing.get("week_end_utc_exclusive") != metadata["week_end_utc_exclusive"]
         ):
             raise RuntimeError("SOURCE_MANIFEST_WEEK_MISMATCH")
-        merged_symbols = dict(existing.get("symbols") or {})
+        merged_symbols = {
+            key: value for key, value in dict(existing.get("symbols") or {}).items()
+            if key in ALLOWED_TRADING_SYMBOLS
+        }
         merged_symbols.update(metadata["symbols"])
         metadata["symbols"] = merged_symbols
     metadata["created_at_utc"] = datetime.now(UTC).isoformat()

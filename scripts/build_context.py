@@ -11,7 +11,7 @@ from forex_ai.mt5.client import MT5Client
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("symbol", choices=["XAUUSD", "EURUSD", "GBPUSD"])
+    parser.add_argument("symbol", choices=["XAUUSD", "EURUSD"])
     args = parser.parse_args()
 
     cfg = load_runtime_config()
