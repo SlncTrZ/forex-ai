@@ -2,11 +2,15 @@
 set -euo pipefail
 
 ACTION="${1:-deploy}"
-HOME_DIR="${HOME:-/tmp}"
+PASSWD_HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
+HOME_DIR="${FOREX_AI_HOME:-${PASSWD_HOME:-${HOME:-/tmp}}}"
 SRC="${FOREX_AI_DEV_ROOT:-$PWD}"
 RUNTIME_ROOT="${FOREX_AI_RUNTIME_ROOT:-$HOME_DIR/apps/forex-ai}"
 RUNTIME_VENV="${FOREX_AI_RUNTIME_VENV:-$HOME_DIR/.venvs/forex-ai-runtime}"
-TEST_PYTHON="${FOREX_AI_TEST_PYTHON:-python3}"
+TEST_PYTHON="${FOREX_AI_TEST_PYTHON:-$RUNTIME_VENV/bin/python}"
+if [ ! -x "$TEST_PYTHON" ]; then
+  TEST_PYTHON="python3"
+fi
 REQUIRE_SYNC="${FOREX_AI_RELEASE_REQUIRE_SYNC:-1}"
 KEEP_RELEASES="${FOREX_AI_KEEP_RELEASES:-5}"
 
