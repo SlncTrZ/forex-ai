@@ -27,6 +27,7 @@ class FakeConn:
             "mt5.TIMEFRAME_M15": 15,
             "mt5.TIMEFRAME_H1": 60,
             "mt5.TIMEFRAME_H4": 240,
+            "mt5.TIMEFRAME_D1": 1440,
             "mt5.POSITION_TYPE_BUY": 0,
             "mt5.POSITION_TYPE_SELL": 1,
             "mt5.ORDER_TYPE_BUY": 0,

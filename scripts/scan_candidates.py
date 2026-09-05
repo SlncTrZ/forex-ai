@@ -10,6 +10,7 @@ from time import perf_counter
 from forex_ai.config import load_risk_profile, load_runtime_config
 from forex_ai.integration.engine import DecisionOrchestrator, production_strategy_bindings
 from forex_ai.journal.db import initialize, log_audit_event, session
+from forex_ai.market.context_config import load_market_context_snapshot
 from forex_ai.mt5.client import MT5Client
 from forex_ai.risk.account_guard import AccountBindingError, assert_account_matches
 from forex_ai.runtime.ops import assess_runtime_health
@@ -124,6 +125,7 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
             "risk_profile_fingerprint": decision.risk_result.risk_profile_fingerprint if decision.risk_result is not None else None,
             "safety_snapshot_fingerprint": safety.fingerprint,
             "safety_blocking_reasons": list(safety.blocking_reasons),
+            "higher_timeframe_structure": market.context.get("higher_timeframe_structure"),
         }
         event_type = "V1_CANDIDATE_ACCEPTED" if candidate is not None else "V1_STRATEGY_REJECTED"
         log_audit_event(
@@ -174,6 +176,7 @@ def main() -> int:
         return 0
 
     strategy_snapshot = load_strategy_snapshot()
+    market_context_snapshot = load_market_context_snapshot()
     client = MT5Client(cfg)
     coordinator = MT5ResyncCoordinator(
         client=client,
@@ -181,6 +184,7 @@ def main() -> int:
         db_path=cfg.db_path,
         bars_count=required_raw_bars(strategy_snapshot),
         load_history=False,
+        market_context=market_context_snapshot,
     )
     scan_started = perf_counter()
     try:
@@ -199,6 +203,18 @@ def main() -> int:
                     "source_path": str(strategy_snapshot.source_path),
                     "rejected_error": strategy_snapshot.rejected_error,
                     "active_fingerprint": strategy_snapshot.fingerprint,
+                },
+            )
+        if market_context_snapshot.loaded_from_last_good:
+            log_audit_event(
+                cfg.db_path,
+                event_type="MARKET_CONTEXT_CONFIG_RELOAD_REJECTED",
+                source="production_v1_scanner",
+                entity_id=market_context_snapshot.fingerprint,
+                payload={
+                    "source_path": str(market_context_snapshot.source_path),
+                    "rejected_error": market_context_snapshot.rejected_error,
+                    "active_fingerprint": market_context_snapshot.fingerprint,
                 },
             )
         orchestrator = DecisionOrchestrator(

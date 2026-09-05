@@ -15,6 +15,8 @@ from forex_ai.integration.adapters import (
     timeframe_snapshot,
 )
 from forex_ai.journal.runtime_health import RuntimeHeartbeat, persist_heartbeat
+from forex_ai.market.context_config import MarketContextConfigSnapshot
+from forex_ai.market.structure import build_higher_timeframe_structure
 from forex_ai.kernel.health import BackoffPolicy, HealthKernel, HealthState
 from forex_ai.mt5.contracts import BrokerDeal, BrokerOrder, BrokerState, SafetySnapshot
 from forex_ai.mt5.symbols import resolve_symbol_strict
@@ -150,6 +152,7 @@ class MT5ResyncCoordinator:
         bars_refresh_seconds: int = 60,
         history_refresh_seconds: int = 60,
         load_history: bool = True,
+        market_context: MarketContextConfigSnapshot | None = None,
         backoff: BackoffPolicy | None = None,
         health: HealthKernel | None = None,
         clock: Callable[[], datetime] | None = None,
@@ -163,6 +166,7 @@ class MT5ResyncCoordinator:
         self.bars_refresh_seconds = bars_refresh_seconds
         self.history_refresh_seconds = history_refresh_seconds
         self.load_history = load_history
+        self.market_context = market_context
         self.backoff = backoff or BackoffPolicy()
         self.health = health or HealthKernel()
         self.clock = clock or (lambda: datetime.now(timezone.utc))
@@ -172,7 +176,10 @@ class MT5ResyncCoordinator:
         self.last_journal_success_utc: datetime | None = None
         self._mapping: dict[str, str] = {}
         self._timeframes: dict[str, dict[str, Any]] = {}
+        self._context_timeframes: dict[str, dict[str, Any]] = {}
         self._last_bars_refresh_utc: datetime | None = None
+        self._last_context_refresh_utc: datetime | None = None
+        self._context_refresh_error: str | None = None
         self._last_history_refresh_utc: datetime | None = None
         self._raw_orders_cache: tuple[dict[str, Any], ...] = ()
         self._raw_deals_cache: tuple[dict[str, Any], ...] = ()
@@ -225,7 +232,10 @@ class MT5ResyncCoordinator:
     def _invalidate_caches(self) -> None:
         self._mapping.clear()
         self._timeframes.clear()
+        self._context_timeframes.clear()
         self._last_bars_refresh_utc = None
+        self._last_context_refresh_utc = None
+        self._context_refresh_error = None
         self._last_history_refresh_utc = None
         self._raw_orders_cache = ()
         self._raw_deals_cache = ()
@@ -274,6 +284,56 @@ class MT5ResyncCoordinator:
             or self._last_bars_refresh_utc is None
             or (now - self._last_bars_refresh_utc).total_seconds() >= self.bars_refresh_seconds
         )
+
+        context_config = self.market_context.higher_timeframe_structure if self.market_context is not None else None
+        context_enabled = bool(context_config and context_config.enabled)
+        refresh_context = bool(
+            context_enabled
+            and (
+                not self._context_timeframes
+                or self._last_context_refresh_utc is None
+                or (now - self._last_context_refresh_utc).total_seconds() >= int(context_config.refresh_seconds)
+            )
+        )
+        if refresh_context and context_config is not None:
+            try:
+                context_names = tuple(context_config.timeframes.keys())
+                missing_context_constants = tuple(name for name in context_names if name not in constants)
+                if missing_context_constants:
+                    raise SyncError(f"CONTEXT_MISSING_MT5_CONSTANTS:{','.join(missing_context_constants)}")
+                context_count = max(item.history_bars for item in context_config.timeframes.values()) + 1
+                if hasattr(self.client, "bars_universe_bundle"):
+                    context_bundle = self.client.bars_universe_bundle(
+                        tuple(mapping.values()),
+                        {name: constants[name] for name in context_names},
+                        context_count,
+                    )
+                else:
+                    context_bundle = {
+                        actual: {
+                            name: self.client.bars(actual, constants[name], context_count)
+                            for name in context_names
+                        }
+                        for actual in mapping.values()
+                    }
+                staged_context: dict[str, dict[str, Any]] = {}
+                for base, actual in mapping.items():
+                    raw_by_tf = context_bundle.get(actual) or {}
+                    staged_context[base] = {}
+                    for name, tf_config in context_config.timeframes.items():
+                        rows = tuple(raw_by_tf.get(name) or ())
+                        if len(rows) < tf_config.history_bars + 1:
+                            raise SyncError(f"CONTEXT_INSUFFICIENT_BARS:{actual}:{name}")
+                        staged_context[base][name] = timeframe_snapshot(
+                            name,
+                            rows[-(tf_config.history_bars + 1):],
+                        )
+                self._context_timeframes = staged_context
+                self._last_context_refresh_utc = now
+                self._context_refresh_error = None
+            except Exception as exc:
+                self._context_refresh_error = str(exc) or exc.__class__.__name__
+
         contracts = []
         ticks = []
         markets: dict[str, MarketSnapshot] = {}
@@ -337,7 +397,43 @@ class MT5ResyncCoordinator:
                     timeframes[name] = timeframe_snapshot(name, rows)
                 self._timeframes[base] = timeframes
             timeframes = self._timeframes[base]
-            market = market_snapshot(symbol=actual, tick=tick, captured_at_utc=symbol_now, timeframes=timeframes)
+            context_payload: dict[str, Any] = {}
+            if context_enabled and context_config is not None and self.market_context is not None:
+                context_timeframes = self._context_timeframes.get(base) or {}
+                if context_timeframes:
+                    try:
+                        structure = build_higher_timeframe_structure(
+                            timeframes=context_timeframes,
+                            reference_price=(tick.bid + tick.ask) / 2.0,
+                            captured_at_utc=self._last_context_refresh_utc or symbol_now,
+                            config=context_config,
+                            config_fingerprint=self.market_context.fingerprint,
+                        ).to_dict()
+                        if self._context_refresh_error:
+                            structure["status"] = "STALE_LAST_GOOD"
+                            structure["error"] = self._context_refresh_error
+                        context_payload["higher_timeframe_structure"] = structure
+                    except Exception as exc:
+                        context_payload["higher_timeframe_structure"] = {
+                            "status": "UNAVAILABLE",
+                            "context_only": True,
+                            "error": str(exc) or exc.__class__.__name__,
+                            "config_fingerprint": self.market_context.fingerprint,
+                        }
+                else:
+                    context_payload["higher_timeframe_structure"] = {
+                        "status": "UNAVAILABLE",
+                        "context_only": True,
+                        "error": self._context_refresh_error or "NO_HIGHER_TIMEFRAME_DATA",
+                        "config_fingerprint": self.market_context.fingerprint,
+                    }
+            market = market_snapshot(
+                symbol=actual,
+                tick=tick,
+                captured_at_utc=symbol_now,
+                timeframes=timeframes,
+                context=context_payload,
+            )
             validate_bar_gaps(market, timeframe_seconds)
             contracts.append(contract)
             ticks.append(tick)

@@ -95,13 +95,17 @@ RELEASE_ID="$(date -u +%Y%m%dT%H%M%SZ)-${GIT_SHA:0:12}"
 RELEASES="$RUNTIME_ROOT/releases"
 BACKTEST_ROOT="${FOREX_AI_BACKTEST_ROOT:-$RUNTIME_ROOT/backtest}"
 STRATEGY_CONFIG="${FOREX_AI_STRATEGY_CONFIG:-$HOME_DIR/.config/forex-ai/strategy.yaml}"
+MARKET_CONTEXT_CONFIG="${FOREX_AI_MARKET_CONTEXT_CONFIG:-$HOME_DIR/.config/forex-ai/market-context.yaml}"
 RELEASE_DIR="$RELEASES/$RELEASE_ID"
 STAGING="$RELEASES/.staging-$RELEASE_ID-$$"
-mkdir -p "$RELEASES" "$BACKTEST_ROOT/data" "$(dirname "$STRATEGY_CONFIG")"
+mkdir -p "$RELEASES" "$BACKTEST_ROOT/data" "$(dirname "$STRATEGY_CONFIG")" "$(dirname "$MARKET_CONTEXT_CONFIG")"
 if [ ! -f "$STRATEGY_CONFIG" ]; then
   cp "$SRC/config/strategy.yaml" "$STRATEGY_CONFIG"
 fi
-chmod 0644 "$STRATEGY_CONFIG"
+if [ ! -f "$MARKET_CONTEXT_CONFIG" ]; then
+  cp "$SRC/config/market-context.yaml" "$MARKET_CONTEXT_CONFIG"
+fi
+chmod 0644 "$STRATEGY_CONFIG" "$MARKET_CONTEXT_CONFIG"
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
 

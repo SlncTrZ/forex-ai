@@ -2,6 +2,8 @@
 
 The current frozen research universe contains EURUSD and XAUUSD with M15/H1/H4 replay data. Therefore the first research phase is short-horizon intraday trading on M15 decisions (15–120 minute outcome windows), not true M1/M5 high-frequency scalping.
 
+For the new scalping architecture, H4 and D1 are context-only: they may contribute derived support/resistance zones but must not be required trend-direction gates. See `config/MARKET_CONTEXT.md`.
+
 ## Indicator set added to the canonical library
 
 `src/forex_ai/market/indicators.py` now provides reusable implementations with explicit parameters:

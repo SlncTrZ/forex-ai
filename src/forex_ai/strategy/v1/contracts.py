@@ -86,6 +86,7 @@ class MarketSnapshot:
     spread_cost: float = 0.0
     commission_cost: float = 0.0
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    context: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.captured_at_utc.tzinfo is None:
@@ -103,6 +104,7 @@ class MarketSnapshot:
                 raise ValueError("closed bar cannot be from the future relative to snapshot capture time")
         object.__setattr__(self, "timeframes", MappingProxyType(dict(self.timeframes)))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        object.__setattr__(self, "context", MappingProxyType(dict(self.context)))
 
     @property
     def fingerprint(self) -> str:
@@ -136,6 +138,7 @@ class MarketSnapshot:
             "spread_cost": self.spread_cost,
             "commission_cost": self.commission_cost,
             "metadata": self.metadata,
+            "context": self.context,
         }
 
 

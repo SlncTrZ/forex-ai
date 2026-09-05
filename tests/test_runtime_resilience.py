@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from forex_ai.journal.db import initialize, session
 from forex_ai.kernel.health import HealthState
+from forex_ai.market.context_config import load_market_context_snapshot
 from forex_ai.runtime.resilience import MT5ResyncCoordinator, _expected_daily_rollover_gap
 
 UTC = timezone.utc
@@ -191,3 +193,33 @@ def test_unprotected_position_blocks_sync_safety(tmp_path):
     out = coord.sync_once(now_utc=NOW)
     assert out.state is HealthState.BLOCKED and not out.ready
     assert out.safety is not None and "UNPROTECTED_POSITION" in out.safety.blocking_reasons
+
+
+class ContextFailureMT5(FakeMT5):
+    def constants(self):
+        values = super().constants()
+        values["D1"] = 1440
+        return values
+
+    def bars_universe_bundle(self, symbols, timeframes, count):
+        raise RuntimeError("context feed unavailable")
+
+
+def test_higher_timeframe_context_failure_never_blocks_core_sync(tmp_path):
+    fake = ContextFailureMT5()
+    db = tmp_path / "runtime-context.db"
+    initialize(db)
+    context = load_market_context_snapshot(Path("config/market-context.yaml"), allow_last_good=False)
+    coord = MT5ResyncCoordinator(
+        client=fake,
+        symbols=("EURUSD",),
+        db_path=db,
+        bars_count=60,
+        clock=lambda: NOW,
+        market_context=context,
+    )
+    out = coord.sync_once(now_utc=NOW)
+    assert out.ready
+    payload = out.markets["EURUSD"].context["higher_timeframe_structure"]
+    assert payload["status"] == "UNAVAILABLE"
+    assert "context feed unavailable" in payload["error"]

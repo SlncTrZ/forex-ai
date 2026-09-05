@@ -104,6 +104,7 @@ def market_snapshot(
     spread_cost: float = 0.0,
     commission_cost: float = 0.0,
     metadata: Mapping[str, Any] | None = None,
+    context: Mapping[str, Any] | None = None,
 ) -> MarketSnapshot:
     return MarketSnapshot(
         symbol=symbol,
@@ -115,6 +116,7 @@ def market_snapshot(
         spread_cost=spread_cost,
         commission_cost=commission_cost,
         metadata=metadata or {},
+        context=context or {},
     )
 
 

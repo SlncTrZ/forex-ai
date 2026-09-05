@@ -192,6 +192,30 @@ class MT5Client:
             for symbol in symbols
         }
 
+    def bars_universe_bundle(
+        self,
+        symbols: tuple[str, ...],
+        timeframes: dict[str, int],
+        count: int,
+    ) -> dict[str, dict[str, list[dict[str, Any]]]]:
+        """Fetch bars for all symbols/timeframes in one round-trip without ticks/info."""
+        if not symbols:
+            return {}
+        if self._external_conn is not None:
+            tf_items = ",".join(f"{label!r}:{int(value)!r}" for label, value in timeframes.items())
+            code = (
+                "(lambda syms,tfs: {sym:{label:(lambda rates: [] if rates is None else ["
+                "{'time':int(row['time']),'open':float(row['open']),'high':float(row['high']),'low':float(row['low']),"
+                "'close':float(row['close']),'tick_volume':int(row['tick_volume'])} for row in rates])"
+                "(mt5.copy_rates_from_pos(sym,tf,0," + repr(int(count)) + ")) for label,tf in tfs.items()} for sym in syms})("
+                + repr(tuple(symbols)) + ",{" + tf_items + "})"
+            )
+            return plain(self._remote_eval(code))
+        return {
+            symbol: {label: self.bars(symbol, timeframe, count) for label, timeframe in timeframes.items()}
+            for symbol in symbols
+        }
+
     def scan_bundle(self, symbol: str, timeframes: dict[str, int], count: int = 80) -> dict[str, Any]:
         """Fetch tick plus multiple timeframe bars in one remote round-trip.
 
@@ -279,7 +303,7 @@ class MT5Client:
 
     def constants(self) -> dict[str, int]:
         names = (
-            "TIMEFRAME_M1", "TIMEFRAME_M5", "TIMEFRAME_M15", "TIMEFRAME_H1", "TIMEFRAME_H4",
+            "TIMEFRAME_M1", "TIMEFRAME_M5", "TIMEFRAME_M15", "TIMEFRAME_H1", "TIMEFRAME_H4", "TIMEFRAME_D1",
             "POSITION_TYPE_BUY", "POSITION_TYPE_SELL", "ORDER_TYPE_BUY", "ORDER_TYPE_SELL",
             "SYMBOL_TRADE_MODE_DISABLED",
         )
@@ -290,6 +314,7 @@ class MT5Client:
             "M15": values["TIMEFRAME_M15"],
             "H1": values["TIMEFRAME_H1"],
             "H4": values["TIMEFRAME_H4"],
+            "D1": values["TIMEFRAME_D1"],
             "POSITION_TYPE_BUY": values["POSITION_TYPE_BUY"],
             "POSITION_TYPE_SELL": values["POSITION_TYPE_SELL"],
             "ORDER_TYPE_BUY": values["ORDER_TYPE_BUY"],
