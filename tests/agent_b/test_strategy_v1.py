@@ -94,3 +94,20 @@ def test_breakout_positive_and_cost_rejection():
     rejected=eval_breakout(expensive,cfg,now)
     assert rejected.candidate is None
     assert 'COST_TOO_HIGH' in rejected.no_setup_reason_codes
+
+
+def test_breakout_with_51_closed_bars_has_enough_history_for_ema50_gate():
+    now=datetime(2026,1,2,tzinfo=UTC)
+    start=now-timedelta(hours=20)
+    # 50 prior closed bars + one breakout bar = 51 closed bars. The breakout
+    # strategy intentionally evaluates trend on bars[:-1], so this leaves the
+    # exact 50 bars required by trend_state() / EMA50.
+    bars=_trend_bars(start,50,0.04,100)
+    prior_high=max(b.high for b in bars[-20:])
+    p=bars[-1].close
+    bars.append(Candle(now-timedelta(minutes=15),p,prior_high+0.30,p-0.05,prior_high+0.20,1000))
+    snap=MarketSnapshot('TEST',now,3,prior_high+0.19,prior_high+0.20,{'M15':TimeframeSnapshot.from_sequence('M15',bars)},spread_cost=0.001)
+    cfg=StrategyConfig(BREAKOUT_CONFIG.version,{**BREAKOUT_CONFIG.parameters,'min_expansion':0.5,'min_efficiency':0.1})
+    result=eval_breakout(snap,cfg,now)
+    assert result.evidence.values.get('trend') != 'UNAVAILABLE'
+    assert 'TREND_STRENGTH_REJECT' not in result.no_setup_reason_codes

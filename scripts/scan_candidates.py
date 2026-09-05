@@ -172,13 +172,14 @@ def main() -> int:
         return 0
 
     client = MT5Client(cfg)
-    # Strategy V1 needs 50 closed bars; 51 raw MT5 bars leaves exactly 50 after
-    # excluding the currently-forming bar while keeping the remote payload small.
+    # Strategy V1 needs 50 closed bars; 52 raw MT5 bars leaves 51 closed bars after excluding the currently-forming
+    # bar. Breakout then evaluates trend on bars[:-1], leaving the 50 bars required
+    # by its EMA50 trend-state gate.
     coordinator = MT5ResyncCoordinator(
         client=client,
         symbols=cfg.symbols,
         db_path=cfg.db_path,
-        bars_count=51,
+        bars_count=52,
         load_history=False,
     )
     scan_started = perf_counter()

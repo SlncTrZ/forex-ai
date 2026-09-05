@@ -76,7 +76,7 @@ def main() -> int:
         client=client,
         symbols=cfg.symbols,
         db_path=cfg.db_path,
-        bars_count=51,
+        bars_count=52,
         load_history=True,
         history_refresh_seconds=0,
     )
