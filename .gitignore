@@ -18,6 +18,7 @@ dist/
 *.db-wal
 logs/
 data/runtime/
+backtest/data/
 
 # Deployment templates are portable and version-controlled.
 # Runtime-installed copies live outside the repo under the user's systemd config.
