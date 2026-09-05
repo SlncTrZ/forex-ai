@@ -75,6 +75,17 @@ This validates ordering, warm-up count, target-range boundaries, raw SHA-256 and
 ~/apps/forex-ai/backtest/scalping/scalping_dataset.json
 ```
 
+## Dataset identity
+
+The pointer/manifest expose two different hashes on purpose:
+
+- `source_manifest_sha256`: hashes the exact manifest file, including `created_at_utc`; it changes every intentional finalize.
+- `dataset_source_fingerprint`: hashes only deterministic research identity: builder version, date range, history length, partition definition, context-config fingerprint, symbol mapping/point and all ten raw timeframe SHA-256 values.
+
+Re-finalizing unchanged raw caches must keep `dataset_source_fingerprint` identical even when `source_manifest_sha256` changes. A builder-semantic change must bump `builder_version` so research output cannot silently mix two event-construction contracts.
+
+Current builder contract: `scalping-stream-v1`.
+
 ## Streaming instead of materialized replay
 
 Do **not** materialize the full M5 dataset as generic `replay.jsonl`.

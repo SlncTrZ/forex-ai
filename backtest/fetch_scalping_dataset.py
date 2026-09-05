@@ -16,7 +16,8 @@ from forex_ai.market.structure import build_higher_timeframe_structure
 from forex_ai.mt5.client import MT5Client
 from forex_ai.mt5.symbols import resolve_symbol_strict
 from forex_ai.research.replay import ReplayEvent
-from forex_ai.strategy.v1.contracts import Candle, MarketSnapshot, TimeframeSnapshot
+from forex_ai.research.scalping_dataset import BUILDER_VERSION
+from forex_ai.strategy.v1.contracts import Candle, MarketSnapshot, TimeframeSnapshot, fingerprint
 
 UTC = timezone.utc
 SCHEMA = "forex-ai-scalping-source-v1"
@@ -267,6 +268,7 @@ def main() -> int:
         "context_timeframes": list(CONTEXT_TIMEFRAMES),
         "anchor_timeframe": "M5",
         "history_bars": args.history_bars,
+        "builder_version": BUILDER_VERSION,
         "replay_materialized": False,
         "streaming_replay": True,
         "market_context_config_fingerprint": context_snapshot.fingerprint,
@@ -319,6 +321,30 @@ def main() -> int:
     finally:
         client.close()
 
+    raw_identity = {
+        "schema": SCHEMA,
+        "builder_version": BUILDER_VERSION,
+        "range_start_utc": range_start.isoformat(),
+        "range_end_utc_exclusive": range_end.isoformat(),
+        "history_bars": args.history_bars,
+        "strategy_timeframes": list(STRATEGY_TIMEFRAMES),
+        "context_timeframes": list(CONTEXT_TIMEFRAMES),
+        "market_context_config_fingerprint": context_snapshot.fingerprint,
+        "partitions": metadata["partitions"],
+        "symbols": {
+            base: {
+                "actual_symbol": value["actual_symbol"],
+                "point": value["point"],
+                "raw_sha256": {
+                    name: tf_meta["sha256"]
+                    for name, tf_meta in value["timeframes"].items()
+                },
+            }
+            for base, value in metadata["symbols"].items()
+        },
+    }
+    metadata["dataset_source_fingerprint"] = fingerprint(raw_identity)
+
     source_manifest_path = output_dir / "source_manifest.json"
     pointer_path = output_root / "scalping" / "scalping_dataset.json"
     if not args.overwrite and (source_manifest_path.exists() or pointer_path.exists()):
@@ -330,6 +356,8 @@ def main() -> int:
         "dataset_root": str(output_dir),
         "source_manifest": str(source_manifest_path),
         "source_manifest_sha256": _sha256(source_manifest_path),
+        "builder_version": BUILDER_VERSION,
+        "dataset_source_fingerprint": metadata["dataset_source_fingerprint"],
         "range_start_utc": range_start.isoformat(),
         "range_end_utc_exclusive": range_end.isoformat(),
         "symbols": list(args.symbols),

@@ -16,6 +16,7 @@ from forex_ai.strategy.v1.contracts import Candle, MarketSnapshot, TimeframeSnap
 UTC = timezone.utc
 SCHEMA = "forex-ai-scalping-source-v1"
 POINTER_SCHEMA = "forex-ai-scalping-dataset-pointer-v1"
+BUILDER_VERSION = "scalping-stream-v1"
 STRATEGY_TIMEFRAMES = ("M5", "M15", "H1")
 CONTEXT_TIMEFRAMES = ("H4", "D1")
 TIMEFRAME_SECONDS = {"M5": 300, "M15": 900, "H1": 3600, "H4": 14400, "D1": 86400}
@@ -90,6 +91,14 @@ class ScalpingDataset:
     @property
     def history_bars(self) -> int:
         return int(self.manifest["history_bars"])
+
+    @property
+    def builder_version(self) -> str:
+        return str(self.manifest["builder_version"])
+
+    @property
+    def dataset_source_fingerprint(self) -> str:
+        return str(self.manifest["dataset_source_fingerprint"])
 
     @property
     def partitions(self) -> tuple[Partition, ...]:
