@@ -12,6 +12,7 @@ from pathlib import Path
 from statistics import mean
 
 from forex_ai.research.dataset import load_frozen_replay_dataset
+from forex_ai.strategy.config import load_strategy_snapshot
 from forex_ai.strategy.v1 import trend_pullback, volatility_breakout
 from forex_ai.strategy.v1.contracts import CandidateEnvelope, StrategyConfig
 
@@ -229,6 +230,9 @@ def main() -> int:
         raise ValueError(f"Unsupported sensitivity symbols: {unsupported}; allowed={SUPPORTED_BASES}")
 
     dataset_root, standard = _resolve_dataset_root(args.dataset_root)
+    strategy_snapshot = load_strategy_snapshot()
+    trend_base = strategy_snapshot.config_for("trend_pullback_v1")
+    breakout_base = strategy_snapshot.config_for("volatility_breakout_v1")
     report: dict[str, object] = {
         "schema": "forex-ai-sensitivity-v2",
         "dataset_root": str(dataset_root),
@@ -237,6 +241,7 @@ def main() -> int:
             "symbols": list(args.symbols),
             "max_open_positions_per_symbol": 1,
             "candidate_cluster_gap_minutes": 30,
+            "strategy_config_fingerprint": strategy_snapshot.production_fingerprint,
             "note": "Counterfactual research only; no strategy parameters are changed by this report.",
         },
         "symbols": {},
@@ -248,18 +253,22 @@ def main() -> int:
         events = dataset.events
 
         trend_rows: list[dict[str, object]] = []
-        for expiry in (30, 45, 60, 90, 120):
-            cfg = _config(trend_pullback.DEFAULT_CONFIG, expiry_minutes=expiry)
+        trend_expiries = tuple(sorted({30, 45, 60, 90, 120, int(trend_base.parameters["expiry_minutes"])}))
+        for expiry in trend_expiries:
+            cfg = _config(trend_base, expiry_minutes=expiry)
             result = _single_position_replay(events, trend_pullback.evaluate, cfg)
             lifecycle = _cluster_lifecycle_replay(events, trend_pullback.evaluate, cfg)
             trend_rows.append({"parameters": {"expiry_minutes": expiry}, "result": asdict(result), "cluster_lifecycle": asdict(lifecycle)})
 
         breakout_rows: list[dict[str, object]] = []
-        for efficiency in (0.25, 0.275, 0.30, 0.325):
-            for expansion in (1.10, 1.15, 1.20, 1.25):
-                for expiry in (30, 45, 60, 90):
+        efficiencies = tuple(sorted({0.25, 0.275, 0.30, 0.325, float(breakout_base.parameters["min_efficiency"])}))
+        expansions = tuple(sorted({1.10, 1.15, 1.20, 1.25, float(breakout_base.parameters["min_expansion"])}))
+        breakout_expiries = tuple(sorted({30, 45, 60, 90, int(breakout_base.parameters["expiry_minutes"])}))
+        for efficiency in efficiencies:
+            for expansion in expansions:
+                for expiry in breakout_expiries:
                     cfg = _config(
-                        volatility_breakout.DEFAULT_CONFIG,
+                        breakout_base,
                         min_efficiency=efficiency,
                         min_expansion=expansion,
                         expiry_minutes=expiry,
@@ -281,14 +290,21 @@ def main() -> int:
             "dataset_records": dataset.manifest.record_count,
             "dataset_sha256": dataset.manifest.dataset_sha256,
             "trend_pullback": {
-                "baseline": next(row for row in trend_rows if row["parameters"]["expiry_minutes"] == 45),
+                "baseline": next(
+                    row for row in trend_rows
+                    if row["parameters"]["expiry_minutes"] == int(trend_base.parameters["expiry_minutes"])
+                ),
                 "grid": trend_rows,
                 "ranked": _rank(trend_rows),
             },
             "volatility_breakout": {
                 "baseline": next(
                     row for row in breakout_rows
-                    if row["parameters"] == {"min_efficiency": 0.30, "min_expansion": 1.20, "expiry_minutes": 30}
+                    if row["parameters"] == {
+                        "min_efficiency": float(breakout_base.parameters["min_efficiency"]),
+                        "min_expansion": float(breakout_base.parameters["min_expansion"]),
+                        "expiry_minutes": int(breakout_base.parameters["expiry_minutes"]),
+                    }
                 ),
                 "grid": breakout_rows,
                 "ranked": _rank(breakout_rows),

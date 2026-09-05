@@ -196,6 +196,7 @@ class CandidateEnvelope:
     evidence_hash: str
     market_snapshot_fingerprint: str
     opportunity_key: str = ""
+    strategy_config_fingerprint: str = ""
 
     def __post_init__(self) -> None:
         if self.side not in {"BUY", "SELL"}:
@@ -236,5 +237,5 @@ def build_candidate(*, snapshot: MarketSnapshot, config: StrategyConfig, side: s
         candidate_id, f"candidate-{candidate_id}", config.version.strategy_id, config.version.version,
         snapshot.symbol, side, entry, stop_loss, take_profit, generated_at_utc.astimezone(timezone.utc),
         snapshot.market_time_msc, expires_at_utc.astimezone(timezone.utc), evidence.evidence_hash,
-        snapshot.decision_fingerprint, opportunity_key,
+        snapshot.decision_fingerprint, opportunity_key, config.fingerprint,
     )

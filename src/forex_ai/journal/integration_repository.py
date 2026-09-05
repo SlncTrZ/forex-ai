@@ -137,12 +137,13 @@ def persist_candidate(db_path: Path, candidate: CandidateEnvelope) -> None:
     with session(db_path) as con:
         con.execute(
             """INSERT INTO candidate_decisions(
-                candidate_id,correlation_id,strategy_id,strategy_version,symbol,side,generated_at_utc,expires_at_utc,
+                candidate_id,correlation_id,strategy_id,strategy_version,strategy_config_fingerprint,symbol,side,generated_at_utc,expires_at_utc,
                 evidence_hash,market_snapshot_fingerprint,payload_json
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(candidate_id) DO NOTHING""",
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(candidate_id) DO NOTHING""",
             (
                 candidate.candidate_id, candidate.correlation_id, candidate.strategy_id, candidate.strategy_version,
-                candidate.symbol, candidate.side, candidate.generated_at_utc.isoformat(), candidate.expires_at_utc.isoformat(),
+                candidate.strategy_config_fingerprint, candidate.symbol, candidate.side,
+                candidate.generated_at_utc.isoformat(), candidate.expires_at_utc.isoformat(),
                 candidate.evidence_hash, candidate.market_snapshot_fingerprint, _json(asdict(candidate)),
             ),
         )

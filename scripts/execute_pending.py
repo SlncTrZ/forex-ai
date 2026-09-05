@@ -22,6 +22,7 @@ from forex_ai.risk.account_guard import account_matches, assert_account_matches
 from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
 from forex_ai.runtime.risk_context import build_risk_context
+from forex_ai.strategy.config import load_strategy_snapshot, required_raw_bars
 
 UTC = timezone.utc
 D = Decimal
@@ -35,7 +36,8 @@ def _policy() -> MT5MarketRequestPolicy:
     )
 
 
-def _readiness(cfg, *, account_trade_mode: int | None, account_identity_bound: bool, execution_enabled: bool):
+def _readiness(cfg, *, account_trade_mode: int | None, account_identity_bound: bool, execution_enabled: bool,
+               strategy_config_fingerprint: str):
     now = datetime.now(UTC)
     if cfg.mode == "DEMO":
         return assess_demo_campaign_readiness(
@@ -55,6 +57,7 @@ def _readiness(cfg, *, account_trade_mode: int | None, account_identity_bound: b
             execution_enabled=execution_enabled,
             symbols=cfg.symbols,
             risk_profile=load_risk_profile(),
+            strategy_config_fingerprint=strategy_config_fingerprint,
             approval_path=Path(approval).expanduser() if approval else None,
             account_trade_mode=account_trade_mode,
             account_identity_bound=account_identity_bound,
@@ -67,6 +70,7 @@ def main() -> int:
     cfg = load_runtime_config()
     initialize(cfg.db_path)
     execution_enabled = load_execution_enabled()
+    strategy_snapshot = load_strategy_snapshot()
     if cfg.mode not in {"DEMO", "LIVE_CANARY"}:
         print(json.dumps({"status": "blocked", "reasons": ["MODE_NOT_EXECUTION_RUNNER"]}))
         return 3
@@ -76,7 +80,7 @@ def main() -> int:
         client=client,
         symbols=cfg.symbols,
         db_path=cfg.db_path,
-        bars_count=52,
+        bars_count=required_raw_bars(strategy_snapshot),
         load_history=True,
         history_refresh_seconds=0,
     )
@@ -94,6 +98,7 @@ def main() -> int:
             account_trade_mode=int(outcome.raw_account.get("trade_mode")),
             account_identity_bound=account_matches(outcome.raw_account),
             execution_enabled=execution_enabled,
+            strategy_config_fingerprint=strategy_snapshot.production_fingerprint,
         )
         if not readiness.ready:
             print(json.dumps({"status": "blocked", "reasons": list(readiness.reasons)}))

@@ -1,42 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
-
-def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
-    delta = close.diff()
-    gain = delta.clip(lower=0).ewm(alpha=1 / period, adjust=False).mean()
-    loss = (-delta.clip(upper=0)).ewm(alpha=1 / period, adjust=False).mean()
-    rs = gain / loss.replace(0, np.nan)
-    return 100 - (100 / (1 + rs))
+from .indicators import atr, dmi_adx, ema, rsi
 
 
-def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    prev_close = df["close"].shift(1)
-    tr = pd.concat(
-        [
-            df["high"] - df["low"],
-            (df["high"] - prev_close).abs(),
-            (df["low"] - prev_close).abs(),
-        ],
-        axis=1,
-    ).max(axis=1)
-    return tr.ewm(alpha=1 / period, adjust=False).mean()
-
-
-def _adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    up = df["high"].diff()
-    down = -df["low"].diff()
-    plus_dm = pd.Series(np.where((up > down) & (up > 0), up, 0.0), index=df.index)
-    minus_dm = pd.Series(np.where((down > up) & (down > 0), down, 0.0), index=df.index)
-    atr = _atr(df, period).replace(0, np.nan)
-    plus_di = 100 * plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr
-    minus_di = 100 * minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
-    return dx.ewm(alpha=1 / period, adjust=False).mean()
+@dataclass(frozen=True)
+class _FeatureBar:
+    high: float
+    low: float
+    close: float
+    volume: float = 0.0
 
 
 def bars_frame(bars: list[dict[str, Any]]) -> pd.DataFrame:
@@ -51,47 +28,62 @@ def bars_frame(bars: list[dict[str, Any]]) -> pd.DataFrame:
         df[name] = pd.to_numeric(df[name], errors="coerce")
     if "time" in df.columns:
         df["time"] = pd.to_numeric(df["time"], errors="coerce")
+    if "tick_volume" in df.columns:
+        df["tick_volume"] = pd.to_numeric(df["tick_volume"], errors="coerce").fillna(0)
+    elif "volume" in df.columns:
+        df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0)
     return df.dropna(subset=required).reset_index(drop=True)
 
 
-def summarize_features(bars: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_features(
+    bars: list[dict[str, Any]],
+    *,
+    ema_fast_period: int = 20,
+    ema_slow_period: int = 50,
+    rsi_period: int = 14,
+    atr_period: int = 14,
+    adx_period: int = 14,
+    breakout_period: int = 20,
+) -> dict[str, Any]:
     df = bars_frame(bars)
-    if len(df) < 60:
+    minimum = max(ema_slow_period, rsi_period + 1, atr_period + 1, adx_period * 2, breakout_period + 1)
+    if len(df) < minimum:
         return {"ready": False, "bars": len(df)}
 
-    df["ema20"] = df["close"].ewm(span=20, adjust=False).mean()
-    df["ema50"] = df["close"].ewm(span=50, adjust=False).mean()
-    df["rsi14"] = _rsi(df["close"], 14)
-    df["atr14"] = _atr(df, 14)
-    df["adx14"] = _adx(df, 14)
-    df["high20"] = df["high"].rolling(20).max().shift(1)
-    df["low20"] = df["low"].rolling(20).min().shift(1)
+    volumes = (
+        df["tick_volume"].tolist()
+        if "tick_volume" in df.columns
+        else df["volume"].tolist()
+        if "volume" in df.columns
+        else [0.0] * len(df)
+    )
+    feature_bars = tuple(
+        _FeatureBar(float(row.high), float(row.low), float(row.close), float(volume))
+        for row, volume in zip(df.itertuples(index=False), volumes)
+    )
+    closes = [bar.close for bar in feature_bars]
+    close = closes[-1]
+    ema_fast = ema(closes, ema_fast_period)
+    ema_slow = ema(closes, ema_slow_period)
+    atr_value = atr(feature_bars, atr_period)
+    rsi_value = rsi(closes, rsi_period)
+    dmi = dmi_adx(feature_bars, adx_period)
+    adx_value = None if dmi is None else dmi.adx
 
-    row = df.iloc[-1]
-    close = float(row["close"])
-    ema20 = float(row["ema20"])
-    ema50 = float(row["ema50"])
-    atr = float(row["atr14"]) if pd.notna(row["atr14"]) else None
-    rsi = float(row["rsi14"]) if pd.notna(row["rsi14"]) else None
-    adx = float(row["adx14"]) if pd.notna(row["adx14"]) else None
-
-    if close > ema20 > ema50:
+    if close > ema_fast > ema_slow:
         trend = "up"
-    elif close < ema20 < ema50:
+    elif close < ema_fast < ema_slow:
         trend = "down"
     else:
         trend = "mixed"
 
-    high20 = float(row["high20"]) if pd.notna(row["high20"]) else None
-    low20 = float(row["low20"]) if pd.notna(row["low20"]) else None
-    breakout = "none"
-    if high20 is not None and close > high20:
-        breakout = "up"
-    elif low20 is not None and close < low20:
-        breakout = "down"
+    prior = feature_bars[-(breakout_period + 1):-1]
+    high = max(bar.high for bar in prior)
+    low = min(bar.low for bar in prior)
+    breakout = "up" if close > high else "down" if close < low else "none"
 
     recent = []
-    for _, candle in df.tail(20).iterrows():
+    for _, candle in df.tail(breakout_period).iterrows():
         recent.append(
             {
                 "time": int(candle["time"]) if "time" in candle and pd.notna(candle["time"]) else None,
@@ -106,15 +98,30 @@ def summarize_features(bars: list[dict[str, Any]]) -> dict[str, Any]:
         "ready": True,
         "bars": len(df),
         "close": close,
-        "ema20": ema20,
-        "ema50": ema50,
-        "rsi14": rsi,
-        "atr14": atr,
-        "adx14": adx,
+        "ema20": ema_fast if ema_fast_period == 20 else None,
+        "ema50": ema_slow if ema_slow_period == 50 else None,
+        "ema_fast": ema_fast,
+        "ema_slow": ema_slow,
+        "ema_fast_period": ema_fast_period,
+        "ema_slow_period": ema_slow_period,
+        "rsi14": rsi_value if rsi_period == 14 else None,
+        "rsi": rsi_value,
+        "rsi_period": rsi_period,
+        "atr14": atr_value if atr_period == 14 else None,
+        "atr": atr_value,
+        "atr_period": atr_period,
+        "adx14": adx_value if adx_period == 14 else None,
+        "adx": adx_value,
+        "adx_period": adx_period,
         "trend": trend,
-        "breakout_20": breakout,
-        "prior_high20": high20,
-        "prior_low20": low20,
-        "distance_ema20_atr": None if not atr else (close - ema20) / atr,
+        "breakout_20": breakout if breakout_period == 20 else None,
+        "breakout": breakout,
+        "breakout_period": breakout_period,
+        "prior_high20": high if breakout_period == 20 else None,
+        "prior_low20": low if breakout_period == 20 else None,
+        "prior_high": high,
+        "prior_low": low,
+        "distance_ema20_atr": None if not atr_value or ema_fast_period != 20 else (close - ema_fast) / atr_value,
+        "distance_ema_fast_atr": None if not atr_value else (close - ema_fast) / atr_value,
         "recent_candles": recent,
     }

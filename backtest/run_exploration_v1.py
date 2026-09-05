@@ -12,6 +12,7 @@ from statistics import mean
 from typing import Callable
 
 from forex_ai.research.dataset import load_frozen_replay_dataset
+from forex_ai.strategy.config import load_strategy_snapshot
 from forex_ai.strategy.v1 import exploration
 
 HORIZONS = (15, 30, 45, 60, 90, 120)
@@ -237,12 +238,22 @@ def main() -> int:
             label, raw_path = item.split("=", 1)
             periods[label] = Path(raw_path).expanduser()
 
+    strategy_snapshot = load_strategy_snapshot()
+    trend_config = strategy_snapshot.config_for("exploration_trend_v1")
+    breakout_config = strategy_snapshot.config_for("exploration_breakout_v1")
+
     records: list[dict[str, object]] = []
     for period, root in periods.items():
         for base in args.symbols:
             dataset = load_frozen_replay_dataset(root / ACTUAL[base] / "replay.jsonl")
-            records.extend(_family_records(period, base, dataset.events, "trend", exploration.evaluate_trend))
-            records.extend(_family_records(period, base, dataset.events, "breakout", exploration.evaluate_breakout))
+            records.extend(_family_records(
+                period, base, dataset.events, "trend",
+                lambda snapshot, now_utc: exploration.evaluate_trend(snapshot, trend_config, now_utc),
+            ))
+            records.extend(_family_records(
+                period, base, dataset.events, "breakout",
+                lambda snapshot, now_utc: exploration.evaluate_breakout(snapshot, breakout_config, now_utc),
+            ))
             print(period, base, "events", dataset.manifest.record_count)
 
     output_root = Path(args.output_root).expanduser()
@@ -260,6 +271,9 @@ def main() -> int:
     summary["periods"] = {label: str(path) for label, path in periods.items()}
     summary["symbols"] = list(args.symbols)
     summary["horizons_minutes"] = list(HORIZONS)
+    summary["strategy_config_fingerprint"] = strategy_snapshot.fingerprint
+    summary["trend_config_fingerprint"] = trend_config.fingerprint
+    summary["breakout_config_fingerprint"] = breakout_config.fingerprint
     summary["note"] = "Research-only. No live scanner or execution configuration is changed."
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

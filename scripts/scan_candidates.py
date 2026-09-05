@@ -8,13 +8,14 @@ from decimal import Decimal
 from time import perf_counter
 
 from forex_ai.config import load_risk_profile, load_runtime_config
-from forex_ai.integration.engine import DecisionOrchestrator
+from forex_ai.integration.engine import DecisionOrchestrator, production_strategy_bindings
 from forex_ai.journal.db import initialize, log_audit_event, session
 from forex_ai.mt5.client import MT5Client
 from forex_ai.risk.account_guard import AccountBindingError, assert_account_matches
 from forex_ai.runtime.ops import assess_runtime_health
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
 from forex_ai.runtime.risk_context import build_risk_context
+from forex_ai.strategy.config import load_strategy_snapshot, required_raw_bars
 
 UTC = timezone.utc
 D = Decimal
@@ -107,6 +108,7 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
         payload = {
             "strategy_id": strategy_id,
             "strategy_version": strategy_version,
+            "strategy_config_fingerprint": binding.config.fingerprint,
             "candidate": None if candidate is None else candidate.__dict__,
             "reason_codes": list(row.no_setup_reason_codes),
             "evidence": {"reason_codes": list(row.evidence.reason_codes), "values": dict(row.evidence.values)},
@@ -171,15 +173,13 @@ def main() -> int:
         print(json.dumps({"status": "blocked", "reasons": list(health.reasons)}))
         return 0
 
+    strategy_snapshot = load_strategy_snapshot()
     client = MT5Client(cfg)
-    # Strategy V1 needs 50 closed bars; 52 raw MT5 bars leaves 51 closed bars after excluding the currently-forming
-    # bar. Breakout then evaluates trend on bars[:-1], leaving the 50 bars required
-    # by its EMA50 trend-state gate.
     coordinator = MT5ResyncCoordinator(
         client=client,
         symbols=cfg.symbols,
         db_path=cfg.db_path,
-        bars_count=52,
+        bars_count=required_raw_bars(strategy_snapshot),
         load_history=False,
     )
     scan_started = perf_counter()
@@ -189,7 +189,23 @@ def main() -> int:
             print(json.dumps({"status": "sync_blocked", "reason": outcome.reason}))
             return 0
         constants = client.constants()
-        orchestrator = DecisionOrchestrator(db_path=cfg.db_path, risk_profile=load_risk_profile())
+        if strategy_snapshot.loaded_from_last_good:
+            log_audit_event(
+                cfg.db_path,
+                event_type="STRATEGY_CONFIG_RELOAD_REJECTED",
+                source="production_v1_scanner",
+                entity_id=strategy_snapshot.fingerprint,
+                payload={
+                    "source_path": str(strategy_snapshot.source_path),
+                    "rejected_error": strategy_snapshot.rejected_error,
+                    "active_fingerprint": strategy_snapshot.fingerprint,
+                },
+            )
+        orchestrator = DecisionOrchestrator(
+            db_path=cfg.db_path,
+            risk_profile=load_risk_profile(),
+            strategies=production_strategy_bindings(strategy_snapshot),
+        )
         output = []
         for base_symbol in cfg.symbols:
             try:

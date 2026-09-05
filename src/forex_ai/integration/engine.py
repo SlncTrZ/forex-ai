@@ -12,8 +12,9 @@ from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngin
 from forex_ai.risk.profile import RiskProfile
 from forex_ai.strategy.v1.contracts import MarketSnapshot, StrategyConfig, StrategyResult
 from forex_ai.config import load_fixed_lot
-from forex_ai.strategy.v1.trend_pullback import DEFAULT_CONFIG as PULLBACK_CONFIG, evaluate as evaluate_pullback
-from forex_ai.strategy.v1.volatility_breakout import DEFAULT_CONFIG as BREAKOUT_CONFIG, evaluate as evaluate_breakout
+from forex_ai.strategy.config import StrategyConfigSnapshot, bundled_strategy_snapshot
+from forex_ai.strategy.v1.trend_pullback import evaluate as evaluate_pullback
+from forex_ai.strategy.v1.volatility_breakout import evaluate as evaluate_breakout
 
 from forex_ai.journal.integration_repository import persist_advisory, persist_candidate, persist_risk_result, persist_safety_snapshot
 from .adapters import candidate_input
@@ -40,6 +41,17 @@ class IntegratedDecision:
         return self.risk_result is not None and self.risk_result.approved and not self.blocked_reasons
 
 
+def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[StrategyBinding, ...]:
+    bindings: list[StrategyBinding] = []
+    if snapshot.enabled("trend_pullback_v1"):
+        bindings.append(StrategyBinding(evaluate_pullback, snapshot.config_for("trend_pullback_v1")))
+    if snapshot.enabled("volatility_breakout_v1"):
+        bindings.append(StrategyBinding(evaluate_breakout, snapshot.config_for("volatility_breakout_v1")))
+    if not bindings:
+        raise ValueError("at least one production strategy must be enabled")
+    return tuple(bindings)
+
+
 class DecisionOrchestrator:
     """Joins Strategy V1 -> optional Advisory -> deterministic RiskEngine.
 
@@ -56,10 +68,7 @@ class DecisionOrchestrator:
     ):
         self.db_path = db_path
         self.risk_profile = risk_profile
-        self.strategies = strategies or (
-            StrategyBinding(evaluate_pullback, PULLBACK_CONFIG),
-            StrategyBinding(evaluate_breakout, BREAKOUT_CONFIG),
-        )
+        self.strategies = strategies or production_strategy_bindings(bundled_strategy_snapshot())
 
     def scan(
         self,

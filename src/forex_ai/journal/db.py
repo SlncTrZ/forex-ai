@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 SCHEMA = r"""
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -283,6 +283,7 @@ CREATE TABLE IF NOT EXISTS candidate_decisions (
     correlation_id TEXT NOT NULL,
     strategy_id TEXT NOT NULL,
     strategy_version TEXT NOT NULL,
+    strategy_config_fingerprint TEXT NOT NULL DEFAULT '',
     symbol TEXT NOT NULL,
     side TEXT NOT NULL,
     generated_at_utc TEXT NOT NULL,
@@ -470,9 +471,21 @@ def connect(path: Path) -> sqlite3.Connection:
     return con
 
 
+def _ensure_column(con: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    columns = {str(row[1]) for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        con.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
 def initialize(path: Path) -> None:
     with connect(path) as con:
         con.executescript(SCHEMA)
+        _ensure_column(
+            con,
+            "candidate_decisions",
+            "strategy_config_fingerprint",
+            "strategy_config_fingerprint TEXT NOT NULL DEFAULT ''",
+        )
         con.execute(
             "INSERT INTO schema_meta(key,value) VALUES('schema_version',?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",

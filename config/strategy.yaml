@@ -1,0 +1,64 @@
+schema_version: 1
+
+strategies:
+  trend_pullback_v1:
+    enabled: true
+    version: "1.0.0"
+    parameters:
+      ema_fast: 20
+      ema_slow: 50
+      atr_period: 14
+      pullback_atr: 0.75
+      volatility_buffer_atr: 0.25
+      structure_lookback_bars: 5
+      target_r: 2.0
+      expiry_minutes: 45
+      m5_confirm: false
+
+  volatility_breakout_v1:
+    enabled: true
+    version: "1.0.0"
+    parameters:
+      range_bars: 20
+      atr_period: 14
+      trend_ema_fast: 20
+      trend_ema_slow: 50
+      efficiency_window: 14
+      min_expansion: 1.20
+      min_efficiency: 0.30
+      max_extension_atr: 1.25
+      stop_buffer_atr: 0.20
+      target_r: 2.0
+      expiry_minutes: 30
+      max_cost_atr: 0.15
+
+  exploration_trend_v1:
+    enabled: true
+    version: "1.0.0"
+    parameters:
+      ema_fast: 20
+      ema_slow: 50
+      atr_period: 14
+      pullback_atr: 0.75
+      volatility_buffer_atr: 0.25
+      structure_lookback_bars: 5
+      target_r: 2.0
+      expiry_minutes: 45
+      probe_distance_atr: 1.25
+
+  exploration_breakout_v1:
+    enabled: true
+    version: "1.0.0"
+    parameters:
+      range_bars: 20
+      atr_period: 14
+      trend_ema_fast: 20
+      trend_ema_slow: 50
+      efficiency_window: 14
+      min_expansion: 1.20
+      min_efficiency: 0.30
+      max_extension_atr: 1.25
+      stop_buffer_atr: 0.20
+      target_r: 2.0
+      expiry_minutes: 30
+      max_cost_atr: 0.15
