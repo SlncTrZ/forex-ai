@@ -21,6 +21,7 @@ from forex_ai.mt5.client import MT5Client
 from forex_ai.risk.account_guard import account_matches, assert_account_matches
 from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
+from forex_ai.execution.auto_week import auto_live_window
 from forex_ai.runtime.risk_context import build_risk_context
 from forex_ai.strategy.config import load_strategy_snapshot, required_raw_bars
 
@@ -69,6 +70,10 @@ def _readiness(cfg, *, account_trade_mode: int | None, account_identity_bound: b
 def main() -> int:
     cfg = load_runtime_config()
     initialize(cfg.db_path)
+    now = datetime.now(UTC)
+    if cfg.mode == "LIVE_CANARY" and not auto_live_window(now):
+        print(json.dumps({"status": "idle", "reason": "OUTSIDE_AUTO_LIVE_WINDOW"}))
+        return 0
     execution_enabled = load_execution_enabled()
     strategy_snapshot = load_strategy_snapshot()
     if cfg.mode not in {"DEMO", "LIVE_CANARY"}:
