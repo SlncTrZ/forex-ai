@@ -64,6 +64,7 @@ def event_payload(event: ReplayEvent) -> dict[str, Any]:
             "spread_cost": float(snapshot.spread_cost),
             "commission_cost": float(snapshot.commission_cost),
             "metadata": dict(snapshot.metadata),
+            **({"context": dict(snapshot.context)} if snapshot.context else {}),
         },
     }
 
@@ -99,6 +100,7 @@ def parse_event(payload: dict[str, Any]) -> ReplayEvent:
         spread_cost=float(snapshot_payload.get("spread_cost", 0.0)),
         commission_cost=float(snapshot_payload.get("commission_cost", 0.0)),
         metadata=dict(snapshot_payload.get("metadata") or {}),
+        context=dict(snapshot_payload.get("context") or {}),
     )
     return ReplayEvent(clock_utc=datetime.fromisoformat(str(payload["clock_utc"])), snapshot=snapshot)
 

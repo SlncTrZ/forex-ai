@@ -239,6 +239,42 @@ class MT5Client:
             "bars": {label: self.bars(symbol, timeframe, count) for label, timeframe in timeframes.items()},
         }
 
+    def bars_range(self, symbol: str, timeframe: int, start_ts: float, end_ts: float) -> list[dict[str, Any]]:
+        """Fetch one UTC time range directly from MT5.
+
+        This is intended for frozen research datasets where paging backward from
+        the current bar is slower and more fragile than asking MT5 for the exact
+        historical interval.
+        """
+        if self._external_conn is not None:
+            dt = "__import__('datetime')"
+            start_expr = f"{dt}.datetime.fromtimestamp({float(start_ts)!r},{dt}.timezone.utc)"
+            end_expr = f"{dt}.datetime.fromtimestamp({float(end_ts)!r},{dt}.timezone.utc)"
+            code = (
+                "(lambda rates: [] if rates is None else ["
+                "(int(row['time']),float(row['open']),float(row['high']),float(row['low']),float(row['close']),"
+                "int(row['tick_volume']),int(row['spread']),int(row['real_volume'])) for row in rates])"
+                f"(mt5.copy_rates_range({symbol!r},{int(timeframe)!r},{start_expr},{end_expr}))"
+            )
+            old_timeout = self._external_conn._config.get("sync_request_timeout", 30)
+            self._external_conn._config["sync_request_timeout"] = max(float(old_timeout or 0), 120.0)
+            try:
+                compact = plain(self._remote_eval(code))
+            finally:
+                self._external_conn._config["sync_request_timeout"] = old_timeout
+            names = ("time", "open", "high", "low", "close", "tick_volume", "spread", "real_volume")
+            return [dict(zip(names, row, strict=True)) for row in compact]
+        dt_module = __import__("datetime")
+        start = dt_module.datetime.fromtimestamp(float(start_ts), dt_module.timezone.utc)
+        end = dt_module.datetime.fromtimestamp(float(end_ts), dt_module.timezone.utc)
+        rates = self._require().copy_rates_range(symbol, timeframe, start, end)
+        if rates is None:
+            return []
+        names = getattr(getattr(rates, "dtype", None), "names", None)
+        if names:
+            return [{name: plain(row[name].item() if hasattr(row[name], "item") else row[name]) for name in names} for row in rates]
+        return plain(rates)
+
     def bars(self, symbol: str, timeframe: int, count: int = 100, start_pos: int = 0) -> list[dict[str, Any]]:
         if self._external_conn is not None:
             code = (

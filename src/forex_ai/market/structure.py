@@ -10,6 +10,26 @@ from forex_ai.strategy.v1.contracts import Candle, TimeframeSnapshot
 
 
 @dataclass(frozen=True)
+class StructureLevel:
+    """Price-independent H4/D1 structure level.
+
+    Pivot detection/clustering is the expensive part of higher-timeframe context.
+    A StructureLevel can be cached until H4/D1 closed-bar identity changes, then
+    cheaply projected against each new M5 reference price.
+    """
+
+    timeframe: str
+    center: float
+    lower: float
+    upper: float
+    source_atr: float
+    touches: int
+    importance: float
+    origins: tuple[str, ...]
+    last_pivot_utc: datetime
+
+
+@dataclass(frozen=True)
 class StructureZone:
     timeframe: str
     role: str
@@ -25,6 +45,7 @@ class StructureZone:
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
+        payload["origins"] = list(self.origins)
         payload["last_pivot_utc"] = self.last_pivot_utc.isoformat()
         return payload
 
@@ -70,9 +91,8 @@ def _pivot_points(
         if bar.low < min(item.low for item in left_bars) and bar.low <= min(item.low for item in right_bars):
             points.append((bar.low, "pivot_low", bar.time_utc))
 
-    # Keep the currently-visible range extremes as context even if the last swing
-    # has not yet formed a fully confirmed pivot. These are descriptive levels,
-    # never trade triggers.
+    # Visible extrema are descriptive context, never trade triggers. They are
+    # intentionally causal because only already-closed bars are supplied here.
     if bars:
         high_bar = max(bars, key=lambda item: item.high)
         low_bar = min(bars, key=lambda item: item.low)
@@ -81,16 +101,12 @@ def _pivot_points(
     return points
 
 
-def _cluster_points(
+def _cluster_levels(
     timeframe: str,
     bars: Sequence[Candle],
     config: TimeframeStructureConfig,
-    reference_price: float,
-) -> list[StructureZone]:
-    if len(bars) < config.history_bars:
-        bars = bars[-config.history_bars:]
-    else:
-        bars = bars[-config.history_bars:]
+) -> list[StructureLevel]:
+    bars = bars[-config.history_bars:]
     atr_value = atr(bars, config.atr_period)
     if atr_value <= 0:
         return []
@@ -111,40 +127,57 @@ def _cluster_points(
             clusters.append([point])
 
     half_width = atr_value * config.zone_half_width_atr
-    zones: list[StructureZone] = []
+    levels: list[StructureLevel] = []
     for cluster in clusters:
         center = sum(item[0] for item in cluster) / len(cluster)
-        distance = center - reference_price
-        role = "support" if center <= reference_price else "resistance"
         origins = tuple(sorted({item[1] for item in cluster}))
         last_pivot = max(item[2] for item in cluster)
         touches = len(cluster)
-        zones.append(
-            StructureZone(
+        levels.append(
+            StructureLevel(
                 timeframe=timeframe,
-                role=role,
                 center=center,
                 lower=center - half_width,
                 upper=center + half_width,
-                distance_from_price=distance,
-                distance_atr=distance / atr_value,
+                source_atr=atr_value,
                 touches=touches,
                 importance=touches * config.timeframe_weight,
                 origins=origins,
                 last_pivot_utc=last_pivot,
             )
         )
-    return zones
+    return levels
 
 
-def build_higher_timeframe_structure(
+def extract_higher_timeframe_levels(
     *,
     timeframes: Mapping[str, TimeframeSnapshot],
+    config: HigherTimeframeStructureConfig,
+) -> tuple[tuple[StructureLevel, ...], tuple[str, ...]]:
+    """Extract price-independent H4/D1 levels from closed bars."""
+    if not config.enabled:
+        return (), ()
+    levels: list[StructureLevel] = []
+    used: list[str] = []
+    for timeframe_name, timeframe_config in config.timeframes.items():
+        snapshot = timeframes.get(timeframe_name)
+        if snapshot is None or not snapshot.closed_bars:
+            continue
+        used.append(timeframe_name)
+        levels.extend(_cluster_levels(timeframe_name, snapshot.closed_bars, timeframe_config))
+    return tuple(levels), tuple(used)
+
+
+def project_higher_timeframe_structure(
+    *,
+    levels: Sequence[StructureLevel],
+    source_timeframes: Sequence[str],
     reference_price: float,
     captured_at_utc: datetime,
     config: HigherTimeframeStructureConfig,
     config_fingerprint: str,
 ) -> HigherTimeframeStructure:
+    """Project cached levels against a current price without re-clustering."""
     if not config.enabled:
         return HigherTimeframeStructure(
             status="DISABLED",
@@ -157,18 +190,21 @@ def build_higher_timeframe_structure(
         )
 
     zones: list[StructureZone] = []
-    used: list[str] = []
-    for timeframe_name, timeframe_config in config.timeframes.items():
-        snapshot = timeframes.get(timeframe_name)
-        if snapshot is None or not snapshot.closed_bars:
-            continue
-        used.append(timeframe_name)
-        zones.extend(
-            _cluster_points(
-                timeframe_name,
-                snapshot.closed_bars,
-                timeframe_config,
-                reference_price,
+    for level in levels:
+        distance = level.center - reference_price
+        zones.append(
+            StructureZone(
+                timeframe=level.timeframe,
+                role="support" if level.center <= reference_price else "resistance",
+                center=level.center,
+                lower=level.lower,
+                upper=level.upper,
+                distance_from_price=distance,
+                distance_atr=distance / level.source_atr,
+                touches=level.touches,
+                importance=level.importance,
+                origins=level.origins,
+                last_pivot_utc=level.last_pivot_utc,
             )
         )
 
@@ -180,6 +216,7 @@ def build_higher_timeframe_structure(
         (zone for zone in zones if zone.role == "resistance"),
         key=lambda zone: (-zone.importance, abs(zone.distance_from_price), -zone.last_pivot_utc.timestamp()),
     )[:config.max_resistance_levels]
+    used = tuple(source_timeframes)
     status = "READY" if used else "UNAVAILABLE"
     return HigherTimeframeStructure(
         status=status,
@@ -188,6 +225,25 @@ def build_higher_timeframe_structure(
         supports=tuple(supports),
         resistances=tuple(resistances),
         config_fingerprint=config_fingerprint,
-        source_timeframes=tuple(used),
+        source_timeframes=used,
         error=None if used else "NO_HIGHER_TIMEFRAME_DATA",
+    )
+
+
+def build_higher_timeframe_structure(
+    *,
+    timeframes: Mapping[str, TimeframeSnapshot],
+    reference_price: float,
+    captured_at_utc: datetime,
+    config: HigherTimeframeStructureConfig,
+    config_fingerprint: str,
+) -> HigherTimeframeStructure:
+    levels, used = extract_higher_timeframe_levels(timeframes=timeframes, config=config)
+    return project_higher_timeframe_structure(
+        levels=levels,
+        source_timeframes=used,
+        reference_price=reference_price,
+        captured_at_utc=captured_at_utc,
+        config=config,
+        config_fingerprint=config_fingerprint,
     )
