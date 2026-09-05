@@ -72,6 +72,21 @@ PYTHONPATH=src python backtest/run_standard_backtest.py
 
 The result is written to `<standard-dataset>/standard_benchmark.json` and is the regression baseline for future strategy changes.
 
+## Controlled exploration
+
+`exploration_v1` broadens strategy admission for research without changing production scanner/risk/execution behavior. See `EXPLORATION_V1.md`.
+
+Run the current 8-week research set:
+
+```bash
+FOREX_AI_RUNTIME_ROOT=~/apps/forex-ai PYTHONPATH=src \
+  python backtest/run_exploration_v1.py --symbols EURUSD
+FOREX_AI_RUNTIME_ROOT=~/apps/forex-ai PYTHONPATH=src \
+  python backtest/run_exploration_v1.py --symbols XAUUSD
+```
+
+Outputs are persisted under `~/apps/forex-ai/backtest/research/exploration_v1/` by default.
+
 ## Trend-pullback research tools
 
 These scripts are read-only counterfactual research tools. They resolve the canonical dataset pointer and never mutate live strategy parameters:
