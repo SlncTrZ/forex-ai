@@ -1,3 +1,10 @@
+"""Resilience — Dieu phoi resync MT5 va kiem tra an toan thanh bar.
+Wing: runtime | Topic: resilience | Updated: 2026-10-08 20:11
+
+Dong bo account/symbol/tick/bars/positions/orders/deals tu MT5RuntimePort
+thanh BrokerState, MarketSnapshot, SafetySnapshot kem heartbeat journal.
+"""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -25,6 +32,11 @@ from forex_ai.strategy.v1.contracts import MarketSnapshot
 
 
 class MT5RuntimePort(Protocol):
+    """Cong MT5 toi thieu cho resync.
+
+    Cung cap ket noi, thong tin account/symbol/tick/bars,
+    positions/orders/deals va bang constants timeframe/loai lenh.
+    """
     def connect(self) -> bool: ...
     def close(self) -> None: ...
     def account_info(self) -> dict[str, Any] | None: ...
@@ -41,6 +53,20 @@ class MT5RuntimePort(Protocol):
 
 @dataclass(frozen=True)
 class SyncOutcome:
+    """Ket qua mot chu ky resync.
+
+    Params:
+        state: Trang thai suc khoe tu HealthKernel.
+        safety: Snapshot an toan sau complete_sync, None khi loi.
+        broker_state: BrokerState da hoa hop, None khi loi.
+        markets: Anh xa base symbol -> MarketSnapshot.
+        symbol_mapping: Anh xa base symbol -> ma broker thuc te.
+        raw_account: Dict account goc tu client.
+        raw_positions: Tuple dict position goc.
+        raw_orders: Tuple dict history order goc dang cache.
+        raw_deals: Tuple dict history deal goc dang cache.
+        reason: Ma ly do (HEALTHY, SYNC_BLOCKED:..., ma loi).
+    """
     state: HealthState
     safety: SafetySnapshot | None
     broker_state: BrokerState | None
@@ -54,10 +80,16 @@ class SyncOutcome:
 
     @property
     def ready(self) -> bool:
+        """True khi state HEALTHY va safety.reconciled.
+
+        Returns:
+            bool dat san sang giao dich.
+        """
         return self.state is HealthState.HEALTHY and self.safety is not None and self.safety.reconciled
 
 
 class SyncError(RuntimeError):
+    """Loi resync (account/symbol/tick/bars/gap)."""
     pass
 
 
@@ -111,6 +143,21 @@ def _expected_daily_rollover_gap(left: datetime, right: datetime) -> bool:
 
 
 def validate_bar_gaps(market: MarketSnapshot, timeframe_seconds: Mapping[str, int]) -> None:
+    """Kiem tra khoang trong thanh bar da dong theo tung timeframe.
+
+    Bo qua khoang <= 1.5 lan timeframe, weekend gap, rollover 20-23h UTC,
+    va break phien lap lai (signature trung >= 2 lan, multiples <= 8).
+
+    Params:
+        market: MarketSnapshot can kiem tra.
+        timeframe_seconds: Anh xa ten timeframe -> so giay.
+
+    Returns:
+        None khi hop le.
+
+    Raises:
+        SyncError: Ma GAPPED_BARS khi gap don le.
+    """
     for name, tf in market.timeframes.items():
         seconds = timeframe_seconds.get(name)
         if not seconds:
@@ -140,6 +187,23 @@ def validate_bar_gaps(market: MarketSnapshot, timeframe_seconds: Mapping[str, in
 
 
 class MT5ResyncCoordinator:
+    """Dieu phoi ket noi, cache bars/history va resync dinh ky.
+
+    Params:
+        client: MT5RuntimePort thuc hien lenh MT5.
+        symbols: Tuple base symbol can theo doi.
+        db_path: Duong dan journal luu heartbeat.
+        max_tick_age_seconds: Tuoi tick toi da, qua thi STALE_TICK.
+        bars_count: So bar yeu cau moi timeframe.
+        history_lookback_seconds: Cua so history orders/deals.
+        bars_refresh_seconds: Chu ky refresh bars.
+        history_refresh_seconds: Chu ky refresh history.
+        load_history: True thi nap history orders/deals.
+        market_context: Snapshot cau hinh higher-timeframe, None thi tat.
+        backoff: BackoffPolicy, mac dinh tao moi.
+        health: HealthKernel, mac dinh tao moi.
+        clock: Ham tra ve now UTC, mac dinh datetime.now(timezone.utc).
+    """
     def __init__(
         self,
         *,
@@ -187,6 +251,16 @@ class MT5ResyncCoordinator:
         self._recent_deals_cache: tuple[BrokerDeal, ...] = ()
 
     def sync_once(self, *, now_utc: datetime) -> SyncOutcome:
+        """Chay mot chu ky connect/resync va ghi heartbeat.
+
+        Params:
+            now_utc: Thoi diem chuan cho chu ky.
+
+        Returns:
+            SyncOutcome voi BrokerState/markets khi thanh cong,
+            SyncOutcome rong kem reason khi loi (da degrade health,
+            dong client, xoa cache).
+        """
         now = now_utc.astimezone(timezone.utc)
         try:
             if not self.connected:
@@ -221,6 +295,11 @@ class MT5ResyncCoordinator:
             return SyncOutcome(self.health.state, None, None, {}, {}, reason=reason)
 
     def close(self) -> None:
+        """Dong client, xoa cache va danh dau connection_failed.
+
+        Returns:
+            None.
+        """
         try:
             self.client.close()
         except Exception:
