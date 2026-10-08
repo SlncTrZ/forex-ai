@@ -1,3 +1,9 @@
+"""Strategy Config — schema, tham số và nạp snapshot cấu hình chiến lược.
+Wing: strategy | Topic: config | Updated: 2026-10-08 20:16
+
+Định nghĩa SCHEMA_VERSION, danh sách strategy ID, model Pydantic cho parameters,
+snapshot dataclass và hàm đọc/biên dịch YAML kèm fallback last-good.
+"""
 from __future__ import annotations
 
 import os
@@ -30,6 +36,10 @@ class _StrictModel(BaseModel):
 
 
 class TrendParameters(_StrictModel):
+    """Tham số chiến lược trend_pullback_v1.
+
+    Ràng buộc ema_fast < ema_slow; kiểm tra biên EMA/ATR/target/expiry.
+    """
     ema_fast: int = Field(ge=2)
     ema_slow: int = Field(ge=3)
     atr_period: int = Field(ge=2)
@@ -48,6 +58,10 @@ class TrendParameters(_StrictModel):
 
 
 class InsideBarMomentumParameters(_StrictModel):
+    """Tham số inside_bar_momentum_breakout_v1.
+
+    Yêu cầu decision_timeframe luôn là M5; kiểm tra biên ATR/body-ratio/target/expiry.
+    """
     decision_timeframe: str = "M5"
     atr_period: int = Field(ge=2)
     mother_min_range_atr: float = Field(ge=0)
@@ -66,6 +80,10 @@ class InsideBarMomentumParameters(_StrictModel):
 
 
 class BreakoutRetestParameters(_StrictModel):
+    """Tham số breakout_retest_v1.
+
+    Yêu cầu decision_timeframe luôn là M5; kiểm tra biên range/ATR/buffer/target/expiry.
+    """
     decision_timeframe: str = "M5"
     range_bars: int = Field(ge=2)
     atr_period: int = Field(ge=2)
@@ -85,6 +103,10 @@ class BreakoutRetestParameters(_StrictModel):
 
 
 class ExplorationTrendParameters(_StrictModel):
+    """Tham số exploration_trend_v1.
+
+    Ràng buộc ema_fast < ema_slow; thêm probe_distance_atr cho lệnh thăm dò.
+    """
     ema_fast: int = Field(ge=2)
     ema_slow: int = Field(ge=3)
     atr_period: int = Field(ge=2)
@@ -103,6 +125,10 @@ class ExplorationTrendParameters(_StrictModel):
 
 
 class BreakoutParameters(_StrictModel):
+    """Tham số volatility_breakout_v1 và exploration_breakout_v1.
+
+    Ràng buộc trend_ema_fast < trend_ema_slow; kiểm tra biên range/ATR/efficiency/extension/cost.
+    """
     range_bars: int = Field(ge=2)
     atr_period: int = Field(ge=2)
     trend_ema_fast: int = Field(ge=2)
@@ -135,12 +161,14 @@ PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
 
 @dataclass(frozen=True)
 class StrategySpec:
+    """Đặc tả một chiến lược: cờ enabled và StrategyConfig đã biên dịch."""
     enabled: bool
     config: StrategyConfig
 
 
 @dataclass(frozen=True)
 class StrategyConfigSnapshot:
+    """Snapshot cấu hình đã biên dịch: schema_version, strategies, fingerprint, source_path."""
     schema_version: int
     strategies: Mapping[str, StrategySpec]
     fingerprint: str
@@ -152,15 +180,38 @@ class StrategyConfigSnapshot:
         object.__setattr__(self, "strategies", MappingProxyType(dict(self.strategies)))
 
     def config_for(self, strategy_id: str) -> StrategyConfig:
+        """Trả về StrategyConfig của strategy_id.
+
+        Params:
+            strategy_id: mã chiến lược cần lấy.
+        Returns:
+            StrategyConfig đã biên dịch.
+        Raises:
+            KeyError: khi strategy_id không có trong snapshot.
+        """
         try:
             return self.strategies[strategy_id].config
         except KeyError as exc:
             raise KeyError(f"strategy config missing: {strategy_id}") from exc
 
     def enabled(self, strategy_id: str) -> bool:
+        """Kiểm tra cờ enabled của strategy_id.
+
+        Params:
+            strategy_id: mã chiến lược cần kiểm tra.
+        Returns:
+            True nếu được bật, False nếu tắt.
+        """
         return bool(self.strategies[strategy_id].enabled)
 
     def fingerprint_for(self, strategy_ids: tuple[str, ...]) -> str:
+        """Tính fingerprint cho tập strategy_ids từ cờ enabled và config_fingerprint.
+
+        Params:
+            strategy_ids: tuple mã chiến lược cần tổng hợp.
+        Returns:
+            Chuỗi fingerprint của tập đã chọn.
+        """
         return fingerprint({
             strategy_id: {
                 "enabled": self.strategies[strategy_id].enabled,
@@ -171,6 +222,11 @@ class StrategyConfigSnapshot:
 
     @property
     def production_fingerprint(self) -> str:
+        """Fingerprint của nhóm production (PRODUCTION_STRATEGY_IDS).
+
+        Returns:
+            Chuỗi fingerprint của các chiến lược production.
+        """
         return self.fingerprint_for(PRODUCTION_STRATEGY_IDS)
 
 
@@ -186,6 +242,11 @@ def _bundled_path() -> Path:
 
 
 def runtime_strategy_path() -> Path:
+    """Trả về đường dẫn strategy.yaml runtime.
+
+    Returns:
+        Path từ env FOREX_AI_STRATEGY_CONFIG nếu đặt, ngược lại ~/.config/forex-ai/strategy.yaml.
+    """
     explicit = os.getenv("FOREX_AI_STRATEGY_CONFIG")
     if explicit:
         return Path(explicit).expanduser()
@@ -193,6 +254,13 @@ def runtime_strategy_path() -> Path:
 
 
 def last_good_path(active_path: Path | None = None) -> Path:
+    """Trả về đường dẫn file last-good cạnh file active.
+
+    Params:
+        active_path: đường dẫn active; mặc định dùng runtime_strategy_path().
+    Returns:
+        Path strategy.last-good.yaml cùng thư mục với active.
+    """
     active = active_path or runtime_strategy_path()
     return active.with_name("strategy.last-good.yaml")
 
@@ -259,6 +327,17 @@ def _compile(raw: Mapping[str, Any], *, source_path: Path, loaded_from_last_good
 
 
 def load_strategy_snapshot(path: Path | None = None, *, allow_last_good: bool | None = None) -> StrategyConfigSnapshot:
+    """Nạp và biên dịch snapshot từ YAML, tự copy bundled và fallback last-good khi lỗi.
+
+    Params:
+        path: đường dẫn YAML chỉ định; None dùng runtime_strategy_path().
+        allow_last_good: cho phép fallback/sync last-good; mặc định True khi path None.
+    Returns:
+        StrategyConfigSnapshot đã biên dịch.
+    Raises:
+        FileNotFoundError: khi thiếu file explicit hoặc thiếu cả active lẫn bundled.
+        ValueError: khi config lỗi và không có last-good hợp lệ.
+    """
     explicit = path is not None
     active = Path(path).expanduser() if path is not None else runtime_strategy_path()
     if allow_last_good is None:
@@ -300,14 +379,34 @@ def load_strategy_snapshot(path: Path | None = None, *, allow_last_good: bool | 
 
 @lru_cache(maxsize=1)
 def bundled_strategy_snapshot() -> StrategyConfigSnapshot:
+    """Nạp snapshot từ file bundled kèm cache.
+
+    Returns:
+        StrategyConfigSnapshot của bundled, không dùng fallback last-good.
+    """
     return load_strategy_snapshot(_bundled_path(), allow_last_good=False)
 
 
 def bundled_strategy_config(strategy_id: str) -> StrategyConfig:
+    """Lấy StrategyConfig bundled của một chiến lược.
+
+    Params:
+        strategy_id: mã chiến lược cần lấy.
+    Returns:
+        StrategyConfig từ bundled snapshot.
+    """
     return bundled_strategy_snapshot().config_for(strategy_id)
 
 
 def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: bool = True) -> int:
+    """Tính số nến đóng tối thiểu từ parameters của các chiến lược đang bật.
+
+    Params:
+        snapshot: snapshot đã biên dịch.
+        production_only: True chỉ xét production, False xét tất cả.
+    Returns:
+        Số nến đóng tối thiểu, tối thiểu là 2.
+    """
     strategy_ids = PRODUCTION_STRATEGY_IDS if production_only else ALL_STRATEGY_IDS
     required = 2
     for strategy_id in strategy_ids:
@@ -342,6 +441,14 @@ def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: b
 
 
 def required_raw_bars(snapshot: StrategyConfigSnapshot, *, production_only: bool = True) -> int:
+    """Tính số nến thô cần fetch, bằng required_closed_bars cộng 1 nến đang hình thành.
+
+    Params:
+        snapshot: snapshot đã biên dịch.
+        production_only: True chỉ xét production, False xét tất cả.
+    Returns:
+        Số nến thô cần lấy.
+    """
     # MT5 snapshot assembly removes the currently-forming bar. Fetch one extra
     # raw bar so `required_closed_bars()` remain available to the evaluator.
     return required_closed_bars(snapshot, production_only=production_only) + 1
