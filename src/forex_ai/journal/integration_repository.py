@@ -1,3 +1,6 @@
+"""Integration repository — ghi/đọc bản ghi journal SQLite cho candidate, safety, risk, advisory, execution, trading control.
+Wing: journal | Topic: integration_repository | Updated: 2026-10-08 20:15
+"""
 from __future__ import annotations
 
 import hashlib
@@ -21,6 +24,13 @@ def _json(value) -> str:
 
 
 def payload_sha256(value) -> str:
+    """Băm SHA-256 của giá trị sau khi chuẩn hoá bằng `_json`.
+
+    Params:
+        value: Giá trị cần băm.
+    Returns:
+        Chuỗi hex SHA-256.
+    """
     return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
 
 
@@ -34,6 +44,19 @@ def persist_execution_broker_event(
     response: dict | None,
     outcome_class: str,
 ) -> int:
+    """Ghi một sự kiện broker vào `execution_broker_events_v1`.
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        intent_id: Mã intent.
+        timestamp_utc: Thời điểm sự kiện.
+        phase: Giai đoạn thực thi.
+        request: Payload request (dùng tính `request_sha256`).
+        response: Payload response hoặc `None` (dùng tính `response_sha256`, trích `retcode`).
+        outcome_class: Phân loại kết quả.
+    Returns:
+        `lastrowid` của dòng vừa chèn.
+    """
     request_hash = payload_sha256(request)
     response_hash = payload_sha256(response) if response is not None else None
     retcode = None
@@ -69,6 +92,11 @@ class SQLiteIntentRepository(IntentRepository):
     """Persistent order-intent repository used by the execution controller."""
 
     def __init__(self, db_path: Path):
+        """Khởi tạo repository với đường dẫn SQLite.
+
+        Params:
+            db_path: Đường dẫn SQLite.
+        """
         self.db_path = db_path
 
     @staticmethod
@@ -83,16 +111,37 @@ class SQLiteIntentRepository(IntentRepository):
         )
 
     def get(self, intent_id: str) -> OrderIntent | None:
+        """Đọc intent theo `intent_id`.
+
+        Params:
+            intent_id: Mã intent.
+        Returns:
+            `OrderIntent` nếu tồn tại, ngược lại `None`.
+        """
         with session(self.db_path) as con:
             row = con.execute("SELECT * FROM order_intents_v1 WHERE intent_id=?", (intent_id,)).fetchone()
         return self._from_row(row) if row else None
 
     def get_by_idempotency_key(self, key: str) -> OrderIntent | None:
+        """Đọc intent theo `idempotency_key`.
+
+        Params:
+            key: Khóa idempotency.
+        Returns:
+            `OrderIntent` nếu tồn tại, ngược lại `None`.
+        """
         with session(self.db_path) as con:
             row = con.execute("SELECT * FROM order_intents_v1 WHERE idempotency_key=?", (key,)).fetchone()
         return self._from_row(row) if row else None
 
     def save(self, intent: OrderIntent) -> None:
+        """Upsert intent theo `intent_id`; ghi transition khi `state` đổi.
+
+        Params:
+            intent: Intent cần lưu.
+        Returns:
+            `None`. Ném `ValueError` khi `idempotency_key` trùng intent khác.
+        """
         now = utc_now()
         with session(self.db_path) as con:
             previous = con.execute("SELECT state FROM order_intents_v1 WHERE intent_id=?", (intent.intent_id,)).fetchone()
@@ -128,12 +177,25 @@ class SQLiteIntentRepository(IntentRepository):
                 )
 
     def all(self) -> tuple[OrderIntent, ...]:
+        """Liệt kê toàn bộ intent theo `created_at_utc`, `intent_id`.
+
+        Returns:
+            Tuple các `OrderIntent`.
+        """
         with session(self.db_path) as con:
             rows = con.execute("SELECT * FROM order_intents_v1 ORDER BY created_at_utc,intent_id").fetchall()
         return tuple(self._from_row(row) for row in rows)
 
 
 def persist_candidate(db_path: Path, candidate: CandidateEnvelope) -> None:
+    """Ghi quyết định candidate; bỏ qua khi `candidate_id` đã tồn tại.
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        candidate: Envelope candidate cần lưu.
+    Returns:
+        `None`. Ném `ValueError` khi `opportunity_key` đã gắn candidate khác.
+    """
     with session(db_path) as con:
         con.execute(
             """INSERT INTO candidate_decisions(
@@ -166,6 +228,14 @@ def persist_candidate(db_path: Path, candidate: CandidateEnvelope) -> None:
 
 
 def persist_safety_snapshot(db_path: Path, snapshot: SafetySnapshot) -> None:
+    """Ghi snapshot an toàn; bỏ qua khi `fingerprint` đã tồn tại.
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        snapshot: Snapshot an toàn cần lưu.
+    Returns:
+        `None`.
+    """
     with session(db_path) as con:
         con.execute(
             "INSERT INTO safety_snapshots_v1(fingerprint,captured_at_utc,reconciled,blocking_reasons_json,payload_json) VALUES(?,?,?,?,?) ON CONFLICT(fingerprint) DO NOTHING",
@@ -174,6 +244,15 @@ def persist_safety_snapshot(db_path: Path, snapshot: SafetySnapshot) -> None:
 
 
 def persist_risk_result(db_path: Path, result: BrokerRiskResult, *, created_at_utc: datetime) -> None:
+    """Upsert kết quả risk theo (`candidate_id`, `risk_profile_fingerprint`, `safety_snapshot_fingerprint`).
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        result: Kết quả risk cần lưu.
+        created_at_utc: Thời điểm tạo bản ghi.
+    Returns:
+        `None`.
+    """
     with session(db_path) as con:
         con.execute(
             """INSERT INTO risk_decisions_v1(
@@ -192,6 +271,15 @@ def persist_risk_result(db_path: Path, result: BrokerRiskResult, *, created_at_u
 
 
 def persist_advisory(db_path: Path, advisory: Advisory, *, created_at_utc: datetime) -> None:
+    """Upsert advisory theo (`candidate_id`, `evidence_id`, `model_fingerprint`).
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        advisory: Advisory cần lưu.
+        created_at_utc: Thời điểm tạo bản ghi.
+    Returns:
+        `None`.
+    """
     with session(db_path) as con:
         con.execute(
             """INSERT INTO advisories_v1(
@@ -211,6 +299,15 @@ def persist_advisory(db_path: Path, advisory: Advisory, *, created_at_utc: datet
 
 
 def pending_v1_candidates(db_path: Path, *, now_utc: datetime, limit: int = 3) -> tuple[CandidateEnvelope, ...]:
+    """Lấy candidate chưa hết hạn và chưa có advisory, xếp theo `generated_at_utc`.
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        now_utc: Mốc thời gian hiện tại để lọc `expires_at_utc`.
+        limit: Số lượng tối đa cần lấy.
+    Returns:
+        Tuple các `CandidateEnvelope`.
+    """
     now = now_utc.astimezone(timezone.utc).isoformat()
     with session(db_path) as con:
         rows = con.execute(
@@ -231,6 +328,7 @@ def pending_v1_candidates(db_path: Path, *, now_utc: datetime, limit: int = 3) -
 
 @dataclass(frozen=True)
 class TradingControlState:
+    """Trạng thái điều khiển giao dịch (arm/kill-switch/bảo trì)."""
     armed: bool = False
     arm_expires_at_utc: datetime | None = None
     kill_switch: bool = True
@@ -238,12 +336,26 @@ class TradingControlState:
     reason: str = "UNINITIALIZED"
 
     def allows_new_entries(self, *, now_utc: datetime) -> bool:
+        """Kiểm tra có cho mở lệnh mới tại `now_utc` hay không.
+
+        Params:
+            now_utc: Mốc thời gian cần kiểm tra.
+        Returns:
+            `False` khi kill-switch/bảo trì/chưa arm; ngược lại yêu cầu còn hạn arm.
+        """
         if self.kill_switch or self.maintenance_mode or not self.armed:
             return False
         return self.arm_expires_at_utc is not None and now_utc < self.arm_expires_at_utc
 
 
 def load_trading_control(db_path: Path) -> TradingControlState:
+    """Đọc trạng thái điều khiển giao dịch; trả mặc định khi chưa có dòng.
+
+    Params:
+        db_path: Đường dẫn SQLite.
+    Returns:
+        `TradingControlState` hiện tại hoặc mặc định.
+    """
     with session(db_path) as con:
         row = con.execute("SELECT * FROM trading_control_state WHERE singleton=1").fetchone()
     if row is None:
@@ -253,6 +365,14 @@ def load_trading_control(db_path: Path) -> TradingControlState:
 
 
 def save_trading_control(db_path: Path, state: TradingControlState) -> None:
+    """Upsert trạng thái điều khiển giao dịch (dòng singleton).
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        state: Trạng thái cần lưu.
+    Returns:
+        `None`.
+    """
     with session(db_path) as con:
         con.execute(
             """INSERT INTO trading_control_state(singleton,armed,arm_expires_at_utc,kill_switch,maintenance_mode,updated_at_utc,reason)
@@ -269,8 +389,23 @@ def save_trading_control(db_path: Path, state: TradingControlState) -> None:
 
 def persist_trade_closure(
     db_path: Path, *, intent_id: str, requested_at_utc: datetime, exit_reason: str, request: dict,
-    response: dict | None, outcome_class: str, closed_at_utc: datetime | None = None, final_pnl: Decimal | None = None,
+    response: dict | None, outcome_class: str,     closed_at_utc: datetime | None = None, final_pnl: Decimal | None = None,
 ) -> None:
+    """Upsert bản ghi đóng lệnh theo `intent_id`.
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        intent_id: Mã intent.
+        requested_at_utc: Thời điểm yêu cầu đóng.
+        exit_reason: Lý do thoát (bắt buộc khác rỗng).
+        request: Payload request (dùng tính `request_sha256`).
+        response: Payload response hoặc `None` (dùng tính `response_sha256`, trích `retcode`).
+        outcome_class: Phân loại kết quả.
+        closed_at_utc: Thời điểm đóng xong hoặc `None`.
+        final_pnl: PnL cuối hoặc `None`.
+    Returns:
+        `None`. Ném `ValueError` khi `exit_reason` rỗng.
+    """
     if not exit_reason.strip():
         raise ValueError("exit_reason is required")
     request_hash = payload_sha256(request)
@@ -291,11 +426,27 @@ def persist_trade_closure(
         )
 
 def load_trade_closure(db_path: Path, intent_id: str):
+    """Đọc dòng `trade_closures_v1` theo `intent_id`.
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        intent_id: Mã intent.
+    Returns:
+        Row bản ghi nếu tồn tại, ngược lại `None`.
+    """
     with session(db_path) as con:
         return con.execute("SELECT * FROM trade_closures_v1 WHERE intent_id=?", (intent_id,)).fetchone()
 
 
 def load_candidate(db_path: Path, candidate_id: str) -> CandidateEnvelope | None:
+    """Đọc candidate theo `candidate_id`.
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        candidate_id: Mã candidate.
+    Returns:
+        `CandidateEnvelope` nếu tồn tại, ngược lại `None`.
+    """
     with session(db_path) as con:
         row = con.execute("SELECT payload_json FROM candidate_decisions WHERE candidate_id=?", (candidate_id,)).fetchone()
     if row is None:
@@ -307,6 +458,15 @@ def load_candidate(db_path: Path, candidate_id: str) -> CandidateEnvelope | None
 
 
 def latest_approved_risk_result(db_path: Path, *, now_utc: datetime, symbol: str | None = None) -> BrokerRiskResult | None:
+    """Đọc kết quả risk đã duyệt, chưa hết hạn, mới nhất (lọc `symbol` nếu có).
+
+    Params:
+        db_path: Đường dẫn SQLite.
+        now_utc: Mốc thời gian hiện tại để lọc `expires_at_utc`.
+        symbol: Mã symbol cần lọc hoặc `None` để lấy mọi symbol.
+    Returns:
+        `BrokerRiskResult` nếu có, ngược lại `None`.
+    """
     params: list[object] = [now_utc.astimezone(timezone.utc).isoformat()]
     where = "r.approved=1 AND r.expires_at_utc>?"
     if symbol is not None:
