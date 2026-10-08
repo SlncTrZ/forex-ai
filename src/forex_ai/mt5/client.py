@@ -1,3 +1,5 @@
+"""MT5 client — adapter doc du lieu va dat lenh qua mt5linux/RPyC."""
+
 from __future__ import annotations
 
 import io
@@ -16,6 +18,14 @@ MT5_SYMBOL_ORDER_MARKET_BIT = 1
 
 
 def plain(value: Any) -> Any:
+    """Chuan hoa ve kieu Python thuan (dict/list).
+
+    Args:
+        value: Gia tri namedtuple (co `_asdict`), dataclass, dict, list/tuple, hoac vo huu.
+
+    Returns:
+        None giu nguyen; dict ve dict khoa str; list/tuple ve list; con lai tra nguyen.
+    """
     if value is None:
         return None
     if hasattr(value, "_asdict"):
@@ -42,6 +52,13 @@ class MT5Client:
         self._external_conn: Any | None = None
 
     def connect(self) -> bool:
+        """Khoi tao phien MT5 theo `config.mt5_engine`.
+
+        Nhanh `external`: ket noi RPyC toi host/port, dat timeout 30s, nap `MetaTrader5` phia remote roi goi `mt5.initialize()`. Nhanh con lai: khoi tao `mt5linux.MetaTrader5` voi `search_on_init=False` (chan stdout) roi goi `initialize()`.
+
+        Returns:
+            True neu `initialize()` tra gia tri dung, nguoc lai False.
+        """
         if self.config.mt5_engine == "external":
             conn = rpyc.classic.connect(self.config.mt5_host, self.config.mt5_port)
             conn._config["sync_request_timeout"] = 30
@@ -61,6 +78,11 @@ class MT5Client:
             return bool(self.mt5.initialize())
 
     def close(self) -> None:
+        """Dong ket noi RPyC ngoai va shutdown client managed (bo qua loi).
+
+        Returns:
+            None. Dat lai `_external_conn` va `mt5` ve None.
+        """
         conn = self._external_conn
         self._external_conn = None
         if conn is not None:
@@ -82,6 +104,11 @@ class MT5Client:
         return self.mt5
 
     def version(self) -> Any:
+        """Lay thong tin phien ban MT5 da chuan hoa.
+
+        Returns:
+            Ket qua `mt5.version()` sau `plain()`.
+        """
         return plain(self._require().version())
 
     def _remote_eval(self, code: str) -> Any:
@@ -91,15 +118,39 @@ class MT5Client:
         return mt5._container.eval(code)  # noqa: SLF001 - required workaround for mt5linux namedtuple pickling
 
     def terminal_info(self) -> dict[str, Any] | None:
+        """Lay thong tin terminal MT5.
+
+        Returns:
+            Dict da chuan hoa, hoac None neu remote tra None.
+        """
         return plain(self._remote_eval("(lambda x: None if x is None else dict(x._asdict()))(mt5.terminal_info())"))
 
     def account_info(self) -> dict[str, Any] | None:
+        """Lay thong tin tai khoan MT5.
+
+        Returns:
+            Dict da chuan hoa, hoac None neu remote tra None.
+        """
         return plain(self._remote_eval("(lambda x: None if x is None else dict(x._asdict()))(mt5.account_info())"))
 
     def positions(self) -> list[dict[str, Any]]:
+        """Liet ke vi the dang mo (`mt5.positions_get()`).
+
+        Returns:
+            Danh sach dict da chuan hoa; rong neu khong co vi the.
+        """
         return plain(self._remote_eval("[dict(x._asdict()) for x in (mt5.positions_get() or ())]"))
 
     def history_deals(self, start_ts: float, end_ts: float) -> list[dict[str, Any]]:
+        """Lay deal lich su trong khoang thoi gian UTC.
+
+        Args:
+            start_ts: Moc bat dau (epoch giay).
+            end_ts: Moc ket thuc (epoch giay).
+
+        Returns:
+            Danh sach dict deal da chuan hoa; rong neu khong co.
+        """
         code = (
             "[dict(x._asdict()) for x in (mt5.history_deals_get("
             f"datetime.datetime.fromtimestamp({start_ts!r}, datetime.timezone.utc),"
@@ -108,6 +159,15 @@ class MT5Client:
         return plain(self._remote_eval(code))
 
     def history_orders(self, start_ts: float, end_ts: float) -> list[dict[str, Any]]:
+        """Lay lenh lich su trong khoang thoi gian UTC.
+
+        Args:
+            start_ts: Moc bat dau (epoch giay).
+            end_ts: Moc ket thuc (epoch giay).
+
+        Returns:
+            Danh sach dict lenh da chuan hoa; rong neu khong co.
+        """
         code = (
             "[dict(x._asdict()) for x in (mt5.history_orders_get("
             f"datetime.datetime.fromtimestamp({start_ts!r}, datetime.timezone.utc),"
@@ -116,6 +176,11 @@ class MT5Client:
         return plain(self._remote_eval(code))
 
     def symbols(self) -> list[dict[str, Any]]:
+        """Liet ke toan bo symbol (`mt5.symbols_get()`).
+
+        Returns:
+            Danh sach dict symbol da chuan hoa; rong neu khong co.
+        """
         return plain(self._remote_eval("[dict(x._asdict()) for x in (mt5.symbols_get() or ())]"))
 
     def symbol_names(self) -> list[dict[str, str]]:
@@ -139,9 +204,25 @@ class MT5Client:
         ]
 
     def symbol_info(self, symbol: str) -> dict[str, Any] | None:
+        """Lay thong tin mot symbol.
+
+        Args:
+            symbol: Ma symbol tren broker.
+
+        Returns:
+            Dict da chuan hoa, hoac None neu symbol khong ton tai.
+        """
         return plain(self._remote_eval(f"(lambda x: None if x is None else dict(x._asdict()))(mt5.symbol_info({symbol!r}))"))
 
     def tick(self, symbol: str) -> dict[str, Any] | None:
+        """Lay tick moi nhat mot symbol (`mt5.symbol_info_tick()`).
+
+        Args:
+            symbol: Ma symbol tren broker.
+
+        Returns:
+            Dict tick da chuan hoa, hoac None neu khong co tick.
+        """
         return plain(self._remote_eval(f"(lambda x: None if x is None else dict(x._asdict()))(mt5.symbol_info_tick({symbol!r}))"))
 
     def ticks_bundle(self, symbols: tuple[str, ...]) -> dict[str, dict[str, Any] | None]:
@@ -276,6 +357,17 @@ class MT5Client:
         return plain(rates)
 
     def bars(self, symbol: str, timeframe: int, count: int = 100, start_pos: int = 0) -> list[dict[str, Any]]:
+        """Lay nen `copy_rates_from_pos` (remote hoac managed) roi chuan hoa.
+
+        Args:
+            symbol: Ma symbol.
+            timeframe: Hang khung thoi gian MT5 (so nguyen).
+            count: So nen can lay.
+            start_pos: Vi tri bat dau (0 la nen hien tai).
+
+        Returns:
+            Danh sach dict nen; rong neu MT5 tra None.
+        """
         if self._external_conn is not None:
             code = (
                 "(lambda rates: [] if rates is None else ["
@@ -292,6 +384,11 @@ class MT5Client:
         return plain(rates)
 
     def active_orders(self) -> list[dict[str, Any]]:
+        """Liet ke lenh cho/pending (`mt5.orders_get()`).
+
+        Returns:
+            Danh sach dict lenh da chuan hoa; rong neu khong co.
+        """
         return plain(self._remote_eval("[dict(x._asdict()) for x in (mt5.orders_get() or ())]"))
 
     def order_calc_profit(
@@ -302,6 +399,18 @@ class MT5Client:
         price_open: float,
         price_close: float,
     ) -> float | None:
+        """Tinh loi/nhuan du kien (`mt5.order_calc_profit()`).
+
+        Args:
+            order_type: Loai lenh MT5 (so nguyen).
+            symbol: Ma symbol.
+            volume: Khoi luong.
+            price_open: Gia mo.
+            price_close: Gia dong.
+
+        Returns:
+            So tien du kien dang float, hoac None neu MT5 tra None.
+        """
         code = (
             "mt5.order_calc_profit("
             f"{int(order_type)!r},{symbol!r},{float(volume)!r},{float(price_open)!r},{float(price_close)!r})"
@@ -310,15 +419,42 @@ class MT5Client:
         return None if value is None else float(value)
 
     def order_calc_margin(self, order_type: int, symbol: str, volume: float, price: float) -> float | None:
+        """Tinh margin yeu cau (`mt5.order_calc_margin()`).
+
+        Args:
+            order_type: Loai lenh MT5 (so nguyen).
+            symbol: Ma symbol.
+            volume: Khoi luong.
+            price: Gia mo lenh.
+
+        Returns:
+            Tien margin dang float, hoac None neu MT5 tra None.
+        """
         code = f"mt5.order_calc_margin({int(order_type)!r},{symbol!r},{float(volume)!r},{float(price)!r})"
         value = self._remote_eval(code)
         return None if value is None else float(value)
 
     def order_check(self, request: dict[str, Any]) -> dict[str, Any] | None:
+        """Kiem tra yeu cau lenh (`mt5.order_check()`) truoc khi gui.
+
+        Args:
+            request: Dict yeu cau lenh MT5 do caller dung san.
+
+        Returns:
+            Dict ket qua kiem tra da chuan hoa, hoac None neu MT5 tra None.
+        """
         code = f"(lambda x: None if x is None else dict(x._asdict()))(mt5.order_check({request!r}))"
         return plain(self._remote_eval(code))
 
     def order_send(self, request: dict[str, Any]) -> dict[str, Any] | None:
+        """Gui yeu cau lenh (`mt5.order_send()`).
+
+        Args:
+            request: Dict yeu cau lenh MT5 do caller dung san.
+
+        Returns:
+            Dict ket qua gui lenh da chuan hoa, hoac None neu MT5 tra None.
+        """
         code = f"(lambda x: None if x is None else dict(x._asdict()))(mt5.order_send({request!r}))"
         return plain(self._remote_eval(code))
 
@@ -335,9 +471,19 @@ class MT5Client:
         return self.order_send(request)
 
     def last_error(self) -> Any:
+        """Lay loi MT5 gan nhat (`mt5.last_error()`).
+
+        Returns:
+            Ket qua da chuan hoa qua `plain()`.
+        """
         return plain(self._remote_eval("mt5.last_error()"))
 
     def constants(self) -> dict[str, int]:
+        """Lay nhom hang so khung gio, loai lenh/vi the va che do trade.
+
+        Returns:
+            Dict anh xa ten ngan (M1..D1, ORDER/POSITION, SYMBOL_TRADE_MODE_DISABLED, SYMBOL_ORDER_MARKET) ve so nguyen MT5.
+        """
         names = (
             "TIMEFRAME_M1", "TIMEFRAME_M5", "TIMEFRAME_M15", "TIMEFRAME_H1", "TIMEFRAME_H4", "TIMEFRAME_D1",
             "POSITION_TYPE_BUY", "POSITION_TYPE_SELL", "ORDER_TYPE_BUY", "ORDER_TYPE_SELL",
@@ -360,6 +506,11 @@ class MT5Client:
         }
 
     def execution_constants(self) -> dict[str, int]:
+        """Lay hang so hanh dong giao dich, filling, time va ma retcode.
+
+        Returns:
+            Dict ten hang so MT5 ve so nguyen; nhom bat buoc luon co, nhom tuy chon chi them khi remote co.
+        """
         required_names = (
             "TRADE_ACTION_DEAL",
             "TRADE_ACTION_SLTP",
