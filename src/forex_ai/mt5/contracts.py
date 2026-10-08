@@ -1,3 +1,7 @@
+"""MT5 Contracts — Pydantic bất biến cho trạng thái broker MT5.
+Wing: mt5 | Topic: contracts | Updated: 2026-10-08 19:59
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -22,15 +26,25 @@ def _utc(dt: datetime) -> datetime:
 
 
 def canonical_fingerprint(payload: dict[str, Any]) -> str:
+    """Băm SHA-256 của JSON chuẩn hoá (sort keys, separators gọn).
+
+    Params:
+        payload: dict đầu vào (giá trị không JSON-native được str hoá).
+
+    Returns:
+        Chuỗi hex SHA-256 của payload.
+    """
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
 class FrozenModel(BaseModel):
+    """BaseModel bất biến (frozen) và cấm field thừa."""
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class AccountSnapshot(FrozenModel):
+    """Ảnh chụp tài khoản: số dư/vốn/margin, chuẩn hoá giờ về UTC."""
     login: int
     server: str = Field(min_length=1)
     currency: str = Field(min_length=1)
@@ -53,10 +67,16 @@ class AccountSnapshot(FrozenModel):
 
     @property
     def identity_fingerprint(self) -> str:
+        """Fingerprint SHA-256 của (login, server, currency).
+
+        Returns:
+            Chuỗi hex SHA-256 định danh tài khoản.
+        """
         return canonical_fingerprint({"login": self.login, "server": self.server, "currency": self.currency})
 
 
 class SymbolContract(FrozenModel):
+    """Đặc tả hợp đồng symbol: digits/point/khối lượng, kiểm tra volume_min/max/step."""
     symbol: str = Field(min_length=1)
     digits: int = Field(ge=0)
     point: float = Field(gt=0)
@@ -97,11 +117,17 @@ class SymbolContract(FrozenModel):
 
     @property
     def contract_fingerprint(self) -> str:
+        """Fingerprint SHA-256 của đặc tả hợp đồng, loại trừ cờ trade_allowed/market_orders_allowed/session_open.
+
+        Returns:
+            Chuỗi hex SHA-256 của contract.
+        """
         payload = self.model_dump(mode="json", exclude={"trade_allowed", "market_orders_allowed", "session_open"})
         return canonical_fingerprint(payload)
 
 
 class TickSnapshot(FrozenModel):
+    """Tick bid/ask kèm time_msc, yêu cầu ask >= bid > 0, giờ về UTC."""
     symbol: str = Field(min_length=1)
     bid: float
     ask: float
@@ -126,6 +152,7 @@ class TickSnapshot(FrozenModel):
 
 
 class Bar(FrozenModel):
+    """Nến OHLC đơn: giá dương, high/low bao open/close, giờ về UTC."""
     time_utc: datetime
     open: float
     high: float
@@ -153,6 +180,7 @@ class Bar(FrozenModel):
 
 
 class BarSeries(FrozenModel):
+    """Chuỗi nến một symbol: closed_bars tăng dần không trùng giờ, current_bar (nếu có) mới hơn bar đóng cuối."""
     symbol: str = Field(min_length=1)
     timeframe_seconds: int = Field(gt=0)
     closed_bars: tuple[Bar, ...] = ()
@@ -171,6 +199,7 @@ class BarSeries(FrozenModel):
 
 
 class BrokerOrder(FrozenModel):
+    """Lệnh broker: ticket/symbol/khối lượng/giá mở/SL/TP cùng state/magic/comment."""
     ticket: int = Field(gt=0)
     symbol: str = Field(min_length=1)
     volume_initial: float = Field(ge=0)
@@ -184,6 +213,7 @@ class BrokerOrder(FrozenModel):
 
 
 class BrokerDeal(FrozenModel):
+    """Deal khớp: liên kết order/position, khối lượng/giá dương, lợi nhuận và thời điểm khớp."""
     ticket: int = Field(gt=0)
     order: int = Field(ge=0)
     position_id: int = Field(ge=0)
@@ -198,6 +228,7 @@ class BrokerDeal(FrozenModel):
 
 
 class BrokerPosition(FrozenModel):
+    """Vị thế mở: side chuẩn hoá BUY/SELL, giá mở/hiện tại dương, SL/TP và lợi nhuận."""
     ticket: int = Field(gt=0)
     symbol: str = Field(min_length=1)
     side: str
@@ -220,6 +251,7 @@ class BrokerPosition(FrozenModel):
 
 
 class BrokerState(FrozenModel):
+    """Trạng thái broker tổng hợp: account, contracts, ticks, positions/orders/deals và mốc đối soát UTC."""
     account: AccountSnapshot
     contracts: tuple[SymbolContract, ...]
     ticks: tuple[TickSnapshot, ...]
@@ -236,6 +268,7 @@ class BrokerState(FrozenModel):
 
 
 class SafetySnapshot(FrozenModel):
+    """Ảnh an toàn: cặp fingerprint account/contracts, cờ reconciled và lý do chặn."""
     account_fingerprint: str = Field(min_length=64, max_length=64)
     contracts_fingerprint: str = Field(min_length=64, max_length=64)
     reconciled: bool
@@ -249,4 +282,9 @@ class SafetySnapshot(FrozenModel):
 
     @property
     def fingerprint(self) -> str:
+        """Fingerprint SHA-256 của toàn bộ snapshot ở dạng JSON.
+
+        Returns:
+            Chuỗi hex SHA-256 của snapshot.
+        """
         return canonical_fingerprint(self.model_dump(mode="json"))
