@@ -1,3 +1,8 @@
+"""MT5 Execution Engine — Structuring and validating MetaTrader 5 trade requests and responses.
+
+Wing: execution | Topic: mt5 | Updated: 2026-10-08 20:43
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,10 +19,14 @@ SYMBOL_FILLING_IOC_FLAG = 2
 
 
 class MT5RequestError(ValueError):
+    """Ngoại lệ phát sinh khi yêu cầu giao dịch MT5 không hợp lệ."""
+
     pass
 
 
 class ProtectionDisposition(StrEnum):
+    """Trạng thái đánh giá bảo vệ vị thế MT5."""
+
     VERIFIED = "VERIFIED"
     REPAIR = "REPAIR"
     EMERGENCY_CLOSE = "EMERGENCY_CLOSE"
@@ -26,6 +35,8 @@ class ProtectionDisposition(StrEnum):
 
 @dataclass(frozen=True)
 class ProtectionPolicy:
+    """Chính sách xử lý và khắc phục lỗi bảo vệ vị thế."""
+
     max_repair_attempts: int = 1
     emergency_close_on_failure: bool = True
 
@@ -36,6 +47,8 @@ class ProtectionPolicy:
 
 @dataclass(frozen=True)
 class MT5MarketRequestPolicy:
+    """Chính sách cấu hình tham số lệnh thị trường MT5."""
+
     deviation_points: int
     magic: int
     comment_prefix: str = "FXAI"
@@ -63,6 +76,15 @@ def _aligned(value: Decimal, step: Decimal) -> bool:
 
 
 def choose_filling_mode(symbol_filling_flags: int, constants: Mapping[str, int]) -> int:
+    """Xác định chế độ khớp lệnh (filling mode) phù hợp từ cờ symbol và hằng số MT5.
+
+    Args:
+        symbol_filling_flags: Cờ chế độ khớp lệnh của symbol.
+        constants: Mapping các hằng số MT5 (ORDER_FILLING_IOC, ORDER_FILLING_FOK).
+
+    Returns:
+        Giá trị nguyên của chế độ khớp lệnh được chọn.
+    """
     if symbol_filling_flags & SYMBOL_FILLING_IOC_FLAG:
         return int(constants["ORDER_FILLING_IOC"])
     if symbol_filling_flags & SYMBOL_FILLING_FOK_FLAG:
@@ -71,6 +93,15 @@ def choose_filling_mode(symbol_filling_flags: int, constants: Mapping[str, int])
 
 
 def intent_comment(intent_id: str, prefix: str = "FXAI") -> str:
+    """Tạo chuỗi comment cho lệnh từ tiền tố và intent_id.
+
+    Args:
+        intent_id: Mã định danh của order intent.
+        prefix: Tiền tố comment, mặc định "FXAI".
+
+    Returns:
+        Chuỗi comment có độ dài tối đa 31 ký tự.
+    """
     return f"{prefix}:{intent_id[:18]}"[:31]
 
 
@@ -81,6 +112,17 @@ def build_market_request(
     constants: Mapping[str, int],
     policy: MT5MarketRequestPolicy,
 ) -> dict[str, Any]:
+    """Tạo dictionary chứa thông số yêu cầu đặt lệnh thị trường MT5.
+
+    Args:
+        intent: Ý định đặt lệnh OrderIntent đã qua kiểm duyệt rủi ro.
+        contract: Thông số hợp đồng của cặp tiền từ broker.
+        constants: Mapping các hằng số lệnh MT5.
+        policy: Chính sách cấu hình lệnh thị trường MT5MarketRequestPolicy.
+
+    Returns:
+        Dictionary chứa các trường tham số cấu hình lệnh gửi tới MT5.
+    """
     if intent.state not in {ExecutionState.RISK_APPROVED, ExecutionState.PREFLIGHT_PASSED}:
         raise MT5RequestError("market request requires a risk-approved intent")
     if intent.symbol != contract.symbol:
@@ -128,6 +170,18 @@ def build_protection_request(
     contract: SymbolContract,
     constants: Mapping[str, int],
 ) -> dict[str, Any]:
+    """Tạo dictionary cấu hình yêu cầu cập nhật SL/TP cho vị thế hiện tại.
+
+    Args:
+        position: Vị thế giao dịch hiện tại trên broker.
+        stop_loss: Mức giá dừng lỗ (SL) mới.
+        take_profit: Mức giá chốt lời (TP) mới.
+        contract: Thông số hợp đồng của cặp tiền từ broker.
+        constants: Mapping các hằng số lệnh MT5.
+
+    Returns:
+        Dictionary chứa các trường tham số cập nhật SL/TP gửi tới MT5.
+    """
     price_step = Decimal(str(contract.trade_tick_size or contract.point))
     if position.ticket <= 0 or position.symbol != contract.symbol:
         raise MT5RequestError("position/contract mismatch")
@@ -157,6 +211,19 @@ def build_close_request(
     policy: MT5MarketRequestPolicy,
     volume: Decimal | None = None,
 ) -> dict[str, Any]:
+    """Tạo dictionary cấu hình yêu cầu đóng vị thế (toàn bộ hoặc một phần).
+
+    Args:
+        position: Vị thế giao dịch hiện tại cần đóng.
+        tick: Thông tin giá thị trường hiện tại (bid/ask).
+        contract: Thông số hợp đồng của cặp tiền từ broker.
+        constants: Mapping các hằng số lệnh MT5.
+        policy: Chính sách cấu hình lệnh thị trường MT5MarketRequestPolicy.
+        volume: Khối lượng đóng tùy chọn (nếu None sẽ đóng toàn bộ khối lượng vị thế).
+
+    Returns:
+        Dictionary chứa các trường tham số lệnh đóng vị thế gửi tới MT5.
+    """
     if position.symbol != contract.symbol or tick.symbol != contract.symbol:
         raise MT5RequestError("position/tick/contract symbol mismatch")
     close_volume = volume or Decimal(str(position.volume))
@@ -202,6 +269,19 @@ def protection_disposition(
     failed_repair_attempts: int,
     policy: ProtectionPolicy,
 ) -> ProtectionDisposition:
+    """Đánh giá trạng thái bảo vệ của vị thế so với giá kỳ vọng.
+
+    Args:
+        position: Vị thế giao dịch hiện tại.
+        expected_stop_loss: Giá dừng lỗ kỳ vọng.
+        expected_take_profit: Giá chốt lời kỳ vọng.
+        contract: Thông số hợp đồng của cặp tiền từ broker.
+        failed_repair_attempts: Số lần sửa bảo vệ đã thất bại.
+        policy: Chính sách xử lý bảo vệ vị thế ProtectionPolicy.
+
+    Returns:
+        Giá trị ProtectionDisposition chỉ định hành động tiếp theo.
+    """
     if failed_repair_attempts < 0:
         raise ValueError("failed_repair_attempts must be >= 0")
     point = Decimal(str(contract.trade_tick_size or contract.point))
@@ -224,11 +304,26 @@ def protection_disposition(
 
 
 def order_check_passed(result: dict[str, Any] | None) -> bool:
+    """Kiểm tra kết quả kiểm tra lệnh (order check) từ MT5 có thành công không.
+
+    Args:
+        result: Dictionary kết quả kiểm tra lệnh từ MT5 hoặc None.
+
+    Returns:
+        True nếu kết quả không None và mã trả về (retcode) bằng 0, ngược lại False.
+    """
     return result is not None and int(result.get("retcode", -1)) == 0
 
 
 class MT5RetcodeClassifier:
+    """Bộ phân loại mã trả về (retcode) từ MT5 sang đối tượng SendOutcome."""
+
     def __init__(self, constants: Mapping[str, int]):
+        """Khởi tạo bộ phân loại với tập hằng số mã trả về của MT5.
+
+        Args:
+            constants: Mapping các hằng số mã retcode của MT5.
+        """
         self.constants = {key: int(value) for key, value in constants.items()}
         self._unknown = {
             self.constants["TRADE_RETCODE_TIMEOUT"],
@@ -248,6 +343,14 @@ class MT5RetcodeClassifier:
         }
 
     def classify(self, response: dict[str, Any] | None) -> SendOutcome:
+        """Phân loại phản hồi MT5 thành kết quả xử lý SendOutcome.
+
+        Args:
+            response: Dictionary phản hồi từ MT5 hoặc None.
+
+        Returns:
+            Đối tượng SendOutcome thể hiện trạng thái khớp lệnh, từ chối hoặc lỗi không xác định.
+        """
         if response is None:
             return SendOutcome(False, unknown=True, reason="BROKER_EMPTY_RESPONSE")
         try:
@@ -279,3 +382,4 @@ class MT5RetcodeClassifier:
             )
         prefix = "MT5_TRANSIENT_REJECT" if retcode in self._transient_reject else "MT5_REJECT"
         return SendOutcome(False, reason=f"{prefix}_{retcode}")
+
