@@ -119,25 +119,35 @@ def ensure_disk_headroom(db_path: Path, *, min_free_bytes: int = 512 * 1024 * 10
         raise RuntimeError(f"LOW_DISK_SPACE:{free}:{min_free_bytes}")
 
 
+def _discard_sqlite_files(base: Path) -> None:
+    """Xoá base và mọi sidecar WAL của nó để không bỏ lại rác khi backup thất bại."""
+    for suffix in ("", "-shm", "-wal"):
+        base.with_name(base.name + suffix).unlink(missing_ok=True)
+
+
 def backup_database(source: Path, destination: Path) -> Path:
     if source.resolve() == destination.resolve():
         raise ValueError("backup destination must differ from source")
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = destination.with_name(destination.name + ".tmp")
-    tmp.unlink(missing_ok=True)
+    _discard_sqlite_files(tmp)
     src = sqlite3.connect(source, timeout=10)
     dst = sqlite3.connect(tmp)
     try:
-        src.backup(dst)
-        dst.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        result = str(dst.execute("PRAGMA integrity_check").fetchone()[0])
-        if result != "ok":
-            raise RuntimeError(f"BACKUP_INTEGRITY_FAILED:{result}")
-        dst.commit()
-    finally:
-        dst.close()
-        src.close()
-    os.replace(tmp, destination)
+        try:
+            src.backup(dst)
+            dst.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            result = str(dst.execute("PRAGMA integrity_check").fetchone()[0])
+            if result != "ok":
+                raise RuntimeError(f"BACKUP_INTEGRITY_FAILED:{result}")
+            dst.commit()
+        finally:
+            dst.close()
+            src.close()
+        os.replace(tmp, destination)
+    except BaseException:
+        _discard_sqlite_files(tmp)
+        raise
     return destination
 
 
