@@ -3,6 +3,14 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from pathlib import Path
+
+# Ensure release src takes precedence over site-packages
+RELEASE_SRC = Path(__file__).resolve().parent.parent / "src"
+if RELEASE_SRC.is_dir() and str(RELEASE_SRC) not in sys.path:
+    sys.path.insert(0, str(RELEASE_SRC))
+
 from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal

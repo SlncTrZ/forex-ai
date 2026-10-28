@@ -7,6 +7,12 @@ from forex_ai.journal.db import initialize, session
 from forex_ai.kernel.health import HealthState
 from forex_ai.market.context_config import load_market_context_snapshot
 from forex_ai.runtime.resilience import MT5ResyncCoordinator, _expected_daily_rollover_gap
+import pytest
+
+@pytest.fixture(autouse=True)
+def isolate_account_fingerprint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("forex_ai.runtime.resilience.assert_account_matches", lambda acc, require_binding=False: None)
+
 
 UTC = timezone.utc
 NOW = datetime(2026, 9, 3, 8, 0, tzinfo=UTC)

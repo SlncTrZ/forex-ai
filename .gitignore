@@ -13,6 +13,7 @@ build/
 dist/
 
 # Runtime data (live DB/logs stay local, never in the repo)
+_private/
 *.db
 *.db-shm
 *.db-wal

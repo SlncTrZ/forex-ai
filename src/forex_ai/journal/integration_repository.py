@@ -1,5 +1,5 @@
 """Integration repository — ghi/đọc bản ghi journal SQLite cho candidate, safety, risk, advisory, execution, trading control.
-Wing: journal | Topic: integration_repository | Updated: 2026-10-08 20:15
+Wing: journal | Topic: integration_repository | Updated: 2026-10-28 21:54
 """
 from __future__ import annotations
 
@@ -470,7 +470,7 @@ def latest_approved_risk_result(db_path: Path, *, now_utc: datetime, symbol: str
     params: list[object] = [now_utc.astimezone(timezone.utc).isoformat()]
     where = (
         "r.approved=1 AND r.expires_at_utc>? "
-        "AND NOT EXISTS (SELECT 1 FROM order_intents_v1 i WHERE i.candidate_id=r.candidate_id AND i.state IN ('REJECTED', 'FILLED', 'FAILED'))"
+        "AND NOT EXISTS (SELECT 1 FROM order_intents_v1 i WHERE i.candidate_id=r.candidate_id)"
     )
     if symbol is not None:
         where += " AND c.symbol=?"

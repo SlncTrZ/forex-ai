@@ -17,7 +17,10 @@ from forex_ai.journal.db import SCHEMA_VERSION, initialize, session
 from forex_ai.journal.integration_repository import (
     SQLiteIntentRepository,
     TradingControlState,
+    latest_approved_risk_result,
     load_trading_control,
+    persist_candidate,
+    persist_risk_result,
     save_trading_control,
 )
 from forex_ai.mt5.contracts import AccountSnapshot, SafetySnapshot, SymbolContract, TickSnapshot
@@ -253,3 +256,47 @@ def test_repository_risk_profile_loader_uses_explicit_profile():
     assert loaded.daily_loss_limit_pct == D("3")
     assert loaded.weekly_loss_limit_pct == D("5")
     assert loaded.max_active_orders == 1
+
+
+def test_latest_approved_risk_result_excludes_candidates_with_intents(tmp_path):
+    db = tmp_path / "test.db"
+    initialize(db)
+    cfg = StrategyConfig(StrategyVersion("fixture", "1"), {})
+    market = MarketSnapshot("EURUSD", NOW, int(NOW.timestamp() * 1000), 1.0999, 1.1, {})
+    evidence = DecisionEvidence(("FIXTURE",), {"symbol": "EURUSD"})
+    candidate = build_candidate(
+        snapshot=market, config=cfg, side="BUY", entry=1.1, stop_loss=1.09,
+        take_profit=1.12, generated_at_utc=NOW, expires_at_utc=NOW + timedelta(minutes=10), evidence=evidence,
+    )
+    persist_candidate(db, candidate)
+    risk = BrokerRiskResult(
+        candidate_id=candidate.candidate_id, side="BUY", approved=True, reason_codes=(), normalized_symbol="EURUSD",
+        normalized_volume=D("0.01"), executable_entry=D("1.1"), stop_loss=D("1.09"), take_profit=D("1.12"),
+        projected_loss_account_currency=D("10"), margin_required=D("11"), risk_profile_fingerprint="r" * 64,
+        safety_snapshot_fingerprint="s" * 64, expires_at_utc=NOW + timedelta(minutes=5),
+    )
+    persist_risk_result(db, risk, created_at_utc=NOW)
+
+    # 1. Without intent, it should be retrieved
+    found = latest_approved_risk_result(db, now_utc=NOW, symbol="EURUSD")
+    assert found is not None
+    assert found.candidate_id == candidate.candidate_id
+
+    # Filter with different symbol should return None
+    assert latest_approved_risk_result(db, now_utc=NOW, symbol="GBPUSD") is None
+
+    # Filter after expiration should return None
+    assert latest_approved_risk_result(db, now_utc=NOW + timedelta(minutes=6), symbol="EURUSD") is None
+
+    # 2. Once an intent is saved (even in RECONCILED state)
+    repo = SQLiteIntentRepository(db)
+    intent = OrderIntent(
+        intent_id="intent-1", candidate_id=candidate.candidate_id, idempotency_key="key-1",
+        symbol="EURUSD", side="BUY", volume=D("0.01"), entry=D("1.1"), stop_loss=D("1.09"),
+        take_profit=D("1.12"), state=ExecutionState.RECONCILED, created_at_utc=NOW,
+    )
+    repo.save(intent)
+
+    # Should now return None because candidate already has an intent
+    assert latest_approved_risk_result(db, now_utc=NOW, symbol="EURUSD") is None
+
