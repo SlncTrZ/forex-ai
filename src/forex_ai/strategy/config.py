@@ -142,6 +142,9 @@ class SupertrendVolumeParameters(_StrictModel):
     target_r: float = Field(default=1.5, gt=0.0)
     allow_pullback_entry: bool = True
     expiry_minutes: int = Field(default=60, gt=0)
+    require_h1_trend: bool = Field(default=True)
+    session_start_hour: float = Field(default=7.5, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=16.5, ge=0.0, le=24.0)
 
 
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
