@@ -165,7 +165,7 @@ mv -Tf "$RUNTIME_ROOT/current.new" "$RUNTIME_ROOT/current"
 
 audit_release "RELEASE_START" "$RELEASE_DIR"
 
-if [ -f "$LIVE_APPROVAL" ]; then
+if [ -f "$LIVE_APPROVAL" ] && [ "${FOREX_AI_MODE:-}" != "DEMO" ]; then
   USER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
   USER_BUS="$USER_RUNTIME_DIR/bus"
   test -S "$USER_BUS" || { echo "Refusing live-approved deploy: user systemd bus unavailable at $USER_BUS" >&2; exit 15; }
