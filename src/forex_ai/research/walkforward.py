@@ -1,8 +1,12 @@
+"""Walk-Forward Analysis & Purged Cross-Validation (Marcos López de Prado).
+Wing: code | Topic: walkforward_purged | Updated: 2026-10-28 12:25
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Sequence
+from datetime import datetime, timedelta
+from typing import List, Sequence, Tuple
 
 
 @dataclass(frozen=True)
@@ -20,6 +24,13 @@ class Fold:
         if self.test_start is not None:
             if self.test_end is None or not (self.validation_end <= self.test_start < self.test_end):
                 raise ValueError("validation/test boundaries overlap or leak")
+
+
+@dataclass(frozen=True)
+class PurgedSample:
+    sample_id: str
+    entry_time_utc: datetime
+    exit_time_utc: datetime
 
 
 def rolling_folds(boundaries: Sequence[datetime], *, anchored: bool = False) -> tuple[Fold, ...]:
@@ -51,3 +62,41 @@ def assert_timestamp_in_split(timestamp: datetime, fold: Fold, split: str) -> bo
     if split == "test" and fold.test_start is not None and fold.test_end is not None:
         return fold.test_start <= timestamp < fold.test_end
     raise ValueError(f"unknown split {split}")
+
+
+def purge_and_embargo(
+    samples: Sequence[PurgedSample],
+    test_start: datetime,
+    test_end: datetime,
+    *,
+    embargo_duration: timedelta = timedelta(days=2),
+) -> Tuple[List[PurgedSample], List[PurgedSample]]:
+    """Thuật toán Purging & Embargoing của Marcos López de Prado.
+    - Purging: Loại bỏ triệt để các mẫu Train có khoảng nắm giữ [entry, exit] giao thoa với [test_start, test_end].
+    - Embargoing: Đặt khoảng đệm thời gian sau test_end để triệt tiêu hiệu ứng tự tương quan chuỗi (serial correlation).
+    """
+    train_samples: List[PurgedSample] = []
+    test_samples: List[PurgedSample] = []
+    embargo_end = test_end + embargo_duration
+
+    for s in samples:
+        # 1. Thuộc tập Test nếu entry nằm trong khoảng Test
+        if test_start <= s.entry_time_utc < test_end:
+            test_samples.append(s)
+            continue
+
+        # 2. Kiểm tra giao thoa nhãn (Label Overlap Purge):
+        # Mẫu s giao thoa với Test nếu max(s.entry, test_start) < min(s.exit, test_end)
+        has_overlap = not (s.exit_time_utc <= test_start or s.entry_time_utc >= test_end)
+        if has_overlap:
+            # Bị PURGE (loại bỏ khỏi tập Train)
+            continue
+
+        # 3. Kiểm tra Embargo sau tập Test:
+        # Nếu mẫu xảy ra trong khoảng thời gian [test_end, embargo_end] thì bị loại bỏ khỏi Train
+        if test_end <= s.entry_time_utc < embargo_end:
+            continue
+
+        train_samples.append(s)
+
+    return train_samples, test_samples

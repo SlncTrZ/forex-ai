@@ -20,9 +20,13 @@ def test_spool_alert_is_atomic_json(tmp_path):
 
 def test_deliver_alert_uses_fixed_executable_and_stdin(tmp_path):
     sink = tmp_path / "sink.json"
-    exe = tmp_path / "deliver.sh"
-    exe.write_text(f"#!/bin/sh\ncat > {sink}\n", encoding="utf-8")
-    exe.chmod(0o700)
+    if os.name == "nt":
+        exe = tmp_path / "deliver.cmd"
+        exe.write_text(f"@echo off\nmore > \"{sink}\"\n", encoding="utf-8")
+    else:
+        exe = tmp_path / "deliver.sh"
+        exe.write_text(f"#!/bin/sh\ncat > {sink}\n", encoding="utf-8")
+        exe.chmod(0o700)
     alert = build_alert(severity="WARN", code="TEST", summary="hello")
     assert deliver_alert(alert, executable=str(exe))
     assert json.loads(sink.read_text(encoding="utf-8"))["code"] == "TEST"
