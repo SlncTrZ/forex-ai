@@ -81,7 +81,8 @@ strategies:
       supertrend_period: 10
       supertrend_multiplier: 3.0
       min_volume_ratio: 1.2
-      target_r: 1.5
+      target_r: 1.8
+      min_stop_distance: 5.0
       allow_pullback_entry: true
       expiry_minutes: 60
       require_h1_trend: true

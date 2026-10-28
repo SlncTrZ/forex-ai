@@ -129,18 +129,28 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
             return StrategyResult(None, None, evidence, ("H1_TREND_DISCORDANT",))
 
     # 4. Stop Loss & Take Profit:
-    # Stop Loss đặt ngay tại đường Supertrend (có đệm 0.1 ATR)
+    # Stop Loss đặt ngay tại đường Supertrend có buffer, tối thiểu min_stop_distance (500 pts cho Vàng)
     entry = snapshot.ask if side == "BUY" else snapshot.bid
     buffer = 0.1 * atr_val
 
     if side == "BUY":
-        stop = st.value - buffer
+        raw_stop = st.value - buffer
     else:
-        stop = st.value + buffer
+        raw_stop = st.value + buffer
 
-    risk = abs(entry - stop)
-    # Ràng buộc Risk tối thiểu 0.2 ATR, tối đa 4.0 ATR
-    if risk < 0.2 * atr_val or risk > 4.0 * atr_val:
+    raw_risk = abs(entry - raw_stop)
+    min_stop_dist = float(p.get("min_stop_distance", 0.0))
+    if min_stop_dist <= 0.0 and ("XAU" in snapshot.symbol.upper() or "GOLD" in snapshot.symbol.upper()):
+        min_stop_dist = 5.0  # Mặc định an toàn tối thiểu 5 giá ($5.0 = 500 points) cho Vàng
+
+    risk = max(raw_risk, min_stop_dist)
+    if side == "BUY":
+        stop = entry - risk
+    else:
+        stop = entry + risk
+
+    # Ràng buộc Risk tối thiểu 0.2 ATR, tối đa 8.0 ATR
+    if risk < 0.2 * atr_val or risk > 8.0 * atr_val:
         evidence = DecisionEvidence(("INVALID_RISK_RANGE",), {"risk": risk, "atr": atr_val})
         return StrategyResult(None, None, evidence, ("INVALID_RISK_RANGE",))
 

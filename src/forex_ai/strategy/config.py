@@ -171,6 +171,7 @@ class SupertrendVolumeParameters(_StrictModel):
     require_h1_trend: bool = Field(default=True)
     session_start_hour: float = Field(default=7.5, ge=0.0, le=24.0)
     session_end_hour: float = Field(default=16.5, ge=0.0, le=24.0)
+    min_stop_distance: float = Field(default=0.0, ge=0.0)
 
 
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
