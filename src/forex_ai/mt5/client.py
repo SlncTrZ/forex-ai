@@ -82,7 +82,7 @@ class MT5Client:
         return self.mt5
 
     def version(self) -> Any:
-        return plain(self._require().version())
+        return plain(self._remote_eval("mt5.version()"))
 
     def _remote_eval(self, code: str) -> Any:
         if self._external_conn is not None:
