@@ -27,8 +27,9 @@ PRODUCTION_STRATEGY_IDS = (
     "trend_pullback_v1",
     "volatility_breakout_v1",
 )
+V2_STRATEGY_IDS = ("pro_volatility_expansion_v2", "supertrend_volume_m5")
 EXPLORATION_STRATEGY_IDS = ("exploration_trend_v1", "exploration_breakout_v1")
-ALL_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS + EXPLORATION_STRATEGY_IDS
+ALL_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS + EXPLORATION_STRATEGY_IDS + V2_STRATEGY_IDS
 
 
 class _StrictModel(BaseModel):
@@ -149,6 +150,29 @@ class BreakoutParameters(_StrictModel):
         return self
 
 
+class ProVolatilityParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    atr_period: int = Field(default=14, ge=2)
+    min_body_ratio: float = Field(default=0.65, ge=0.0, le=1.0)
+    min_range_atr: float = Field(default=1.2, ge=0.1)
+    min_volume_zscore: float = Field(default=1.2, ge=0.0)
+    target_r: float = Field(default=2.0, gt=0.0)
+    expiry_minutes: int = Field(default=90, gt=0)
+
+
+class SupertrendVolumeParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    supertrend_period: int = Field(default=10, ge=2)
+    supertrend_multiplier: float = Field(default=3.0, gt=0.0)
+    min_volume_ratio: float = Field(default=1.2, ge=0.0)
+    target_r: float = Field(default=1.5, gt=0.0)
+    allow_pullback_entry: bool = True
+    expiry_minutes: int = Field(default=60, gt=0)
+    require_h1_trend: bool = Field(default=True)
+    session_start_hour: float = Field(default=7.5, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=16.5, ge=0.0, le=24.0)
+
+
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "inside_bar_momentum_breakout_v1": InsideBarMomentumParameters,
     "breakout_retest_v1": BreakoutRetestParameters,
@@ -156,6 +180,8 @@ PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "volatility_breakout_v1": BreakoutParameters,
     "exploration_trend_v1": ExplorationTrendParameters,
     "exploration_breakout_v1": BreakoutParameters,
+    "pro_volatility_expansion_v2": ProVolatilityParameters,
+    "supertrend_volume_m5": SupertrendVolumeParameters,
 })
 
 
@@ -429,7 +455,7 @@ def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: b
                 int(p["range_bars"]) + int(p["breakout_search_bars"]) + 2,
                 int(p["atr_period"]) + 2,
             )
-        else:
+        elif strategy_id in {"volatility_breakout_v1", "exploration_breakout_v1"}:
             required = max(
                 required,
                 int(p["range_bars"]) + 2,
@@ -437,6 +463,10 @@ def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: b
                 int(p["trend_ema_slow"]) + 1,
                 int(p["efficiency_window"]) + 2,
             )
+        elif strategy_id == "pro_volatility_expansion_v2":
+            required = max(required, int(p.get("atr_period", 14)) + 20)
+        elif strategy_id == "supertrend_volume_m5":
+            required = max(required, int(p.get("supertrend_period", 10)) + 30)
     return required
 
 

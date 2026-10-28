@@ -109,7 +109,7 @@ class MT5Client:
         Returns:
             Ket qua `mt5.version()` sau `plain()`.
         """
-        return plain(self._require().version())
+        return plain(self._remote_eval("mt5.version()"))
 
     def _remote_eval(self, code: str) -> Any:
         if self._external_conn is not None:
@@ -328,19 +328,21 @@ class MT5Client:
         historical interval.
         """
         if self._external_conn is not None:
+            import pickle
             dt = "__import__('datetime')"
             start_expr = f"{dt}.datetime.fromtimestamp({float(start_ts)!r},{dt}.timezone.utc)"
             end_expr = f"{dt}.datetime.fromtimestamp({float(end_ts)!r},{dt}.timezone.utc)"
             code = (
-                "(lambda rates: [] if rates is None else ["
+                "__import__('pickle').dumps([] if (rates := mt5.copy_rates_range("
+                f"{symbol!r},{int(timeframe)!r},{start_expr},{end_expr})) is None else ["
                 "(int(row['time']),float(row['open']),float(row['high']),float(row['low']),float(row['close']),"
                 "int(row['tick_volume']),int(row['spread']),int(row['real_volume'])) for row in rates])"
-                f"(mt5.copy_rates_range({symbol!r},{int(timeframe)!r},{start_expr},{end_expr}))"
             )
             old_timeout = self._external_conn._config.get("sync_request_timeout", 30)
             self._external_conn._config["sync_request_timeout"] = max(float(old_timeout or 0), 120.0)
             try:
-                compact = plain(self._remote_eval(code))
+                raw_bytes = self._remote_eval(code)
+                compact = pickle.loads(raw_bytes) if isinstance(raw_bytes, (bytes, bytearray)) else raw_bytes
             finally:
                 self._external_conn._config["sync_request_timeout"] = old_timeout
             names = ("time", "open", "high", "low", "close", "tick_volume", "spread", "real_volume")

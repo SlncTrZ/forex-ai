@@ -4,7 +4,7 @@ import os
 import shutil
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 UTC = timezone.utc
@@ -54,7 +54,7 @@ def assess_runtime_health(
     else:
         try:
             with _connect_readonly(db_path) as con:
-                integrity = str(con.execute("PRAGMA integrity_check").fetchone()[0])
+                integrity = str(con.execute("PRAGMA quick_check(1)").fetchone()[0])
                 if integrity != "ok":
                     reasons.append("DB_INTEGRITY_FAILED")
                 row = con.execute(
@@ -154,3 +154,43 @@ def backup_database(source: Path, destination: Path) -> Path:
 def verify_database(path: Path) -> str:
     with _connect_readonly(path) as con:
         return str(con.execute("PRAGMA integrity_check").fetchone()[0])
+
+
+def prune_database_records(
+    db_path: Path,
+    *,
+    keep_market_days: int = 2,
+    keep_heartbeat_days: int = 7,
+    keep_event_days: int = 7,
+    vacuum: bool = False,
+    now_utc: datetime | None = None,
+) -> dict[str, int]:
+    """Cắt tỉa bản ghi cũ trong database SQLite để chặn tràn đĩa và giảm tải I/O."""
+    if not db_path.exists():
+        return {}
+    now = (now_utc or datetime.now(UTC)).astimezone(UTC)
+    market_cutoff = (now - timedelta(days=keep_market_days)).isoformat()
+    heartbeat_cutoff = (now - timedelta(days=keep_heartbeat_days)).isoformat()
+    event_cutoff = (now - timedelta(days=keep_event_days)).isoformat()
+
+    results: dict[str, int] = {}
+    with sqlite3.connect(db_path, timeout=30) as con:
+        con.execute("PRAGMA busy_timeout=30000")
+
+        for table, col, cutoff in (
+            ("market_snapshots", "timestamp", market_cutoff),
+            ("runtime_heartbeats", "timestamp_utc", heartbeat_cutoff),
+            ("system_events", "timestamp", event_cutoff),
+            ("safety_snapshots_v1", "captured_at_utc", event_cutoff),
+            ("position_snapshots", "timestamp", event_cutoff),
+        ):
+            try:
+                cur = con.execute(f"DELETE FROM {table} WHERE {col} < ?", (cutoff,))
+                results[table] = cur.rowcount
+            except sqlite3.OperationalError:
+                pass
+
+        con.commit()
+        if vacuum:
+            con.execute("VACUUM")
+    return results

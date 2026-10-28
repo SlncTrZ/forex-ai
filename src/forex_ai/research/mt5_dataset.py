@@ -43,14 +43,30 @@ def build_replay_events_from_mt5_bars(
         raise ValueError("point must be positive")
     if history_bars < min_bars:
         raise ValueError("history_bars must be >= min_bars")
+
+    m15_starts = [int(row["time"]) for row in m15_rows]
+    h1_starts = [int(row["time"]) for row in h1_rows]
+    h4_starts = [int(row["time"]) for row in h4_rows]
+
+    m15_candles = tuple(_candle(row) for row in m15_rows)
+    h1_candles = tuple(_candle(row) for row in h1_rows)
+    h4_candles = tuple(_candle(row) for row in h4_rows)
+
+    def _get_slice(candles: tuple[Candle, ...], starts: list[int], clock: datetime, timeframe: str) -> tuple[Candle, ...]:
+        seconds = _TIMEFRAME_SECONDS[timeframe]
+        cutoff_start = int(clock.timestamp()) - seconds
+        end = bisect_right(starts, cutoff_start)
+        begin = max(0, end - history_bars)
+        return candles[begin:end]
+
     events: list[ReplayEvent] = []
     for row in m15_rows:
         start = datetime.fromtimestamp(int(row["time"]), UTC)
         clock = start.replace(microsecond=0) + timedelta(seconds=_TIMEFRAME_SECONDS["M15"])
         timeframes = {
-            "M15": TimeframeSnapshot("M15", _closed_rows(m15_rows, clock=clock, timeframe="M15", keep=history_bars)),
-            "H1": TimeframeSnapshot("H1", _closed_rows(h1_rows, clock=clock, timeframe="H1", keep=history_bars)),
-            "H4": TimeframeSnapshot("H4", _closed_rows(h4_rows, clock=clock, timeframe="H4", keep=history_bars)),
+            "M15": TimeframeSnapshot("M15", _get_slice(m15_candles, m15_starts, clock, "M15")),
+            "H1": TimeframeSnapshot("H1", _get_slice(h1_candles, h1_starts, clock, "H1")),
+            "H4": TimeframeSnapshot("H4", _get_slice(h4_candles, h4_starts, clock, "H4")),
         }
         if min(len(tf.closed_bars) for tf in timeframes.values()) < min_bars:
             continue
@@ -67,8 +83,7 @@ def build_replay_events_from_mt5_bars(
             ask=ask,
             timeframes=timeframes,
             spread_cost=spread,
-            commission_cost=0.0,
-            metadata={"source": "mt5_broker_history", "historical_spread_points": spread_points},
+            metadata={"source": "mt5_broker_history"},
         )
-        events.append(ReplayEvent(clock, snapshot))
+        events.append(ReplayEvent(clock_utc=clock, snapshot=snapshot))
     return tuple(events)

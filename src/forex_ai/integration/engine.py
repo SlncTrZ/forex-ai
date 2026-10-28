@@ -17,6 +17,8 @@ from forex_ai.strategy.v1.breakout_retest import evaluate as evaluate_breakout_r
 from forex_ai.strategy.v1.inside_bar_momentum_breakout import evaluate as evaluate_inside_bar
 from forex_ai.strategy.v1.trend_pullback import evaluate as evaluate_pullback
 from forex_ai.strategy.v1.volatility_breakout import evaluate as evaluate_breakout
+from forex_ai.strategy.v2.pro_volatility_expansion_v2 import evaluate as evaluate_pro_volatility
+from forex_ai.strategy.v2.supertrend_volume_m5 import evaluate as evaluate_supertrend
 
 from forex_ai.journal.integration_repository import persist_advisory, persist_candidate, persist_risk_result, persist_safety_snapshot
 from .adapters import candidate_input
@@ -56,6 +58,10 @@ def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[Stra
         bindings.append(StrategyBinding(evaluate_pullback, snapshot.config_for("trend_pullback_v1")))
     if snapshot.enabled("volatility_breakout_v1"):
         bindings.append(StrategyBinding(evaluate_breakout, snapshot.config_for("volatility_breakout_v1")))
+    if snapshot.enabled("pro_volatility_expansion_v2"):
+        bindings.append(StrategyBinding(evaluate_pro_volatility, snapshot.config_for("pro_volatility_expansion_v2")))
+    if snapshot.enabled("supertrend_volume_m5"):
+        bindings.append(StrategyBinding(evaluate_supertrend, snapshot.config_for("supertrend_volume_m5")))
     if not bindings:
         raise ValueError("at least one production strategy must be enabled")
     return tuple(bindings)

@@ -61,6 +61,33 @@ strategies:
       expiry_minutes: 30
       max_cost_atr: 0.15
 
+  pro_volatility_expansion_v2:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      atr_period: 14
+      min_body_ratio: 0.65
+      min_range_atr: 1.2
+      min_volume_zscore: 1.2
+      target_r: 1.8
+      expiry_minutes: 90
+
+  supertrend_volume_m5:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      supertrend_period: 10
+      supertrend_multiplier: 3.0
+      min_volume_ratio: 1.2
+      target_r: 1.5
+      allow_pullback_entry: true
+      expiry_minutes: 60
+      require_h1_trend: true
+      session_start_hour: 7.5
+      session_end_hour: 16.5
+
   exploration_trend_v1:
     enabled: true
     version: "1.0.0"

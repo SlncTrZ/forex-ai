@@ -35,6 +35,29 @@ class DMIADX:
     adx: float
 
 
+@dataclass(frozen=True)
+class SupertrendValue:
+    trend: str  # "UP" | "DOWN"
+    value: float  # Current Supertrend stop level
+    upper_band: float
+    lower_band: float
+    changed: bool  # True if trend flipped on this bar
+
+
+@dataclass(frozen=True)
+class KeltnerChannel:
+    middle: float
+    upper: float
+    lower: float
+
+
+@dataclass(frozen=True)
+class SqueezeState:
+    squeeze_on: bool
+    momentum_direction: str  # "UP" | "DOWN" | "NEUTRAL"
+    bandwidth: float
+
+
 def _require_period(period: int) -> None:
     if period <= 0:
         raise ValueError("period must be positive")
@@ -209,3 +232,117 @@ def volume_zscore(bars: Sequence[OHLCV], period: int) -> float | None:
     variance = sum((value - avg) ** 2 for value in values) / period
     deviation = sqrt(variance)
     return 0.0 if deviation == 0 else (values[-1] - avg) / deviation
+
+
+def keltner_channels(bars: Sequence[OHLCV], ema_period: int = 20, atr_period: int = 14, multiplier: float = 1.5) -> KeltnerChannel | None:
+    _require_period(ema_period)
+    _require_period(atr_period)
+    if len(bars) < max(ema_period, atr_period + 1):
+        return None
+    closes = [float(b.close) for b in bars]
+    mid = ema(closes, ema_period)
+    atr_val = atr(bars, atr_period)
+    return KeltnerChannel(middle=mid, upper=mid + multiplier * atr_val, lower=mid - multiplier * atr_val)
+
+
+def bollinger_squeeze(bars: Sequence[OHLCV], bb_period: int = 20, bb_mult: float = 2.0, kc_mult: float = 1.5) -> SqueezeState | None:
+    """John Carter Squeeze: Bollinger Bands nằm gọn trong Keltner Channel -> Nén biến động cực đại."""
+    if len(bars) < bb_period + 2:
+        return None
+    closes = [float(b.close) for b in bars]
+    bb = bollinger_bands(closes, bb_period, bb_mult)
+    kc = keltner_channels(bars, ema_period=bb_period, atr_period=bb_period, multiplier=kc_mult)
+    if not bb or not kc:
+        return None
+
+    squeeze_on = (bb.upper <= kc.upper) and (bb.lower >= kc.lower)
+    # Linear regression momentum proxy of delta (close - (highest + lowest)/2 + ema)/2
+    recent = closes[-5:]
+    momentum = "UP" if recent[-1] > recent[0] else ("DOWN" if recent[-1] < recent[0] else "NEUTRAL")
+    return SqueezeState(squeeze_on=squeeze_on, momentum_direction=momentum, bandwidth=bb.bandwidth)
+
+
+def supertrend(bars: Sequence[OHLCV], period: int = 10, multiplier: float = 3.0) -> SupertrendValue | None:
+    """Tính toán Supertrend (Olivier Seban) nhân quả theo chuỗi nến lịch sử."""
+    _require_period(period)
+    if len(bars) < period + 2:
+        return None
+
+    # Tính ATR chuỗi
+    true_ranges = [
+        max(float(cur.high) - float(cur.low), abs(float(cur.high) - float(prev.close)), abs(float(cur.low) - float(prev.close)))
+        for prev, cur in zip(bars[:-1], bars[1:])
+    ]
+
+    # Khởi tạo ATR RMA
+    atr_val = sum(true_ranges[:period]) / period
+    atrs: list[float] = [atr_val]
+    for tr in true_ranges[period:]:
+        atr_val = ((period - 1) * atr_val + tr) / period
+        atrs.append(atr_val)
+
+    # Offset của bars tương ứng với atrs (bắt đầu từ bar index = period)
+    offset = len(bars) - len(atrs)
+
+    trend = "UP"
+    final_upper = 0.0
+    final_lower = 0.0
+    st_val = 0.0
+    changed = False
+
+    for i in range(len(atrs)):
+        bar = bars[offset + i]
+        prev_bar = bars[offset + i - 1] if (offset + i - 1) >= 0 else bar
+        a = atrs[i]
+
+        hl2 = (float(bar.high) + float(bar.low)) / 2.0
+        basic_upper = hl2 + multiplier * a
+        basic_lower = hl2 - multiplier * a
+
+        if i == 0:
+            final_upper = basic_upper
+            final_lower = basic_lower
+            st_val = final_lower
+            trend = "UP"
+            continue
+
+        prev_final_upper = final_upper
+        prev_final_lower = final_lower
+        prev_close = float(prev_bar.close)
+
+        # Update Final Upper
+        if basic_upper < prev_final_upper or prev_close > prev_final_upper:
+            final_upper = basic_upper
+        else:
+            final_upper = prev_final_upper
+
+        # Update Final Lower
+        if basic_lower > prev_final_lower or prev_close < prev_final_lower:
+            final_lower = basic_lower
+        else:
+            final_lower = prev_final_lower
+
+        prev_trend = trend
+        cur_close = float(bar.close)
+
+        # Update Trend Direction
+        if prev_trend == "DOWN" and cur_close > prev_final_upper:
+            trend = "UP"
+            st_val = final_lower
+            changed = True
+        elif prev_trend == "UP" and cur_close < prev_final_lower:
+            trend = "DOWN"
+            st_val = final_upper
+            changed = True
+        else:
+            trend = prev_trend
+            st_val = final_lower if trend == "UP" else final_upper
+            changed = False
+
+    return SupertrendValue(
+        trend=trend,
+        value=round(st_val, 5),
+        upper_band=round(final_upper, 5),
+        lower_band=round(final_lower, 5),
+        changed=changed,
+    )

@@ -31,3 +31,6 @@ backtest/data/
 .vscode/
 .idea/
 .DS_Store
+
+# Agent private handoff & audit notes
+_private/
