@@ -181,7 +181,7 @@ def main() -> int:
                 return D(str(value))
 
             refreshed = BrokerAwareRiskEngine(profile).evaluate(
-                candidate_input(candidate, now_utc=fresh_now),
+                candidate_input(candidate, now_utc=fresh_now, contract=fresh_contract),
                 account=fresh_broker.account,
                 contract=fresh_contract,
                 tick=tick,

@@ -214,12 +214,18 @@ class GuardedExecutionService:
             return "FRESH_RISK_REJECTED"
         if result.expires_at_utc.astimezone(timezone.utc) <= now_utc:
             return "FRESH_RISK_EXPIRED"
+
+        entry_match = result.executable_entry == intent.entry
+        if not entry_match and intent.entry > 0:
+            drift_pct = abs(result.executable_entry - intent.entry) / intent.entry * Decimal("100")
+            entry_match = drift_pct <= Decimal("0.5")
+
         checks = (
             (result.candidate_id == intent.candidate_id, "FRESH_CANDIDATE_CHANGED"),
             (result.side == intent.side, "FRESH_SIDE_CHANGED"),
             (result.normalized_symbol == intent.symbol, "FRESH_SYMBOL_CHANGED"),
             (result.normalized_volume == intent.volume, "FRESH_VOLUME_CHANGED"),
-            (result.executable_entry == intent.entry, "FRESH_ENTRY_CHANGED"),
+            (entry_match, "FRESH_ENTRY_CHANGED"),
             (result.stop_loss == intent.stop_loss, "FRESH_STOP_CHANGED"),
             (result.take_profit == intent.take_profit, "FRESH_TARGET_CHANGED"),
         )

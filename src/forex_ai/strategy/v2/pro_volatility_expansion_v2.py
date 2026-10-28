@@ -24,7 +24,8 @@ UTC = timezone.utc
 
 def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime) -> StrategyResult:
     p = config.parameters
-    tf = snapshot.timeframes.get("M15") or snapshot.timeframes.get("M5")
+    tf_name = "M5" if "M5" in snapshot.timeframes else "M15"
+    tf = snapshot.timeframes.get(tf_name)
     if not tf or len(tf.closed_bars) < 30:
         evidence = DecisionEvidence(("INSUFFICIENT_CLOSED_BARS",), {})
         return StrategyResult(None, None, evidence, ("INSUFFICIENT_CLOSED_BARS",))
@@ -45,12 +46,18 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
         evidence = DecisionEvidence(("INVALID_ATR",), {})
         return StrategyResult(None, None, evidence, ("INVALID_ATR",))
 
-    # 2. Pha Nén (Squeeze Phase): Đo Carter Squeeze hoặc co thắt biên độ trong 20 nến trước
-    squeeze_state = bollinger_squeeze(bars[:-1], bb_period=20, bb_mult=2.0, kc_mult=1.5)
-    # Nếu không bật Squeeze thì kiểm tra xem dải bandwidth có đang thấp không
-    recent_ranges = [b.high - b.low for b in bars[-10:-1]]
-    avg_recent_range = sum(recent_ranges) / len(recent_ranges)
-    was_compressed = (squeeze_state and squeeze_state.squeeze_on) or (avg_recent_range < 1.0 * atr_val)
+    # 2. Pha Nén (Squeeze Phase): Đo Carter Squeeze hoặc co thắt biên độ
+    kc_mult = float(p.get("kc_multiplier", 1.75))
+    squeeze_state = bollinger_squeeze(bars[:-1], bb_period=20, bb_mult=2.0, kc_mult=kc_mult)
+    recent_ranges = [b.high - b.low for b in bars[-6:-1]]
+    avg_recent_range = sum(recent_ranges) / len(recent_ranges) if recent_ranges else atr_val
+    max_comp_ratio = float(p.get("max_compression_atr_ratio", 1.15))
+
+    was_compressed = (
+        (squeeze_state is not None and squeeze_state.squeeze_on)
+        or (avg_recent_range <= max_comp_ratio * atr_val)
+        or (prev.high - prev.low <= 0.85 * atr_val)
+    )
 
     if not was_compressed:
         evidence = DecisionEvidence(("NO_PRIOR_COMPRESSION",), {"avg_recent_range": avg_recent_range, "atr": atr_val})
@@ -133,6 +140,7 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
         generated_at_utc=now_utc,
         expires_at_utc=expiry,
         evidence=evidence,
+        decision_timeframe=tf_name,
     )
     return StrategyResult(
         candidate=candidate,

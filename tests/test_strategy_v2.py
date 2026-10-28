@@ -113,17 +113,29 @@ def test_pro_volatility_v2_confirms_valid_bullish_displacement():
 def test_supertrend_volume_m5_rejects_insufficient_volume():
     cfg = StrategyConfig(
         StrategyVersion("supertrend_volume_m5", "2.0.0"),
-        {"min_volume_ratio": 2.0},  # Yêu cầu gấp đôi volume trung bình
+        {"supertrend_period": 5, "supertrend_multiplier": 2.0, "min_volume_ratio": 2.5},  # Yêu cầu gấp 2.5x volume
     )
     now = datetime(2026, 10, 28, 14, 0, tzinfo=UTC)
-    bars = _make_bars(40, start_price=2700.0, step=0.5, base_time=now - timedelta(minutes=205))
+    bars = _make_bars(39, start_price=2720.0, step=-0.2, base_time=now - timedelta(minutes=200))
+    # Nến 40 flip nhưng volume chỉ 50.0 (thấp hơn trung bình 100.0)
+    last_t = now - timedelta(minutes=5)
+    bars.append(
+        Candle(
+            time_utc=last_t,
+            open=2712.0,
+            high=2718.0,
+            low=2711.8,
+            close=2717.5,
+            volume=50.0,
+        )
+    )
 
     snap = MarketSnapshot(
         symbol="XAUUSDm",
         captured_at_utc=now,
         market_time_msc=int(now.timestamp() * 1000),
-        bid=2720.0,
-        ask=2720.2,
+        bid=2717.3,
+        ask=2717.7,
         timeframes={"M5": TimeframeSnapshot("M5", tuple(bars))},
     )
 

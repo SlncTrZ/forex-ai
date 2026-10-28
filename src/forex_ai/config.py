@@ -101,7 +101,7 @@ def load_risk_config(path: Path | None = None) -> dict[str, Any]:
     return _load_yaml(path or _default_config_path("risk.yaml"))
 
 
-def load_risk_profile(path: Path | None = None):
+def load_risk_profile(path: Path | None = None, symbol: str | None = None):
     """Load the explicit V1 RiskProfile; no live-capable defaults are invented."""
     from forex_ai.risk.profile import RiskProfile
 
@@ -109,7 +109,12 @@ def load_risk_profile(path: Path | None = None):
     profile = raw.get("profile")
     if not isinstance(profile, dict):
         raise ValueError("risk profile is missing; execution remains disarmed")
-    return RiskProfile.model_validate(profile)
+    profile_dict = dict(profile)
+    if symbol:
+        overrides = (raw.get("symbol_overrides") or {}).get(symbol) or {}
+        if isinstance(overrides, dict):
+            profile_dict.update({k: v for k, v in overrides.items() if v is not None})
+    return RiskProfile.model_validate(profile_dict)
 
 
 

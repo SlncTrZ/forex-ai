@@ -19,12 +19,27 @@ def _period_start(now_utc: datetime) -> tuple[datetime, datetime]:
     return day, week
 
 
-def _reference_equity(con, start_utc: datetime) -> Decimal | None:
+def _reference_equity(con, start_utc: datetime, login: int | None = None) -> Decimal | None:
+    if login is not None:
+        row = con.execute(
+            "SELECT equity FROM accounts WHERE timestamp>=? AND login=? AND equity IS NOT NULL AND equity > 0 ORDER BY timestamp ASC LIMIT 1",
+            (start_utc.isoformat(), login),
+        ).fetchone()
+        if row is not None and row[0] is not None:
+            val = D(str(row[0]))
+            if val > 0:
+                return val
+        return None
+
     row = con.execute(
-        "SELECT equity FROM accounts WHERE timestamp>=? AND equity IS NOT NULL ORDER BY timestamp ASC LIMIT 1",
+        "SELECT equity FROM accounts WHERE timestamp>=? AND equity IS NOT NULL AND equity > 0 ORDER BY timestamp ASC LIMIT 1",
         (start_utc.isoformat(),),
     ).fetchone()
-    return None if row is None else D(str(row[0]))
+    if row is not None and row[0] is not None:
+        val = D(str(row[0]))
+        if val > 0:
+            return val
+    return None
 
 
 def _realized_loss(con, start_utc: datetime) -> Decimal:
@@ -46,18 +61,34 @@ def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime)
     That makes the deterministic engine fail closed instead of undercounting risk.
     """
     day_start, week_start = _period_start(now_utc)
+    login = int(broker.account.login) if broker.account and broker.account.login else None
+    current_equity = D(str(broker.account.equity)) if broker.account and broker.account.equity > 0 else D("0")
     with session(db_path) as con:
-        daily_reference = _reference_equity(con, day_start)
-        weekly_reference = _reference_equity(con, week_start)
+        ref_day = _reference_equity(con, day_start, login=login)
+        daily_reference = ref_day if (ref_day is not None and ref_day > 0) else current_equity
+
+        ref_week = _reference_equity(con, week_start, login=login)
+        weekly_reference = ref_week if (ref_week is not None and ref_week > 0) else current_equity
+
         daily_loss = _realized_loss(con, day_start)
         weekly_loss = _realized_loss(con, week_start)
-        peak_row = con.execute(
-            "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND equity IS NOT NULL",
-            (week_start.isoformat(),),
-        ).fetchone()
-    current_equity = D(str(broker.account.equity))
-    peak = current_equity if peak_row is None or peak_row[0] is None else D(str(peak_row[0]))
+        if login is not None:
+            peak_row = con.execute(
+                "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND login=? AND equity IS NOT NULL",
+                (week_start.isoformat(), login),
+            ).fetchone()
+        else:
+            peak_row = con.execute(
+                "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND equity IS NOT NULL",
+                (week_start.isoformat(),),
+            ).fetchone()
+    peak = current_equity if (peak_row is None or peak_row[0] is None or D(str(peak_row[0])) <= 0) else max(current_equity, D(str(peak_row[0])))
     drawdown = max(D("0"), peak - current_equity)
+
+    if daily_reference <= 0 and current_equity > 0:
+        daily_reference = current_equity
+    if weekly_reference <= 0 and current_equity > 0:
+        weekly_reference = current_equity
 
     existing = tuple(
         ExistingPosition(intent_id=f"broker-position:{position.ticket}", position=position)

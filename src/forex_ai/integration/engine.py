@@ -136,7 +136,7 @@ class DecisionOrchestrator:
                 multiplier = Decimal(str(advisory.risk_multiplier))
             effective_profile = self._effective_profile(multiplier)
             risk_result = BrokerAwareRiskEngine(effective_profile).evaluate(
-                candidate_input(candidate, now_utc=now),
+                candidate_input(candidate, now_utc=now, contract=contract),
                 account=account,
                 contract=contract,
                 tick=tick,

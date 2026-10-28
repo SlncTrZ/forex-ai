@@ -33,6 +33,16 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
     latest = bars[-1]
     prev = bars[-2]
 
+    tf_name = "M5" if "M5" in snapshot.timeframes else "M15"
+    tf = snapshot.timeframes.get(tf_name)
+    if not tf or len(tf.closed_bars) < 30:
+        evidence = DecisionEvidence(("INSUFFICIENT_CLOSED_BARS",), {})
+        return StrategyResult(None, None, evidence, ("INSUFFICIENT_CLOSED_BARS",))
+
+    bars = tf.closed_bars
+    latest = bars[-1]
+    prev = bars[-2]
+
     # 1. Bộ lọc Phiên: Tránh giờ Rollover (21:00 - 22:59 UTC) và chỉ trade phiên hoạt động (London + NY)
     t = now_utc.astimezone(UTC)
     hour = t.hour + t.minute / 60.0
@@ -68,18 +78,7 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
         evidence = DecisionEvidence(("INVALID_ATR",), {})
         return StrategyResult(None, None, evidence, ("INVALID_ATR",))
 
-    # 2. Bộ lọc Khối lượng (Volume Filter):
-    # Khối lượng nến hiện tại phải >= min_vol_ratio * SMA(volume, 20)
-    volumes = [float(b.volume) for b in bars]
-    vol_sma = sma(volumes[:-1], 20)
-    min_vol_ratio = float(p.get("min_volume_ratio", 1.2))
-    vol_ratio = latest.volume / max(vol_sma, 1.0)
-
-    if vol_ratio < min_vol_ratio:
-        evidence = DecisionEvidence(("VOLUME_BELOW_THRESHOLD",), {"vol_ratio": vol_ratio, "min_required": min_vol_ratio})
-        return StrategyResult(None, None, evidence, ("VOLUME_BELOW_THRESHOLD",))
-
-    # 3. Kịch bản vào lệnh:
+    # 2. Kịch bản vào lệnh:
     # A. Trend Flip (Đảo chiều xu hướng vừa xuất hiện trên nến này)
     # B. Pullback Bounce (Trong xu hướng rõ ràng, giá hồi về test đường Supertrend rồi bật tăng)
     side: str | None = None
@@ -109,6 +108,16 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
     if side is None:
         evidence = DecisionEvidence(("NO_SUPERTREND_SETUP",), {"trend": st.trend, "st_value": st.value, "close": latest.close})
         return StrategyResult(None, None, evidence, ("NO_SUPERTREND_SETUP",))
+
+    # 3. Bộ lọc Khối lượng (Volume Filter) cho Setup đã xuất hiện:
+    volumes = [float(b.volume) for b in bars]
+    vol_sma = sma(volumes[:-1], 20)
+    vol_ratio = latest.volume / max(vol_sma, 1.0)
+    min_vol_ratio = float(p.get("min_volume_ratio", 1.05)) if trigger_type == "TREND_FLIP" else float(p.get("min_pullback_volume_ratio", 0.95))
+
+    if vol_ratio < min_vol_ratio:
+        evidence = DecisionEvidence(("VOLUME_BELOW_THRESHOLD",), {"vol_ratio": vol_ratio, "min_required": min_vol_ratio, "trigger": trigger_type})
+        return StrategyResult(None, None, evidence, ("VOLUME_BELOW_THRESHOLD",))
 
     # Kiểm tra H1 Trend Alignment
     if h1_trend in {"UP", "DOWN"}:
@@ -164,6 +173,7 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
         generated_at_utc=now_utc,
         expires_at_utc=expiry,
         evidence=evidence,
+        decision_timeframe=tf_name,
     )
     return StrategyResult(
         candidate=candidate,

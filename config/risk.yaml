@@ -6,11 +6,11 @@ profile:
   daily_loss_limit_pct: 3
   weekly_loss_limit_pct: 5
   max_active_orders: 1
-  min_risk_reward: 1.5
-  max_signal_age_seconds: 30
-  max_tick_age_seconds: 5
+  min_risk_reward: 1.2
+  max_signal_age_seconds: 60
+  max_tick_age_seconds: 15
   max_price_drift_pct: 0.25
-  max_spread_points: 100
+  max_spread_points: 350
   max_slippage_points: 50
   min_margin_reserve_pct: 20
   max_correlated_risk_pct: 1
@@ -21,8 +21,21 @@ profile:
   kill_switch: false
 allowed_symbols:
   - XAUUSD
+  - XAUUSDm
+  - XAUUSDc
+  - EURUSD
+  - EURUSDm
+  - EURUSDc
 symbol_overrides:
   XAUUSD:
-    max_spread_points: null
+    max_spread_points: 350
+  XAUUSDm:
+    max_spread_points: 350
+  XAUUSDc:
+    max_spread_points: 350
   EURUSD:
-    max_spread_points: null
+    max_spread_points: 50
+  EURUSDm:
+    max_spread_points: 50
+  EURUSDc:
+    max_spread_points: 50

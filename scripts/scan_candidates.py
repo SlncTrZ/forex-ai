@@ -105,7 +105,10 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
         if candidate is not None and candidate.opportunity_key:
             scan_key = candidate.opportunity_key
         else:
-            scan_key = f"{strategy_id}:{strategy_version}:{actual}:{int(latest_closed_m15.timestamp())}"
+            tf_name = str(binding.config.parameters.get("decision_timeframe", "M15"))
+            strat_tf = market.timeframes.get(tf_name) or market.timeframes.get("M15")
+            latest_bar_t = strat_tf.closed_bars[-1].time_utc if (strat_tf and strat_tf.closed_bars) else now
+            scan_key = f"{strategy_id}:{strategy_version}:{actual}:{int(latest_bar_t.timestamp())}"
         if _already_scanned(cfg.db_path, scan_key):
             output.append({"strategy": strategy_id, "status": "ALREADY_SCANNED", "scan_key": scan_key})
             continue

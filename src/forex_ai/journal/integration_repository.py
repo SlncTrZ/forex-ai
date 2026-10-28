@@ -468,7 +468,10 @@ def latest_approved_risk_result(db_path: Path, *, now_utc: datetime, symbol: str
         `BrokerRiskResult` nếu có, ngược lại `None`.
     """
     params: list[object] = [now_utc.astimezone(timezone.utc).isoformat()]
-    where = "r.approved=1 AND r.expires_at_utc>?"
+    where = (
+        "r.approved=1 AND r.expires_at_utc>? "
+        "AND NOT EXISTS (SELECT 1 FROM order_intents_v1 i WHERE i.candidate_id=r.candidate_id AND i.state IN ('REJECTED', 'FILLED', 'FAILED'))"
+    )
     if symbol is not None:
         where += " AND c.symbol=?"
         params.append(symbol)

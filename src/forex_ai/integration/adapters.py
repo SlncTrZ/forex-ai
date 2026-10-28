@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Callable, Iterable, Mapping
 
 from forex_ai.mt5.contracts import AccountSnapshot, Bar, BrokerPosition, SymbolContract, TickSnapshot
@@ -120,17 +120,33 @@ def market_snapshot(
     )
 
 
-def candidate_input(candidate: CandidateEnvelope, *, now_utc: datetime) -> CandidateInput:
+def align_price_to_tick(price: Decimal, tick_size: Decimal) -> Decimal:
+    if tick_size <= 0:
+        return price
+    steps = (price / tick_size).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return steps * tick_size
+
+
+def candidate_input(candidate: CandidateEnvelope, *, now_utc: datetime, contract: SymbolContract | None = None) -> CandidateInput:
     generated = candidate.generated_at_utc.astimezone(timezone.utc)
     now = now_utc.astimezone(timezone.utc)
     age_seconds = max(Decimal("0"), Decimal(str((now - generated).total_seconds())))
+    ref_entry = Decimal(str(candidate.reference_entry))
+    sl = Decimal(str(candidate.stop_loss))
+    tp = Decimal(str(candidate.take_profit))
+    if contract is not None:
+        price_step = Decimal(str(contract.trade_tick_size or contract.point))
+        if price_step > 0:
+            ref_entry = align_price_to_tick(ref_entry, price_step)
+            sl = align_price_to_tick(sl, price_step)
+            tp = align_price_to_tick(tp, price_step)
     return CandidateInput(
         candidate_id=candidate.candidate_id,
         symbol=candidate.symbol,
         side=candidate.side,
-        reference_entry=Decimal(str(candidate.reference_entry)),
-        stop_loss=Decimal(str(candidate.stop_loss)),
-        take_profit=Decimal(str(candidate.take_profit)),
+        reference_entry=ref_entry,
+        stop_loss=sl,
+        take_profit=tp,
         expires_at_utc=candidate.expires_at_utc,
         age_seconds=age_seconds,
     )
