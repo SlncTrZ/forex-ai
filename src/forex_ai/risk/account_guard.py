@@ -26,7 +26,7 @@ def account_fingerprint(account: Mapping[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def bind_account(account: Mapping[str, Any], path: Path = DEFAULT_FINGERPRINT_PATH) -> str:
+def bind_account(account: Mapping[str, Any], path: Path | None = None) -> str:
     """Explicitly bind one broker account identity.
 
     Production runtime never calls this automatically. It is an owner-controlled
@@ -34,22 +34,24 @@ def bind_account(account: Mapping[str, Any], path: Path = DEFAULT_FINGERPRINT_PA
     account MT5 happens to expose first.
     """
     fp = account_fingerprint(account)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(fp + "\n", encoding="utf-8")
-    path.chmod(0o600)
+    target_path = path if path is not None else DEFAULT_FINGERPRINT_PATH
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(fp + "\n", encoding="utf-8")
+    target_path.chmod(0o600)
     return fp
 
 
-def load_bound_fingerprint(path: Path = DEFAULT_FINGERPRINT_PATH) -> str | None:
-    if not path.exists():
+def load_bound_fingerprint(path: Path | None = None) -> str | None:
+    target_path = path if path is not None else DEFAULT_FINGERPRINT_PATH
+    if not target_path.exists():
         return None
-    value = path.read_text(encoding="utf-8").strip().lower()
+    value = target_path.read_text(encoding="utf-8").strip().lower()
     if len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value):
         raise AccountBindingError("ACCOUNT_BINDING_INVALID")
     return value
 
 
-def account_matches(account: Mapping[str, Any], path: Path = DEFAULT_FINGERPRINT_PATH) -> bool:
+def account_matches(account: Mapping[str, Any], path: Path | None = None) -> bool:
     try:
         expected = load_bound_fingerprint(path)
         if expected is None:
@@ -63,7 +65,7 @@ def account_matches(account: Mapping[str, Any], path: Path = DEFAULT_FINGERPRINT
 def assert_account_matches(
     account: Mapping[str, Any],
     *,
-    path: Path = DEFAULT_FINGERPRINT_PATH,
+    path: Path | None = None,
     require_binding: bool = True,
 ) -> str | None:
     """Verify persistent owner-bound identity and return its fingerprint.
