@@ -10,7 +10,8 @@ IMAGE="${FOREX_AI_MT5_IMAGE:-$PINNED_IMAGE}"
 HOME_DIR="${HOME:-/tmp}"
 UI_PASSWORD_FILE="${FOREX_AI_UI_PASSWORD_FILE:-$HOME_DIR/.config/forex-ai/mt5_ui_password}"
 BIND_IP="${FOREX_AI_BIND_IP:-0.0.0.0}"
-NOVNC_HOST="${FOREX_AI_NOVNC_HOST:-$BIND_IP}"
+DETECTED_IP="$(hostname -I 2>/dev/null | cut -d' ' -f1 || true)"
+NOVNC_HOST="${FOREX_AI_NOVNC_HOST:-${DETECTED_IP:-127.0.0.1}}"
 
 case "${1:-status}" in
   start)
