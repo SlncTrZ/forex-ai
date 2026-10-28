@@ -105,8 +105,8 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
         stop = st.value + buffer
 
     risk = abs(entry - stop)
-    # Ràng buộc Risk tối thiểu 0.3 ATR, tối đa 2.5 ATR
-    if risk < 0.3 * atr_val or risk > 2.5 * atr_val:
+    # Ràng buộc Risk tối thiểu 0.2 ATR, tối đa 4.0 ATR
+    if risk < 0.2 * atr_val or risk > 4.0 * atr_val:
         evidence = DecisionEvidence(("INVALID_RISK_RANGE",), {"risk": risk, "atr": atr_val})
         return StrategyResult(None, None, evidence, ("INVALID_RISK_RANGE",))
 
