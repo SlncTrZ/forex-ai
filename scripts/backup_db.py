@@ -29,7 +29,12 @@ from forex_ai.runtime.alerts import (
     retain_files,
     retain_files_by_size,
 )
-from forex_ai.runtime.ops import backup_database, ensure_disk_headroom, verify_database
+from forex_ai.runtime.ops import (
+    backup_database,
+    ensure_disk_headroom,
+    prune_database_records,
+    verify_database,
+)
 
 GIB = 1024**3
 DEFAULT_MIN_FREE_GIB = 40
@@ -64,6 +69,9 @@ def main() -> int:
 
     min_free_bytes = _env_int("FOREX_AI_BACKUP_MIN_FREE_GB", DEFAULT_MIN_FREE_GIB) * GIB
     ensure_disk_headroom(backup_dir, min_free_bytes=min_free_bytes)
+
+    pruned = prune_database_records(cfg.db_path)
+    print(f"pruned_records={pruned}")
 
     result = backup_database(cfg.db_path, destination)
     print(f"backup={result}")

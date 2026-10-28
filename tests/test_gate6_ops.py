@@ -95,3 +95,53 @@ def test_backup_refuses_source_as_destination(tmp_path):
     source = _db(tmp_path)
     with pytest.raises(ValueError):
         ops.backup_database(source, source)
+
+
+def test_prune_database_records_removes_aged_records(tmp_path):
+    path = _db(tmp_path)
+    old_time = (NOW - timedelta(days=10)).isoformat()
+    fresh_time = NOW.isoformat()
+
+    with sqlite3.connect(path) as con:
+        # market_snapshots
+        con.execute(
+            "INSERT INTO market_snapshots(timestamp,symbol,bid,ask,spread,payload_json) VALUES(?,?,?,?,?,?)",
+            (old_time, "EURUSD", 1.1, 1.1001, 0.0001, "{}"),
+        )
+        con.execute(
+            "INSERT INTO market_snapshots(timestamp,symbol,bid,ask,spread,payload_json) VALUES(?,?,?,?,?,?)",
+            (fresh_time, "EURUSD", 1.1, 1.1001, 0.0001, "{}"),
+        )
+        # runtime_heartbeats
+        con.execute(
+            "INSERT INTO runtime_heartbeats(timestamp_utc,health_state,reason,payload_json) VALUES(?,?,?,?)",
+            (old_time, "HEALTHY", "test", "{}"),
+        )
+        con.execute(
+            "INSERT INTO runtime_heartbeats(timestamp_utc,health_state,reason,payload_json) VALUES(?,?,?,?)",
+            (fresh_time, "HEALTHY", "test", "{}"),
+        )
+        # system_events
+        con.execute(
+            "INSERT INTO system_events(timestamp,severity,component,event_type,payload_json) VALUES(?,?,?,?,?)",
+            (old_time, "INFO", "test", "test_event", "{}"),
+        )
+        con.execute(
+            "INSERT INTO system_events(timestamp,severity,component,event_type,payload_json) VALUES(?,?,?,?,?)",
+            (fresh_time, "INFO", "test", "test_event", "{}"),
+        )
+
+    pruned = ops.prune_database_records(path, now_utc=NOW, vacuum=True)
+
+    assert pruned.get("market_snapshots") == 1
+    assert pruned.get("runtime_heartbeats") == 1
+    assert pruned.get("system_events") == 1
+
+    with sqlite3.connect(path) as con:
+        assert con.execute("SELECT count(*) FROM market_snapshots").fetchone()[0] == 1
+        assert con.execute("SELECT count(*) FROM runtime_heartbeats").fetchone()[0] == 1
+        assert con.execute("SELECT count(*) FROM system_events").fetchone()[0] == 1
+
+
+def test_prune_database_records_missing_directory_is_noop(tmp_path):
+    assert ops.prune_database_records(tmp_path / "absent.db") == {}

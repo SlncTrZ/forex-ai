@@ -19,7 +19,7 @@ from forex_ai.journal.repository import (
     upsert_mt5_orders,
 )
 from forex_ai.mt5.client import MT5Client
-from forex_ai.runtime.ops import ensure_disk_headroom
+from forex_ai.runtime.ops import ensure_disk_headroom, prune_database_records
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
 from forex_ai.strategy.v1.contracts import Candle, MarketSnapshot
 
@@ -76,10 +76,15 @@ def run_observer(cfg: RuntimeConfig) -> int:
     coordinator = MT5ResyncCoordinator(client=client, symbols=cfg.symbols, db_path=cfg.db_path)
     failure_attempt = 0
     log_event(cfg.db_path, "INFO", "observer", "observer_started", {"symbols": cfg.symbols, "resilient": True})
+    prune_database_records(cfg.db_path)
+    last_prune_epoch = time.time()
 
     try:
         while not state.stop:
             ensure_disk_headroom(cfg.db_path, min_free_bytes=min_free_bytes)
+            if time.time() - last_prune_epoch >= 3600 * 6:
+                prune_database_records(cfg.db_path)
+                last_prune_epoch = time.time()
             now = datetime.now(timezone.utc)
             outcome = coordinator.sync_once(now_utc=now)
 

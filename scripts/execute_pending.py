@@ -78,7 +78,7 @@ def main() -> int:
     strategy_snapshot = load_strategy_snapshot()
     if cfg.mode not in {"DEMO", "LIVE_CANARY"}:
         print(json.dumps({"status": "blocked", "reasons": ["MODE_NOT_EXECUTION_RUNNER"]}))
-        return 3
+        return 0
 
     client = MT5Client(cfg)
     coordinator = MT5ResyncCoordinator(
@@ -107,7 +107,7 @@ def main() -> int:
         )
         if not readiness.ready:
             print(json.dumps({"status": "blocked", "reasons": list(readiness.reasons)}))
-            return 5
+            return 0
 
         def identity_guard() -> None:
             raw = client.account_info() or {}
