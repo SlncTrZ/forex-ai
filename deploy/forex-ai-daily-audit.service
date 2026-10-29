@@ -1,0 +1,8 @@
+[Unit]
+Description=Forex-AI Daily Meta-Cognitive Agent Auditor & Forward Outlook
+After=network-online.target forex-ai-observe.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/forex-ai/execution.env
+ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/run_daily_agent_audit.py
