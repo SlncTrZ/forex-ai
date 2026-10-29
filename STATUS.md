@@ -129,31 +129,15 @@ Every DeepSeek review is built immediately from live state and includes:
 
 The prompt explicitly tells the model that injected clock + MT5 state are authoritative and that training-time knowledge must not be treated as current market truth.
 
-## DeepSeek
+## DeepSeek / LLM Advisory State
 
-Selected default model: `deepseek-v4-flash`.
-
-Implementation uses DeepSeek Responses API with structured JSON Schema output. A server-side `web_search` tool runs under `auto`; the client rejects any final decision that has no web-search trace, so current macro/news/geopolitical context must be checked rather than guessed from training memory. The client also accepts only a JSON object that validates against the strict `ReviewDecision` schema, even if the model prepends prose after tool use.
-
-The review output includes:
-
-- BUY / SELL / NO_TRADE
-- confidence
-- thesis
-- invalidation
-- risk flags
-- lesson references
-- whether web search was used
-- current-context checks with source references
-
-DeepSeek usage fields and calculated API cost are stored with each decision.
-
-Budget guards are configured at:
-
-- max 100 calls/day
-- max $0.25/day initially
-
-The DeepSeek key is installed locally with mode `600`; the automatic shadow reviewer is enabled. Paid smoke validation succeeded with `deepseek-v4-flash`: decision `NO_TRADE`, confidence `0.62`, 52,560 input tokens, 3,144 output tokens, 40,192 cached input tokens, API cost `$0.005077344`, latency about 30.5s. Total tracked DeepSeek spend for the four validation attempts was about `$0.01933`.
+- **Trạng thái:** **DISABLED (ĐÃ VÔ HIỆU HÓA HOÀN TOÀN)**
+- **Lý do kiến trúc:** Tuân thủ Tôn chỉ Cốt lõi số 1 của Hiến pháp Kiến trúc (`00_FOREX_AI_MASTER_ARCHITECTURE.md`) — Chống Over-Engineering và triệt tiêu độ trễ mạng. Hệ thống vận hành như một **Lean Trading Engine định lượng thuần túy (100% Deterministic Quantitative)**.
+- `config/llm.yaml`: `enabled: false`.
+- `forex-ai-review-pending.timer`: Đã tắt và gỡ bỏ hoàn toàn khỏi systemd trên `.227`.
+- Toàn bộ luồng thực thi đi trực tiếp:
+  `Tín hiệu Chiến lược V2 -> Tường lửa Rủi ro & Lãi kép (Tiered Compound) -> MQL5 Execution Adapter`
+  với độ trễ xử lý $< 15\text{ms}$, loại bỏ hoàn toàn rủi ro hallucination, chi phí API token và độ trễ chờ đợi mạng 30s của LLM.
 
 ## Safety & Execution State
 

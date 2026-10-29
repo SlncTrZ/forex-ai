@@ -24,7 +24,7 @@ The system features an automated **Tiered Compound Risk Engine** (`_private/lãi
 The execution path is strictly deterministic:
 
 ```text
-market/signal -> strategy (V2 Suite) -> optional Advisory -> deterministic RiskEngine (Tiered Compound) -> execution adapter -> MT5
+market/signal -> strategy (V2 Suite) -> deterministic RiskEngine (Tiered Compound) -> execution adapter -> MT5
 ```
 
 No real order path should be enabled until broker contract details and all risk guards have been validated.
