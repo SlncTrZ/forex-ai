@@ -106,3 +106,15 @@ def test_broker_stop_loss_exit_is_explained(tmp_path):
     assert closed.last_reason == 'STOP_LOSS'
     closure = load_trade_closure(db, 'intent-1')
     assert closure['exit_reason'] == 'STOP_LOSS'
+
+
+def test_manual_close_is_detected_and_recorded(tmp_path):
+    service, db = make_service(tmp_path)
+    # reason=0 in MT5 is DEAL_REASON_CLIENT (manual close by trader)
+    deal = BrokerDeal(ticket=2, order=3, position_id=77, symbol='EURUSD', volume=0.01, price=1.105, profit=2.50, time_msc=2, reason=0)
+    closed = service.reconcile_broker_exit('intent-1', now_utc=NOW+timedelta(seconds=2), positions=(), deals=(deal,), deal_reason_sl=4, deal_reason_tp=5)
+    assert closed.state is ExecutionState.CLOSED
+    assert closed.last_reason == 'MANUAL_CLOSE'
+    closure = load_trade_closure(db, 'intent-1')
+    assert closure['exit_reason'] == 'MANUAL_CLOSE'
+    assert closure['final_pnl'] == '2.5'

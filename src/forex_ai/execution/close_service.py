@@ -224,6 +224,8 @@ class GuardedCloseService:
             exit_reason = "STOP_LOSS"
         elif (deal_reason_tp is not None and last.reason == deal_reason_tp) or last.reason == 5 or "[tp" in comment_lower:
             exit_reason = "TAKE_PROFIT"
+        elif last.reason in {0, 1, 2} or "close" in comment_lower or not last.reason:
+            exit_reason = "MANUAL_CLOSE"
         else:
             exit_reason = "BROKER_FORCED_EXIT"
         final_pnl = sum((Decimal(str(deal.profit)) for deal in related), Decimal("0"))
