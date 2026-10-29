@@ -1,78 +1,6 @@
 schema_version: 1
 
 strategies:
-  inside_bar_momentum_breakout_v1:
-    enabled: true
-    version: "1.0.0"
-    parameters:
-      decision_timeframe: M5
-      atr_period: 14
-      mother_min_range_atr: 0.90
-      mother_min_body_ratio: 0.55
-      require_mother_direction: true
-      breakout_buffer_atr: 0.00
-      stop_buffer_atr: 0.10
-      target_r: 1.75
-      expiry_minutes: 360
-
-  breakout_retest_v1:
-    enabled: true
-    version: "1.0.0"
-    parameters:
-      decision_timeframe: M5
-      range_bars: 20
-      atr_period: 14
-      breakout_search_bars: 6
-      min_breakout_close_atr: 0.05
-      retest_tolerance_atr: 0.20
-      confirmation_buffer_atr: 0.00
-      stop_buffer_atr: 0.50
-      target_r: 1.50
-      expiry_minutes: 360
-
-  trend_pullback_v1:
-    enabled: true
-    version: "1.0.0"
-    parameters:
-      ema_fast: 20
-      ema_slow: 50
-      atr_period: 14
-      pullback_atr: 0.60
-      volatility_buffer_atr: 0.40
-      structure_lookback_bars: 5
-      target_r: 2.0
-      expiry_minutes: 45
-      m5_confirm: false
-
-  volatility_breakout_v1:
-    enabled: false
-    version: "1.0.0"
-    parameters:
-      range_bars: 20
-      atr_period: 14
-      trend_ema_fast: 20
-      trend_ema_slow: 50
-      efficiency_window: 14
-      min_expansion: 1.20
-      min_efficiency: 0.30
-      max_extension_atr: 1.25
-      stop_buffer_atr: 0.20
-      target_r: 2.0
-      expiry_minutes: 30
-      max_cost_atr: 0.15
-
-  pro_volatility_expansion_v2:
-    enabled: false
-    version: "2.0.0"
-    parameters:
-      decision_timeframe: M5
-      atr_period: 14
-      min_body_ratio: 0.65
-      min_range_atr: 1.2
-      min_volume_zscore: 1.2
-      target_r: 1.8
-      expiry_minutes: 90
-
   supertrend_volume_m5:
     enabled: true
     version: "2.0.0"
@@ -100,15 +28,6 @@ strategies:
       session_end_hour: 17.0
       expiry_minutes: 120
 
-  ichimoku_mtf_v2:
-    enabled: true
-    version: "2.0.0"
-    parameters:
-      decision_timeframe: M15
-      target_r: 2.0
-      min_stop_distance: 6.0
-      expiry_minutes: 180
-
   mtf_trend_continuation_v2:
     enabled: true
     version: "2.0.0"
@@ -122,33 +41,23 @@ strategies:
       session_end_hour: 17.0
       expiry_minutes: 60
 
-  exploration_trend_v1:
-    enabled: true
-    version: "1.0.0"
+  pro_volatility_expansion_v2:
+    enabled: false
+    version: "2.0.0"
     parameters:
-      ema_fast: 20
-      ema_slow: 50
+      decision_timeframe: M5
       atr_period: 14
-      pullback_atr: 0.75
-      volatility_buffer_atr: 0.25
-      structure_lookback_bars: 5
-      target_r: 2.0
-      expiry_minutes: 45
-      probe_distance_atr: 1.25
+      min_body_ratio: 0.65
+      min_range_atr: 1.2
+      min_volume_zscore: 1.2
+      target_r: 1.8
+      expiry_minutes: 90
 
-  exploration_breakout_v1:
-    enabled: true
-    version: "1.0.0"
+  ichimoku_mtf_v2:
+    enabled: false
+    version: "2.0.0"
     parameters:
-      range_bars: 20
-      atr_period: 14
-      trend_ema_fast: 20
-      trend_ema_slow: 50
-      efficiency_window: 14
-      min_expansion: 1.20
-      min_efficiency: 0.30
-      max_extension_atr: 1.25
-      stop_buffer_atr: 0.20
+      decision_timeframe: M15
       target_r: 2.0
-      expiry_minutes: 30
-      max_cost_atr: 0.15
+      min_stop_distance: 6.0
+      expiry_minutes: 180

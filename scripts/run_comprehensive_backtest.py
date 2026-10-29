@@ -19,12 +19,6 @@ from forex_ai.research.monte_carlo import permute_trade_sequences_with_ruin
 from forex_ai.research.mt5_dataset import build_replay_events_from_mt5_bars
 from forex_ai.research.realistic_engine import RealisticEventEngine
 from forex_ai.strategy.config import load_strategy_snapshot
-from forex_ai.strategy.v1 import (
-    breakout_retest,
-    inside_bar_momentum_breakout,
-    trend_pullback,
-    volatility_breakout,
-)
 from forex_ai.strategy.v2 import (
     ichimoku_mtf,
     mtf_trend_continuation,
@@ -39,9 +33,9 @@ UTC = timezone.utc
 STRATEGY_DISPATCH = {
     "supertrend_volume_m5": supertrend_volume_m5.evaluate,
     "smc_pro_fvg_v2": smc_pro_fvg.evaluate,
-    "ichimoku_mtf_v2": ichimoku_mtf.evaluate,
     "mtf_trend_continuation_v2": mtf_trend_continuation.evaluate,
-    "breakout_retest_v1": breakout_retest.evaluate,
+    "pro_volatility_expansion_v2": pro_volatility_expansion_v2.evaluate,
+    "ichimoku_mtf_v2": ichimoku_mtf.evaluate,
 }
 
 

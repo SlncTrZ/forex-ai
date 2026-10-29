@@ -13,10 +13,6 @@ from forex_ai.risk.profile import RiskProfile
 from forex_ai.strategy.v1.contracts import MarketSnapshot, StrategyConfig, StrategyResult
 from forex_ai.config import load_fixed_lot
 from forex_ai.strategy.config import StrategyConfigSnapshot, bundled_strategy_snapshot
-from forex_ai.strategy.v1.breakout_retest import evaluate as evaluate_breakout_retest
-from forex_ai.strategy.v1.inside_bar_momentum_breakout import evaluate as evaluate_inside_bar
-from forex_ai.strategy.v1.trend_pullback import evaluate as evaluate_pullback
-from forex_ai.strategy.v1.volatility_breakout import evaluate as evaluate_breakout
 from forex_ai.strategy.v2.ichimoku_mtf import evaluate as evaluate_ichimoku
 from forex_ai.strategy.v2.mtf_trend_continuation import evaluate as evaluate_mtf_trend
 from forex_ai.strategy.v2.pro_volatility_expansion_v2 import evaluate as evaluate_pro_volatility
@@ -50,27 +46,19 @@ class IntegratedDecision:
 
 def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[StrategyBinding, ...]:
     bindings: list[StrategyBinding] = []
-    # Same-scan tie-break priority for the prospective XAU portfolio. This does
+    # Same-scan tie-break priority for the prospective portfolio. This does
     # not override time priority: an already-open broker position is still
     # authoritative and blocks all later signals through the risk context.
-    if snapshot.enabled("inside_bar_momentum_breakout_v1"):
-        bindings.append(StrategyBinding(evaluate_inside_bar, snapshot.config_for("inside_bar_momentum_breakout_v1")))
-    if snapshot.enabled("breakout_retest_v1"):
-        bindings.append(StrategyBinding(evaluate_breakout_retest, snapshot.config_for("breakout_retest_v1")))
-    if snapshot.enabled("trend_pullback_v1"):
-        bindings.append(StrategyBinding(evaluate_pullback, snapshot.config_for("trend_pullback_v1")))
-    if snapshot.enabled("volatility_breakout_v1"):
-        bindings.append(StrategyBinding(evaluate_breakout, snapshot.config_for("volatility_breakout_v1")))
-    if snapshot.enabled("pro_volatility_expansion_v2"):
-        bindings.append(StrategyBinding(evaluate_pro_volatility, snapshot.config_for("pro_volatility_expansion_v2")))
     if snapshot.enabled("supertrend_volume_m5"):
         bindings.append(StrategyBinding(evaluate_supertrend, snapshot.config_for("supertrend_volume_m5")))
     if snapshot.enabled("smc_pro_fvg_v2"):
         bindings.append(StrategyBinding(evaluate_smc, snapshot.config_for("smc_pro_fvg_v2")))
-    if snapshot.enabled("ichimoku_mtf_v2"):
-        bindings.append(StrategyBinding(evaluate_ichimoku, snapshot.config_for("ichimoku_mtf_v2")))
     if snapshot.enabled("mtf_trend_continuation_v2"):
         bindings.append(StrategyBinding(evaluate_mtf_trend, snapshot.config_for("mtf_trend_continuation_v2")))
+    if snapshot.enabled("pro_volatility_expansion_v2"):
+        bindings.append(StrategyBinding(evaluate_pro_volatility, snapshot.config_for("pro_volatility_expansion_v2")))
+    if snapshot.enabled("ichimoku_mtf_v2"):
+        bindings.append(StrategyBinding(evaluate_ichimoku, snapshot.config_for("ichimoku_mtf_v2")))
     if not bindings:
         raise ValueError("at least one production strategy must be enabled")
     return tuple(bindings)

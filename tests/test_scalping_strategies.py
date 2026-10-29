@@ -11,9 +11,7 @@ from forex_ai.research.scalping_strategies import (
     evaluate_pinbar,
 )
 from forex_ai.strategy.config import bundled_strategy_snapshot
-from forex_ai.strategy.v1.breakout_retest import evaluate as evaluate_breakout_retest_live
 from forex_ai.strategy.v1.contracts import Candle, MarketSnapshot, TimeframeSnapshot
-from forex_ai.strategy.v1.inside_bar_momentum_breakout import evaluate as evaluate_inside_bar_live
 
 UTC = timezone.utc
 NOW = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
@@ -53,17 +51,8 @@ def test_inside_bar_momentum_breakout_emits_buy():
     bars[-1] = _candle(24, 100.9, 101.5, 100.8, 101.4)
     snapshot = _snapshot(tuple(bars))
     signal = evaluate_inside_bar(snapshot, _config().strategies["inside_bar_momentum_breakout_v1"], NOW)
-    live = evaluate_inside_bar_live(
-        snapshot,
-        bundled_strategy_snapshot().config_for("inside_bar_momentum_breakout_v1"),
-        NOW,
-    ).candidate
     assert signal is not None
-    assert live is not None
-    assert signal.side == live.side == "BUY"
-    assert signal.entry == live.reference_entry
-    assert signal.stop_loss == live.stop_loss
-    assert signal.take_profit == live.take_profit
+    assert signal.side == "BUY"
     assert signal.stop_loss < signal.entry < signal.take_profit
 
 
@@ -97,17 +86,8 @@ def test_breakout_retest_emits_after_break_retest_and_confirmation():
     bars[-1] = _candle(29, 100.8, 101.5, 100.7, 101.25)
     snapshot = _snapshot(tuple(bars))
     signal = evaluate_breakout_retest(snapshot, _config().strategies["breakout_retest_v1"], NOW)
-    live = evaluate_breakout_retest_live(
-        snapshot,
-        bundled_strategy_snapshot().config_for("breakout_retest_v1"),
-        NOW,
-    ).candidate
     assert signal is not None
-    assert live is not None
-    assert signal.side == live.side == "BUY"
-    assert signal.entry == live.reference_entry
-    assert signal.stop_loss == live.stop_loss
-    assert signal.take_profit == live.take_profit
+    assert signal.side == "BUY"
     assert signal.features["bars_since_breakout"] == 2
 
 

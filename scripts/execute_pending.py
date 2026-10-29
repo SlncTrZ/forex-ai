@@ -150,7 +150,7 @@ def main() -> int:
             identity_guard=identity_guard,
         )
         intent = service.create_intent(risk_result, now_utc=datetime.now(UTC))
-        prefer_limit = candidate.strategy_id in {"smc_pro_fvg_v2", "breakout_retest_v1"}
+        prefer_limit = candidate.strategy_id in {"smc_pro_fvg_v2"}
         ticks = {item.symbol: item for item in broker.ticks}
         tick = ticks[intent.symbol]
         request = build_smart_trade_request(intent, contract=contract, tick=tick, constants=constants, policy=_policy(), prefer_limit=prefer_limit)

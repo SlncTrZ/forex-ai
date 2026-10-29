@@ -32,13 +32,11 @@ def test_bundled_strategy_config_is_valid_and_production_fingerprint_is_stable()
     b = bundled_strategy_snapshot()
     assert a.fingerprint == b.fingerprint
     assert len(a.production_fingerprint) == 64
-    assert a.config_for("trend_pullback_v1").parameters["ema_fast"] == 20
-    assert a.config_for("trend_pullback_v1").parameters["ema_slow"] == 50
-    assert a.config_for("trend_pullback_v1").parameters["pullback_atr"] == 0.60
-    assert a.config_for("inside_bar_momentum_breakout_v1").parameters["target_r"] == 1.75
-    assert a.config_for("breakout_retest_v1").parameters["stop_buffer_atr"] == 0.50
-    assert not a.enabled("volatility_breakout_v1")
-    assert required_raw_bars(a) == 51
+    assert a.config_for("supertrend_volume_m5").parameters["supertrend_period"] == 10
+    assert a.config_for("supertrend_volume_m5").parameters["supertrend_multiplier"] == 3.0
+    assert a.config_for("smc_pro_fvg_v2").parameters["target_r"] == 2.0
+    assert not a.enabled("pro_volatility_expansion_v2")
+    assert required_raw_bars(a) == 41
 
 
 def test_hot_reload_changes_config_fingerprint_without_changing_strategy_version(tmp_path, monkeypatch):
@@ -48,19 +46,17 @@ def test_hot_reload_changes_config_fingerprint_without_changing_strategy_version
     monkeypatch.setenv("FOREX_AI_STRATEGY_CONFIG", str(active))
 
     before = load_strategy_snapshot()
-    old_config = before.config_for("trend_pullback_v1")
+    old_config = before.config_for("supertrend_volume_m5")
 
-    payload["strategies"]["trend_pullback_v1"]["parameters"]["ema_fast"] = 12
-    payload["strategies"]["trend_pullback_v1"]["parameters"]["ema_slow"] = 40
+    payload["strategies"]["supertrend_volume_m5"]["parameters"]["supertrend_multiplier"] = 3.5
     _write_yaml(active, payload)
 
     after = load_strategy_snapshot()
-    new_config = after.config_for("trend_pullback_v1")
+    new_config = after.config_for("supertrend_volume_m5")
     assert before.production_fingerprint != after.production_fingerprint
     assert old_config.version == new_config.version
     assert old_config.fingerprint != new_config.fingerprint
-    assert new_config.parameters["ema_fast"] == 12
-    assert new_config.parameters["ema_slow"] == 40
+    assert new_config.parameters["supertrend_multiplier"] == 3.5
 
 
 def test_invalid_reload_uses_last_known_good(tmp_path, monkeypatch):
@@ -72,34 +68,32 @@ def test_invalid_reload_uses_last_known_good(tmp_path, monkeypatch):
     good = load_strategy_snapshot()
     assert last_good_path(active).is_file()
 
-    payload["strategies"]["trend_pullback_v1"]["parameters"]["ema_fast"] = 100
-    payload["strategies"]["trend_pullback_v1"]["parameters"]["ema_slow"] = 20
+    payload["strategies"]["supertrend_volume_m5"]["parameters"]["supertrend_period"] = 0
     _write_yaml(active, payload)
 
     fallback = load_strategy_snapshot()
     assert fallback.loaded_from_last_good
     assert fallback.rejected_error
     assert fallback.production_fingerprint == good.production_fingerprint
-    assert fallback.config_for("trend_pullback_v1").parameters["ema_fast"] == 20
+    assert fallback.config_for("supertrend_volume_m5").parameters["supertrend_period"] == 10
 
 
 def test_explicit_invalid_config_fails_instead_of_silently_falling_back(tmp_path):
     path = tmp_path / "strategy.yaml"
     payload = _payload()
-    payload["strategies"]["volatility_breakout_v1"]["parameters"]["min_efficiency"] = 2.0
+    payload["strategies"]["supertrend_volume_m5"]["parameters"]["supertrend_period"] = -1
     _write_yaml(path, payload)
     with pytest.raises(Exception):
         load_strategy_snapshot(path)
 
 
-def test_required_raw_bars_tracks_ema_slow_hot_reload(tmp_path):
+def test_required_raw_bars_tracks_supertrend_period_hot_reload(tmp_path):
     path = tmp_path / "strategy.yaml"
     payload = _payload()
-    payload["strategies"]["trend_pullback_v1"]["parameters"]["ema_slow"] = 100
-    payload["strategies"]["trend_pullback_v1"]["parameters"]["ema_fast"] = 20
+    payload["strategies"]["supertrend_volume_m5"]["parameters"]["supertrend_period"] = 50
     _write_yaml(path, payload)
     snapshot = load_strategy_snapshot(path)
-    assert required_raw_bars(snapshot) == 101
+    assert required_raw_bars(snapshot) == 81
 
 
 def test_candidate_persists_strategy_config_fingerprint(tmp_path):
@@ -109,8 +103,8 @@ def test_candidate_persists_strategy_config_fingerprint(tmp_path):
     candidate = CandidateEnvelope(
         candidate_id="candidate-config-test",
         correlation_id="corr-config-test",
-        strategy_id="trend_pullback_v1",
-        strategy_version="1.0.0",
+        strategy_id="supertrend_volume_m5",
+        strategy_version="2.0.0",
         symbol="EURUSDc",
         side="BUY",
         reference_entry=1.1,

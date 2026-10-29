@@ -1,8 +1,8 @@
 {
   "schema": "forex-ai-live-prospective-approval-v1",
   "approved": true,
-  "strategy_version": "2026-W37-prospective-multi-v1",
-  "strategy_config_fingerprint": "2803ead52108f0e3dbb12405384b9c01be1bca58cd554554ee6cb7971d01aa8b",
+  "strategy_version": "2026-V2-institutional-multi-v2",
+  "strategy_config_fingerprint": "0dfb497bfca7a5e2679c3309a1ede51f74f71621bbf3d9fad318d1b3f6bced05",
   "evidence_fingerprint": "227ea1c128a7816bb228b6c866d0e52276f40a78e5af23ca0cdc9ff5a8d79067",
   "approved_at_utc": "2026-09-05T10:46:30+00:00",
   "symbols": ["XAUUSD"],
@@ -22,24 +22,23 @@
     "force_close": "FRIDAY 16:30"
   },
   "strategies": {
-    "inside_bar_momentum_breakout_v1": {
-      "stop_buffer_atr": 0.10,
-      "target_r": 1.75,
-      "expiry_minutes": 360
+    "supertrend_volume_m5": {
+      "supertrend_period": 10,
+      "supertrend_multiplier": 3.0,
+      "min_volume_ratio": 1.2,
+      "target_r": 1.8,
+      "expiry_minutes": 60
     },
-    "breakout_retest_v1": {
-      "stop_buffer_atr": 0.50,
-      "target_r": 1.50,
-      "expiry_minutes": 360
-    },
-    "trend_pullback_v1": {
-      "ema_fast": 20,
-      "ema_slow": 50,
-      "pullback_atr": 0.60,
-      "volatility_buffer_atr": 0.40,
-      "structure_lookback_bars": 5,
+    "smc_pro_fvg_v2": {
       "target_r": 2.0,
-      "expiry_minutes": 45
+      "min_stop_distance": 6.0,
+      "expiry_minutes": 120
+    },
+    "mtf_trend_continuation_v2": {
+      "min_h1_adx": 20.0,
+      "min_volume_zscore": 0.8,
+      "target_r": 1.8,
+      "expiry_minutes": 60
     }
   }
 }

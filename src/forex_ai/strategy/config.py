@@ -22,20 +22,15 @@ from forex_ai.strategy.v1.contracts import StrategyConfig, StrategyVersion, fing
 
 SCHEMA_VERSION = 1
 PRODUCTION_STRATEGY_IDS = (
-    "inside_bar_momentum_breakout_v1",
-    "breakout_retest_v1",
-    "trend_pullback_v1",
-    "volatility_breakout_v1",
-)
-V2_STRATEGY_IDS = (
-    "pro_volatility_expansion_v2",
     "supertrend_volume_m5",
     "smc_pro_fvg_v2",
-    "ichimoku_mtf_v2",
     "mtf_trend_continuation_v2",
+    "pro_volatility_expansion_v2",
+    "ichimoku_mtf_v2",
 )
-EXPLORATION_STRATEGY_IDS = ("exploration_trend_v1", "exploration_breakout_v1")
-ALL_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS + EXPLORATION_STRATEGY_IDS + V2_STRATEGY_IDS
+V2_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS
+EXPLORATION_STRATEGY_IDS: tuple[str, ...] = ()
+ALL_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS
 
 
 class _StrictModel(BaseModel):
@@ -208,12 +203,6 @@ class MTFTrendContinuationParameters(_StrictModel):
 
 
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
-    "inside_bar_momentum_breakout_v1": InsideBarMomentumParameters,
-    "breakout_retest_v1": BreakoutRetestParameters,
-    "trend_pullback_v1": TrendParameters,
-    "volatility_breakout_v1": BreakoutParameters,
-    "exploration_trend_v1": ExplorationTrendParameters,
-    "exploration_breakout_v1": BreakoutParameters,
     "pro_volatility_expansion_v2": ProVolatilityParameters,
     "supertrend_volume_m5": SupertrendVolumeParameters,
     "smc_pro_fvg_v2": SMCProParameters,
@@ -473,37 +462,14 @@ def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: b
     strategy_ids = PRODUCTION_STRATEGY_IDS if production_only else ALL_STRATEGY_IDS
     required = 2
     for strategy_id in strategy_ids:
-        spec = snapshot.strategies[strategy_id]
-        if not spec.enabled:
+        spec = snapshot.strategies.get(strategy_id)
+        if spec is None or not spec.enabled:
             continue
         p = spec.config.parameters
-        if strategy_id in {"trend_pullback_v1", "exploration_trend_v1"}:
-            required = max(
-                required,
-                int(p["ema_slow"]),
-                int(p["atr_period"]) + 1,
-                int(p["structure_lookback_bars"]) + 1,
-            )
-        elif strategy_id == "inside_bar_momentum_breakout_v1":
-            required = max(required, int(p["atr_period"]) + 1, 3)
-        elif strategy_id == "breakout_retest_v1":
-            required = max(
-                required,
-                int(p["range_bars"]) + int(p["breakout_search_bars"]) + 2,
-                int(p["atr_period"]) + 2,
-            )
-        elif strategy_id in {"volatility_breakout_v1", "exploration_breakout_v1"}:
-            required = max(
-                required,
-                int(p["range_bars"]) + 2,
-                int(p["atr_period"]) + 2,
-                int(p["trend_ema_slow"]) + 1,
-                int(p["efficiency_window"]) + 2,
-            )
+        if strategy_id in {"supertrend_volume_m5", "mtf_trend_continuation_v2", "smc_pro_fvg_v2"}:
+            required = max(required, int(p.get("supertrend_period", 10)) + 30, 40)
         elif strategy_id == "pro_volatility_expansion_v2":
             required = max(required, int(p.get("atr_period", 14)) + 20)
-        elif strategy_id in {"supertrend_volume_m5", "mtf_trend_continuation_v2", "smc_pro_fvg_v2"}:
-            required = max(required, int(p.get("supertrend_period", 10)) + 30, 40)
         elif strategy_id == "ichimoku_mtf_v2":
             required = max(required, 85)
     return required
