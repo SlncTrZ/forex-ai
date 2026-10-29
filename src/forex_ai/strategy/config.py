@@ -27,7 +27,13 @@ PRODUCTION_STRATEGY_IDS = (
     "trend_pullback_v1",
     "volatility_breakout_v1",
 )
-V2_STRATEGY_IDS = ("pro_volatility_expansion_v2", "supertrend_volume_m5")
+V2_STRATEGY_IDS = (
+    "pro_volatility_expansion_v2",
+    "supertrend_volume_m5",
+    "smc_pro_fvg_v2",
+    "ichimoku_mtf_v2",
+    "mtf_trend_continuation_v2",
+)
 EXPLORATION_STRATEGY_IDS = ("exploration_trend_v1", "exploration_breakout_v1")
 ALL_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS + EXPLORATION_STRATEGY_IDS + V2_STRATEGY_IDS
 
@@ -174,6 +180,33 @@ class SupertrendVolumeParameters(_StrictModel):
     min_stop_distance: float = Field(default=0.0, ge=0.0)
 
 
+class SMCProParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    target_r: float = Field(default=2.0, gt=0.0)
+    min_stop_distance: float = Field(default=0.0, ge=0.0)
+    session_start_hour: float = Field(default=7.0, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=17.0, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=120, gt=0)
+
+
+class IchimokuMTFParameters(_StrictModel):
+    decision_timeframe: str = "M15"
+    target_r: float = Field(default=2.0, gt=0.0)
+    min_stop_distance: float = Field(default=0.0, ge=0.0)
+    expiry_minutes: int = Field(default=180, gt=0)
+
+
+class MTFTrendContinuationParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    min_h1_adx: float = Field(default=20.0, ge=0.0)
+    min_volume_zscore: float = Field(default=0.8, ge=0.0)
+    target_r: float = Field(default=1.8, gt=0.0)
+    min_stop_distance: float = Field(default=0.0, ge=0.0)
+    session_start_hour: float = Field(default=7.0, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=17.0, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=60, gt=0)
+
+
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "inside_bar_momentum_breakout_v1": InsideBarMomentumParameters,
     "breakout_retest_v1": BreakoutRetestParameters,
@@ -183,6 +216,9 @@ PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "exploration_breakout_v1": BreakoutParameters,
     "pro_volatility_expansion_v2": ProVolatilityParameters,
     "supertrend_volume_m5": SupertrendVolumeParameters,
+    "smc_pro_fvg_v2": SMCProParameters,
+    "ichimoku_mtf_v2": IchimokuMTFParameters,
+    "mtf_trend_continuation_v2": MTFTrendContinuationParameters,
 })
 
 
@@ -466,8 +502,10 @@ def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: b
             )
         elif strategy_id == "pro_volatility_expansion_v2":
             required = max(required, int(p.get("atr_period", 14)) + 20)
-        elif strategy_id == "supertrend_volume_m5":
-            required = max(required, int(p.get("supertrend_period", 10)) + 30)
+        elif strategy_id in {"supertrend_volume_m5", "mtf_trend_continuation_v2", "smc_pro_fvg_v2"}:
+            required = max(required, int(p.get("supertrend_period", 10)) + 30, 40)
+        elif strategy_id == "ichimoku_mtf_v2":
+            required = max(required, 85)
     return required
 
 

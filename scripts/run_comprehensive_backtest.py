@@ -25,14 +25,22 @@ from forex_ai.strategy.v1 import (
     trend_pullback,
     volatility_breakout,
 )
+from forex_ai.strategy.v2 import (
+    ichimoku_mtf,
+    mtf_trend_continuation,
+    pro_volatility_expansion_v2,
+    smc_pro_fvg,
+    supertrend_volume_m5,
+)
 
 UTC = timezone.utc
 
 
 STRATEGY_DISPATCH = {
-    "trend_pullback_v1": trend_pullback.evaluate,
-    "volatility_breakout_v1": volatility_breakout.evaluate,
-    "inside_bar_momentum_breakout_v1": inside_bar_momentum_breakout.evaluate,
+    "supertrend_volume_m5": supertrend_volume_m5.evaluate,
+    "smc_pro_fvg_v2": smc_pro_fvg.evaluate,
+    "ichimoku_mtf_v2": ichimoku_mtf.evaluate,
+    "mtf_trend_continuation_v2": mtf_trend_continuation.evaluate,
     "breakout_retest_v1": breakout_retest.evaluate,
 }
 

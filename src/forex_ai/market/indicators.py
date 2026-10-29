@@ -58,6 +58,18 @@ class SqueezeState:
     bandwidth: float
 
 
+@dataclass(frozen=True)
+class IchimokuCloud:
+    tenkan_sen: float
+    kijun_sen: float
+    senkou_span_a: float
+    senkou_span_b: float
+    chikou_span: float
+    cloud_color: str  # "BULLISH" if span_a > span_b else "BEARISH"
+    price_relative_to_cloud: str  # "ABOVE" | "BELOW" | "INSIDE"
+    tenkan_kijun_cross: str  # "BULLISH_CROSS" | "BEARISH_CROSS" | "NEUTRAL"
+
+
 def _require_period(period: int) -> None:
     if period <= 0:
         raise ValueError("period must be positive")
@@ -345,4 +357,67 @@ def supertrend(bars: Sequence[OHLCV], period: int = 10, multiplier: float = 3.0)
         upper_band=round(final_upper, 5),
         lower_band=round(final_lower, 5),
         changed=changed,
+    )
+
+
+def ichimoku(
+    bars: Sequence[OHLCV],
+    conversion_period: int = 9,
+    base_period: int = 26,
+    span_b_period: int = 52,
+    displacement: int = 26,
+) -> IchimokuCloud | None:
+    """Tính toán Ichimoku Kinko Hyo (Tenkan, Kijun, Senkou Span A/B, Chikou) chuẩn nhân quả."""
+    min_required = span_b_period + displacement + 1
+    if len(bars) < min_required:
+        return None
+
+    def _hl2(slice_bars: Sequence[OHLCV]) -> float:
+        return (max(float(b.high) for b in slice_bars) + min(float(b.low) for b in slice_bars)) / 2.0
+
+    # Current bar components
+    tenkan = _hl2(bars[-conversion_period:])
+    kijun = _hl2(bars[-base_period:])
+
+    # Current cloud value (derived from components calculated displacement bars ago)
+    past_idx = len(bars) - displacement
+    past_tenkan = _hl2(bars[past_idx - conversion_period : past_idx])
+    past_kijun = _hl2(bars[past_idx - base_period : past_idx])
+    span_a = (past_tenkan + past_kijun) / 2.0
+    span_b = _hl2(bars[past_idx - span_b_period : past_idx])
+
+    # Chikou Span: Current close compared to price displacement bars ago
+    chikou = float(bars[-1].close)
+
+    cloud_color = "BULLISH" if span_a >= span_b else "BEARISH"
+    cur_close = float(bars[-1].close)
+    cloud_top = max(span_a, span_b)
+    cloud_bottom = min(span_a, span_b)
+
+    if cur_close > cloud_top:
+        price_pos = "ABOVE"
+    elif cur_close < cloud_bottom:
+        price_pos = "BELOW"
+    else:
+        price_pos = "INSIDE"
+
+    # Cross analysis of Tenkan vs Kijun
+    prev_tenkan = _hl2(bars[-(conversion_period + 1) : -1])
+    prev_kijun = _hl2(bars[-(base_period + 1) : -1])
+    if prev_tenkan <= prev_kijun and tenkan > kijun:
+        cross = "BULLISH_CROSS"
+    elif prev_tenkan >= prev_kijun and tenkan < kijun:
+        cross = "BEARISH_CROSS"
+    else:
+        cross = "NEUTRAL"
+
+    return IchimokuCloud(
+        tenkan_sen=round(tenkan, 5),
+        kijun_sen=round(kijun, 5),
+        senkou_span_a=round(span_a, 5),
+        senkou_span_b=round(span_b, 5),
+        chikou_span=round(chikou, 5),
+        cloud_color=cloud_color,
+        price_relative_to_cloud=price_pos,
+        tenkan_kijun_cross=cross,
     )

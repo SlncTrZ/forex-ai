@@ -62,7 +62,7 @@ strategies:
       max_cost_atr: 0.15
 
   pro_volatility_expansion_v2:
-    enabled: true
+    enabled: false
     version: "2.0.0"
     parameters:
       decision_timeframe: M5
@@ -88,6 +88,39 @@ strategies:
       require_h1_trend: true
       session_start_hour: 7.5
       session_end_hour: 16.5
+
+  smc_pro_fvg_v2:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      target_r: 2.0
+      min_stop_distance: 5.0
+      session_start_hour: 7.0
+      session_end_hour: 17.0
+      expiry_minutes: 120
+
+  ichimoku_mtf_v2:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M15
+      target_r: 2.0
+      min_stop_distance: 5.0
+      expiry_minutes: 180
+
+  mtf_trend_continuation_v2:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      min_h1_adx: 20.0
+      min_volume_zscore: 0.8
+      target_r: 1.8
+      min_stop_distance: 5.0
+      session_start_hour: 7.0
+      session_end_hour: 17.0
+      expiry_minutes: 60
 
   exploration_trend_v1:
     enabled: true
