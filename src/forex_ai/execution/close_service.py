@@ -212,10 +212,17 @@ class GuardedCloseService:
         related = tuple(deal for deal in deals if deal.position_id == current.broker_position_ticket)
         if not related:
             return current
-        last = max(related, key=lambda deal: deal.time_msc)
-        if deal_reason_sl is not None and last.reason == deal_reason_sl:
+        # Separate entry deals (entry == 0) from exit deals (entry == 1 or None in test fixtures)
+        exit_candidates = tuple(deal for deal in related if deal.entry != 0)
+        if not exit_candidates:
+            # Only entry deal is present so far; broker hasn't recorded/returned the exit deal yet.
+            # Do not close prematurely with zero PnL or wrong reason!
+            return current
+        last = max(exit_candidates, key=lambda deal: deal.time_msc)
+        comment_lower = (last.comment or "").lower()
+        if (deal_reason_sl is not None and last.reason == deal_reason_sl) or last.reason == 4 or "[sl" in comment_lower:
             exit_reason = "STOP_LOSS"
-        elif deal_reason_tp is not None and last.reason == deal_reason_tp:
+        elif (deal_reason_tp is not None and last.reason == deal_reason_tp) or last.reason == 5 or "[tp" in comment_lower:
             exit_reason = "TAKE_PROFIT"
         else:
             exit_reason = "BROKER_FORCED_EXIT"
