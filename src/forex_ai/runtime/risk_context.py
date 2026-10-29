@@ -61,6 +61,13 @@ def _net_cash_flow(con, start_utc: datetime) -> Decimal:
     return D(str(row[0] or 0))
 
 
+def _last_capital_event_time(con) -> datetime | None:
+    row = con.execute("SELECT MAX(time) FROM mt5_deals WHERE type = 2").fetchone()
+    if row and row[0] and int(row[0]) > 0:
+        return datetime.fromtimestamp(int(row[0]), UTC)
+    return None
+
+
 def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime) -> RiskContext:
     """Build conservative broker+journal risk state for production V1 decisions.
 
@@ -72,29 +79,41 @@ def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime)
     login = int(broker.account.login) if broker.account and broker.account.login else None
     current_equity = D(str(broker.account.equity)) if broker.account and broker.account.equity > 0 else D("0")
     with session(db_path) as con:
-        ref_day = _reference_equity(con, day_start, login=login)
+        last_cashflow_dt = _last_capital_event_time(con)
+        if last_cashflow_dt is not None:
+            # Khi có sự kiện nạp/rút tiền: Mốc chu kỳ mới bắt đầu từ sau sự kiện nạp/rút (đệm 5s)
+            cycle_start = max(week_start, last_cashflow_dt + timedelta(seconds=5))
+            if cycle_start > now_utc:
+                cycle_start = now_utc
+            day_eval_start = max(day_start, cycle_start)
+            week_eval_start = cycle_start
+        else:
+            day_eval_start = day_start
+            week_eval_start = week_start
+
+        ref_day = _reference_equity(con, day_eval_start, login=login)
         daily_reference = ref_day if (ref_day is not None and ref_day > 0) else current_equity
 
-        ref_week = _reference_equity(con, week_start, login=login)
+        ref_week = _reference_equity(con, week_eval_start, login=login)
         weekly_reference = ref_week if (ref_week is not None and ref_week > 0) else current_equity
 
-        daily_loss = _realized_loss(con, day_start)
-        weekly_loss = _realized_loss(con, week_start)
-        daily_cash = _net_cash_flow(con, day_start)
-        weekly_cash = _net_cash_flow(con, week_start)
+        daily_loss = _realized_loss(con, day_eval_start)
+        weekly_loss = _realized_loss(con, week_eval_start)
+        daily_cash = _net_cash_flow(con, day_eval_start)
+        weekly_cash = _net_cash_flow(con, week_eval_start)
+
         if login is not None:
             peak_row = con.execute(
                 "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND login=? AND equity IS NOT NULL",
-                (week_start.isoformat(), login),
+                (week_eval_start.isoformat(), login),
             ).fetchone()
         else:
             peak_row = con.execute(
                 "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND equity IS NOT NULL",
-                (week_start.isoformat(),),
+                (week_eval_start.isoformat(),),
             ).fetchone()
-    raw_peak = current_equity if (peak_row is None or peak_row[0] is None or D(str(peak_row[0])) <= 0) else max(current_equity, D(str(peak_row[0])))
-    adjusted_peak = max(current_equity, raw_peak + weekly_cash)
-    drawdown = max(D("0"), adjusted_peak - current_equity)
+        peak = current_equity if (peak_row is None or peak_row[0] is None or D(str(peak_row[0])) <= 0) else max(current_equity, D(str(peak_row[0])))
+        drawdown = max(D("0"), peak - current_equity)
 
     if daily_reference <= 0 and current_equity > 0:
         daily_reference = current_equity
