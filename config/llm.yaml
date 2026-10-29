@@ -1,4 +1,4 @@
-enabled: true
+enabled: false
 provider: deepseek
 model: deepseek-v4-flash
 base_url: https://api.deepseek.com
