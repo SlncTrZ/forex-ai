@@ -72,6 +72,7 @@ def run_strategy_backtest(
     initial_balance: float = 10_000.0,
     point_value: float = 0.001,
     use_tiered_sizing: bool = False,
+    max_active_orders: int = 1,
 ) -> dict[str, Any]:
     engine = RealisticEventEngine(
         strategy=strategy_fn,
@@ -81,6 +82,7 @@ def run_strategy_backtest(
         spread_model=DynamicSpreadModel(),
         slippage_model=SlippageModel(seed=42),
         use_tiered_sizing=use_tiered_sizing,
+        max_active_orders=max_active_orders,
     )
 
     for event in events:
@@ -126,10 +128,10 @@ def run_strategy_backtest(
     }
 
 
-def backtest_single_symbol(base_sym: str, data_dir: Path, use_tiered_sizing: bool = False) -> tuple[str, dict[str, Any] | None]:
+def backtest_single_symbol(base_sym: str, data_dir: Path, use_tiered_sizing: bool = False, max_active_orders: int = 1) -> tuple[str, dict[str, Any] | None]:
     strategy_snapshot = load_strategy_snapshot()
     print(f"\n=======================================================")
-    print(f"=== [PARALLEL] BẮT ĐẦU BACKTEST CHO SYMBOL: {base_sym} (Tiered Sizing: {use_tiered_sizing}) ===")
+    print(f"=== [PARALLEL] BẮT ĐẦU BACKTEST CHO SYMBOL: {base_sym} (Tiered Sizing: {use_tiered_sizing}, Max Active: {max_active_orders}) ===")
     print(f"=======================================================")
 
     m5_file = data_dir / f"{base_sym}_M5.parquet"
@@ -178,6 +180,7 @@ def backtest_single_symbol(base_sym: str, data_dir: Path, use_tiered_sizing: boo
             initial_balance=10_000.0,
             point_value=point,
             use_tiered_sizing=use_tiered_sizing,
+            max_active_orders=max_active_orders,
         )
         sym_report["strategies"][strat_id] = strat_res
         print(f"[{base_sym} - {strat_id}] Lệnh: {strat_res['total_trades']} | Win: {strat_res['win_rate_pct']}% | PF: {strat_res['profit_factor']} | PnL: ${strat_res['total_net_pnl']} ({strat_res['return_pct']}%) | MDD: {strat_res['max_drawdown_pct']}%")
@@ -192,6 +195,7 @@ def main() -> int:
     parser.add_argument("--symbols", nargs="+", default=["XAUUSD", "EURUSD", "USDJPY", "BTCUSD"], help="Symbols cần test")
     parser.add_argument("--workers", type=int, default=4, help="Số tiến trình song song (CPU cores)")
     parser.add_argument("--tiered", action="store_true", help="Bật định cỡ lot động theo mô hình lãi kép lãi kép.xlsx")
+    parser.add_argument("--max-active-orders", type=int, default=1, help="Số lệnh mở tối đa đồng thời (mặc định: 1)")
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir).expanduser()
@@ -207,11 +211,11 @@ def main() -> int:
 
     import concurrent.futures
     num_workers = min(args.workers, len(args.symbols))
-    print(f"Bắt đầu chạy Backtest song song trên {num_workers} tiến trình CPU cho {len(args.symbols)} symbols (Tiered Sizing: {args.tiered})...")
+    print(f"Bắt đầu chạy Backtest song song trên {num_workers} tiến trình CPU cho {len(args.symbols)} symbols (Tiered Sizing: {args.tiered}, Max Active Orders: {args.max_active_orders})...")
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
         future_to_sym = {
-            executor.submit(backtest_single_symbol, sym, data_dir, args.tiered): sym
+            executor.submit(backtest_single_symbol, sym, data_dir, args.tiered, args.max_active_orders): sym
             for sym in args.symbols
         }
         for future in concurrent.futures.as_completed(future_to_sym):

@@ -73,11 +73,13 @@ class RealisticEventEngine:
         spread_model: Optional[DynamicSpreadModel] = None,
         slippage_model: Optional[SlippageModel] = None,
         use_tiered_sizing: bool = False,
+        max_active_orders: int = 1,
     ):
         self.strategy = strategy
         self.config = config
         self.initial_balance: float = initial_balance
         self.use_tiered_sizing: bool = use_tiered_sizing
+        self.max_active_orders: int = max_active_orders
         self.account = SimulatedBrokerAccount(initial_balance=initial_balance, leverage=leverage)
         self.spread_model = spread_model or DynamicSpreadModel()
         self.slippage_model = slippage_model or SlippageModel()
@@ -236,42 +238,43 @@ class RealisticEventEngine:
                     )
 
         # 5. Đánh giá chiến lược để sinh tín hiệu mới
-        result = self.strategy(snapshot, self.config, time_utc)
-        candidate = result.candidate
-        if candidate and candidate.candidate_id not in self.account.positions:
-            if self.use_tiered_sizing:
-                current_eq = self.account.get_equity(price_dict)
-                tiered_engine = TieredCompoundRiskEngine(Decimal(str(self.initial_balance)))
-                tiered_eval = tiered_engine.evaluate_budget(Decimal(str(max(0.0, current_eq))))
-                risk_budget = float(tiered_eval.risk_budget)
-                entry_ref = candidate.reference_entry if candidate.reference_entry > 0 else (effective_ask if candidate.side == "BUY" else effective_bid)
-                risk_dist = abs(entry_ref - candidate.stop_loss)
-                contract_size = self.account.get_contract_size(symbol)
-                if "JPY" in symbol.upper():
-                    loss_per_lot = (risk_dist * contract_size) / entry_ref
+        if len(self.account.positions) < self.max_active_orders:
+            result = self.strategy(snapshot, self.config, time_utc)
+            candidate = result.candidate
+            if candidate and candidate.candidate_id not in self.account.positions:
+                if self.use_tiered_sizing:
+                    current_eq = self.account.get_equity(price_dict)
+                    tiered_engine = TieredCompoundRiskEngine(Decimal(str(self.initial_balance)))
+                    tiered_eval = tiered_engine.evaluate_budget(Decimal(str(max(0.0, current_eq))))
+                    risk_budget = float(tiered_eval.risk_budget)
+                    entry_ref = candidate.reference_entry if candidate.reference_entry > 0 else (effective_ask if candidate.side == "BUY" else effective_bid)
+                    risk_dist = abs(entry_ref - candidate.stop_loss)
+                    contract_size = self.account.get_contract_size(symbol)
+                    if "JPY" in symbol.upper():
+                        loss_per_lot = (risk_dist * contract_size) / entry_ref
+                    else:
+                        loss_per_lot = risk_dist * contract_size
+                    if loss_per_lot > 0:
+                        raw_vol = risk_budget / loss_per_lot
+                        volume = max(0.01, min(100.0, math.floor(raw_vol * 100.0) / 100.0))
+                    else:
+                        volume = 0.01
                 else:
-                    loss_per_lot = risk_dist * contract_size
-                if loss_per_lot > 0:
-                    raw_vol = risk_budget / loss_per_lot
-                    volume = max(0.01, min(100.0, math.floor(raw_vol * 100.0) / 100.0))
-                else:
-                    volume = 0.01
-            else:
-                volume = 0.01  # Kích thước lot tiêu chuẩn (Canary baseline)
-            entry_slip = self.slippage_model.calculate_slippage(symbol, "MARKET", volume)
-            actual_entry = (effective_ask + entry_slip) if candidate.side == "BUY" else (effective_bid - entry_slip)
+                    volume = 0.01  # Kích thước lot tiêu chuẩn (Canary baseline)
+                entry_slip = self.slippage_model.calculate_slippage(symbol, "MARKET", volume)
+                actual_entry = (effective_ask + entry_slip) if candidate.side == "BUY" else (effective_bid - entry_slip)
 
-            if self.account.can_open(symbol, volume, actual_entry, price_dict):
-                self.account.open_position(
-                    position_id=candidate.candidate_id,
-                    symbol=symbol,
-                    side=candidate.side,
-                    volume=volume,
-                    entry_price=actual_entry,
-                    time_utc=time_utc,
-                    stop_loss=candidate.stop_loss,
-                    take_profit=candidate.take_profit,
-                )
+                if self.account.can_open(symbol, volume, actual_entry, price_dict):
+                    self.account.open_position(
+                        position_id=candidate.candidate_id,
+                        symbol=symbol,
+                        side=candidate.side,
+                        volume=volume,
+                        entry_price=actual_entry,
+                        time_utc=time_utc,
+                        stop_loss=candidate.stop_loss,
+                        take_profit=candidate.take_profit,
+                    )
 
         # 6. Cập nhật số liệu Drawdown
         current_eq = self.account.get_equity(price_dict)
