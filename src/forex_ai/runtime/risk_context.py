@@ -104,12 +104,12 @@ def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime)
 
         if login is not None:
             peak_row = con.execute(
-                "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND login=? AND equity IS NOT NULL",
+                "SELECT MAX(balance) FROM accounts WHERE timestamp>=? AND login=? AND balance IS NOT NULL",
                 (week_eval_start.isoformat(), login),
             ).fetchone()
         else:
             peak_row = con.execute(
-                "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND equity IS NOT NULL",
+                "SELECT MAX(balance) FROM accounts WHERE timestamp>=? AND balance IS NOT NULL",
                 (week_eval_start.isoformat(),),
             ).fetchone()
         peak = current_equity if (peak_row is None or peak_row[0] is None or D(str(peak_row[0])) <= 0) else max(current_equity, D(str(peak_row[0])))

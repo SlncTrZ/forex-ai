@@ -383,7 +383,7 @@ class BrokerAwareRiskEngine:
             reasons.append("DAILY_LOSS_LIMIT")
         if context.weekly_realized_loss_amount >= weekly_budget:
             reasons.append("WEEKLY_LOSS_LIMIT")
-        if context.drawdown_amount >= dd_budget:
+        if context.drawdown_amount >= dd_budget and not p.allow_forced_min_lot:
             reasons.append("DRAWDOWN_LIMIT")
 
         min_vol = D(str(contract.volume_min))
