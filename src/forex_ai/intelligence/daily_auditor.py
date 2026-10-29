@@ -44,6 +44,7 @@ class DailyMetrics:
     audit_date: str
     start_equity: Decimal
     end_equity: Decimal
+    base_v0: Decimal
     start_level: int
     end_level: int
     risk_pct: Decimal
@@ -214,6 +215,7 @@ def collect_daily_metrics(db_path: Path, target_date: date) -> DailyMetrics:
         audit_date=target_date.isoformat(),
         start_equity=start_equity,
         end_equity=end_equity,
+        base_v0=v0,
         start_level=start_level,
         end_level=end_level,
         risk_pct=risk_pct,
@@ -276,8 +278,8 @@ def generate_market_outlook(target_date: date, metrics: DailyMetrics) -> dict[st
 
     # 4. Định hướng quy mô vốn ngày mai
     next_level = metrics.end_level
-    threshold_up = tiered_threshold(metrics.start_equity, next_level + 1)
-    insights.append(f"Vốn hiện tại: ${float(metrics.end_equity):,.2f} (Đang ở Level {next_level}). Ngưỡng thăng lên Level {next_level + 1} là: ${float(threshold_up):,.2f}.")
+    threshold_up = tiered_threshold(metrics.base_v0, next_level + 1)
+    insights.append(f"Vốn hiện tại: ${float(metrics.end_equity):,.2f} (Đang ở Level {next_level}, V0 cơ sở: ${float(metrics.base_v0):,.2f}). Ngưỡng thăng lên Level {next_level + 1} là: ${float(threshold_up):,.2f}.")
 
     return {
         "next_date": next_day.isoformat(),

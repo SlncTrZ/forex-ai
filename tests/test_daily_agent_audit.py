@@ -73,6 +73,7 @@ def test_market_outlook_gotobi_and_friday():
         audit_date="2026-10-29",
         start_equity=Decimal("1000"),
         end_equity=Decimal("1050"),
+        base_v0=Decimal("1000"),
         start_level=0,
         end_level=0,
         risk_pct=Decimal("3.0"),
