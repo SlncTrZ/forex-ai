@@ -313,7 +313,11 @@ class BrokerAwareRiskEngine:
             reasons.append("INVALID_WEEKLY_REFERENCE_EQUITY")
 
         if p.enable_tiered_compound:
-            v0 = p.initial_deposit_v0 or daily_reference
+            if context.daily_net_cash_flow != 0:
+                # Biến động nạp/rút vốn -> Reset V0 cơ sở theo vốn sau nạp/rút
+                v0 = daily_reference
+            else:
+                v0 = p.initial_deposit_v0 or daily_reference
             if v0 <= 0:
                 v0 = equity
             tiered_engine = TieredCompoundRiskEngine(v0)

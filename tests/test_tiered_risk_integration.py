@@ -177,3 +177,30 @@ def test_tiered_compound_deep_drawdown_forced_min_lot():
     )
     assert not result_strict.approved
     assert "MIN_VOLUME_EXCEEDS_RISK" in result_strict.reason_codes
+
+
+def test_tiered_compound_withdrawal_resets_to_level_0():
+    # Ban đầu V0 = $10,000. Sau đó rút -$9,000 ra, equity còn $1,000.
+    # daily_reference_equity = $10,000, daily_net_cash_flow = -$9,000 -> daily_reference = $1,000.
+    # Hệ thống tự động nhận diện cash flow và reset về Level 0 (thay vì coi là lỗ -90% thành Level -22)!
+    p = make_profile(enable_tiered_compound=True, initial_deposit_v0=D("10000"))
+    engine = BrokerAwareRiskEngine(p)
+    result = engine.evaluate(
+        make_candidate(),
+        account=make_account(equity=D("1000")),
+        contract=make_contract(),
+        tick=make_tick(),
+        safety=make_safety(),
+        context=RiskContext(
+            daily_reference_equity=D("10000"),
+            weekly_reference_equity=D("10000"),
+            daily_net_cash_flow=D("-9000"),
+            weekly_net_cash_flow=D("-9000"),
+        ),
+        calc_profit=calc_profit,
+        calc_margin=calc_margin,
+        now_utc=NOW,
+    )
+    assert result.approved
+    # Với Level 0 trên $1,000, risk 3% = $30. SL 100 pips = $1000/lot -> volume = 0.03 lot!
+    assert result.normalized_volume == D("0.03")

@@ -46,8 +46,16 @@ def _realized_loss(con, start_utc: datetime) -> Decimal:
     row = con.execute(
         """SELECT COALESCE(SUM(CASE WHEN net < 0 THEN -net ELSE 0 END),0) FROM (
                SELECT COALESCE(profit,0)+COALESCE(commission,0)+COALESCE(swap,0)+COALESCE(fee,0) AS net
-               FROM mt5_deals WHERE time>=?
+               FROM mt5_deals WHERE time>=? AND type IN (0, 1)
            )""",
+        (int(start_utc.timestamp()),),
+    ).fetchone()
+    return D(str(row[0] or 0))
+
+
+def _net_cash_flow(con, start_utc: datetime) -> Decimal:
+    row = con.execute(
+        "SELECT COALESCE(SUM(profit), 0) FROM mt5_deals WHERE time>=? AND type = 2",
         (int(start_utc.timestamp()),),
     ).fetchone()
     return D(str(row[0] or 0))
@@ -72,6 +80,8 @@ def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime)
 
         daily_loss = _realized_loss(con, day_start)
         weekly_loss = _realized_loss(con, week_start)
+        daily_cash = _net_cash_flow(con, day_start)
+        weekly_cash = _net_cash_flow(con, week_start)
         if login is not None:
             peak_row = con.execute(
                 "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND login=? AND equity IS NOT NULL",
@@ -82,8 +92,9 @@ def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime)
                 "SELECT MAX(equity) FROM accounts WHERE timestamp>=? AND equity IS NOT NULL",
                 (week_start.isoformat(),),
             ).fetchone()
-    peak = current_equity if (peak_row is None or peak_row[0] is None or D(str(peak_row[0])) <= 0) else max(current_equity, D(str(peak_row[0])))
-    drawdown = max(D("0"), peak - current_equity)
+    raw_peak = current_equity if (peak_row is None or peak_row[0] is None or D(str(peak_row[0])) <= 0) else max(current_equity, D(str(peak_row[0])))
+    adjusted_peak = max(current_equity, raw_peak + weekly_cash)
+    drawdown = max(D("0"), adjusted_peak - current_equity)
 
     if daily_reference <= 0 and current_equity > 0:
         daily_reference = current_equity
@@ -111,4 +122,6 @@ def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime)
         drawdown_amount=drawdown,
         daily_reference_equity=daily_reference,
         weekly_reference_equity=weekly_reference,
+        daily_net_cash_flow=daily_cash,
+        weekly_net_cash_flow=weekly_cash,
     )
