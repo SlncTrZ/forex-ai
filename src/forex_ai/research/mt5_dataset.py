@@ -8,7 +8,7 @@ from forex_ai.research.replay import ReplayEvent
 from forex_ai.strategy.v1.contracts import Candle, MarketSnapshot, TimeframeSnapshot
 
 UTC = timezone.utc
-_TIMEFRAME_SECONDS = {"M15": 900, "H1": 3600, "H4": 14400}
+_TIMEFRAME_SECONDS = {"M5": 300, "M15": 900, "H1": 3600, "H4": 14400}
 
 
 def _candle(row: Mapping[str, object]) -> Candle:
@@ -36,6 +36,7 @@ def build_replay_events_from_mt5_bars(
     m15_rows: Sequence[Mapping[str, object]],
     h1_rows: Sequence[Mapping[str, object]],
     h4_rows: Sequence[Mapping[str, object]],
+    m5_rows: Sequence[Mapping[str, object]] | None = None,
     history_bars: int = 200,
     min_bars: int = 50,
 ) -> tuple[ReplayEvent, ...]:
@@ -51,6 +52,9 @@ def build_replay_events_from_mt5_bars(
     m15_candles = tuple(_candle(row) for row in m15_rows)
     h1_candles = tuple(_candle(row) for row in h1_rows)
     h4_candles = tuple(_candle(row) for row in h4_rows)
+
+    m5_starts = [int(row["time"]) for row in m5_rows] if m5_rows else []
+    m5_candles = tuple(_candle(row) for row in m5_rows) if m5_rows else ()
 
     def _get_slice(candles: tuple[Candle, ...], starts: list[int], clock: datetime, timeframe: str) -> tuple[Candle, ...]:
         seconds = _TIMEFRAME_SECONDS[timeframe]
@@ -68,6 +72,8 @@ def build_replay_events_from_mt5_bars(
             "H1": TimeframeSnapshot("H1", _get_slice(h1_candles, h1_starts, clock, "H1")),
             "H4": TimeframeSnapshot("H4", _get_slice(h4_candles, h4_starts, clock, "H4")),
         }
+        if m5_rows:
+            timeframes["M5"] = TimeframeSnapshot("M5", _get_slice(m5_candles, m5_starts, clock, "M5"))
         if min(len(tf.closed_bars) for tf in timeframes.values()) < min_bars:
             continue
         close = float(row["close"])

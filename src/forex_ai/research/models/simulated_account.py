@@ -55,7 +55,10 @@ class SimulatedBrokerAccount:
         self.positions: Dict[str, SimulatedPosition] = {}
 
     def get_contract_size(self, symbol: str) -> float:
-        if "XAU" in symbol or "GOLD" in symbol:
+        sym = symbol.upper()
+        if "BTC" in sym:
+            return 1.0  # 1 lot BTC = 1 coin
+        elif "XAU" in sym or "GOLD" in sym:
             return 100.0  # 1 lot Vàng = 100 oz
         return 100_000.0  # Forex tiêu chuẩn
 
@@ -81,11 +84,13 @@ class SimulatedBrokerAccount:
             if pos.side == "BUY":
                 # Đóng Buy tại giá Bid
                 cur_price = quotes["bid"]
-                pnl = (cur_price - pos.open_price) * pos.volume * contract_size
+                raw_diff = (cur_price - pos.open_price) * pos.volume * contract_size
+                pnl = raw_diff / cur_price if "JPY" in pos.symbol.upper() else raw_diff
             else:
                 # Đóng Sell tại giá Ask
                 cur_price = quotes["ask"]
-                pnl = (pos.open_price - cur_price) * pos.volume * contract_size
+                raw_diff = (pos.open_price - cur_price) * pos.volume * contract_size
+                pnl = raw_diff / cur_price if "JPY" in pos.symbol.upper() else raw_diff
             total += pnl + pos.accumulated_swap
         return total
 
@@ -155,9 +160,11 @@ class SimulatedBrokerAccount:
             return 0.0
         contract_size = pos.contract_size
         if pos.side == "BUY":
-            gross_pnl = (exit_price - pos.open_price) * pos.volume * contract_size
+            raw_diff = (exit_price - pos.open_price) * pos.volume * contract_size
+            gross_pnl = raw_diff / exit_price if "JPY" in pos.symbol.upper() else raw_diff
         else:
-            gross_pnl = (pos.open_price - exit_price) * pos.volume * contract_size
+            raw_diff = (pos.open_price - exit_price) * pos.volume * contract_size
+            gross_pnl = raw_diff / exit_price if "JPY" in pos.symbol.upper() else raw_diff
 
         # Trừ commission đóng và cộng dồn swap
         net_pnl = gross_pnl - (self.commission_rate * pos.volume) + pos.accumulated_swap

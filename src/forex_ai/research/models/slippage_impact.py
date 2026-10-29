@@ -18,9 +18,17 @@ class SlippageProfile:
 
 DEFAULT_SLIPPAGE_PROFILES: dict[str, SlippageProfile] = {
     "EURUSD": SlippageProfile(base_slippage=0.00005, laplace_scale=0.00003),
+    "EURUSDm": SlippageProfile(base_slippage=0.00005, laplace_scale=0.00003),
     "EURUSDc": SlippageProfile(base_slippage=0.00005, laplace_scale=0.00003),
     "XAUUSD": SlippageProfile(base_slippage=0.08, laplace_scale=0.05),
+    "XAUUSDm": SlippageProfile(base_slippage=0.08, laplace_scale=0.05),
     "XAUUSDc": SlippageProfile(base_slippage=0.08, laplace_scale=0.05),
+    "USDJPY": SlippageProfile(base_slippage=0.005, laplace_scale=0.003),
+    "USDJPYm": SlippageProfile(base_slippage=0.005, laplace_scale=0.003),
+    "USDJPYc": SlippageProfile(base_slippage=0.005, laplace_scale=0.003),
+    "BTCUSD": SlippageProfile(base_slippage=5.0, laplace_scale=3.0),
+    "BTCUSDm": SlippageProfile(base_slippage=5.0, laplace_scale=3.0),
+    "BTCUSDc": SlippageProfile(base_slippage=5.0, laplace_scale=3.0),
 }
 
 

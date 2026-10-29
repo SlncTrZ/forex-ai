@@ -7,6 +7,7 @@ from typing import Callable
 
 from forex_ai.mt5.contracts import AccountSnapshot, BrokerPosition, SafetySnapshot, SymbolContract, TickSnapshot
 from forex_ai.risk.profile import RiskProfile
+from forex_ai.risk.tiered_compound import TieredCompoundRiskEngine
 
 D = Decimal
 
@@ -311,9 +312,20 @@ class BrokerAwareRiskEngine:
         if weekly_reference <= 0:
             reasons.append("INVALID_WEEKLY_REFERENCE_EQUITY")
 
-        per_trade_budget = self._bounded_budget(
-            self._pct_amount(equity, p.max_risk_per_trade_pct), p.max_risk_per_trade_amount
-        )
+        if p.enable_tiered_compound:
+            v0 = p.initial_deposit_v0 or daily_reference
+            if v0 <= 0:
+                v0 = equity
+            tiered_engine = TieredCompoundRiskEngine(v0)
+            tiered_eval = tiered_engine.evaluate_budget(equity)
+            nominal_risk_pct = tiered_eval.risk_pct * D("100")
+            per_trade_budget = self._bounded_budget(
+                self._pct_amount(equity, nominal_risk_pct), p.max_risk_per_trade_amount
+            )
+        else:
+            per_trade_budget = self._bounded_budget(
+                self._pct_amount(equity, p.max_risk_per_trade_pct), p.max_risk_per_trade_amount
+            )
         total_budget = self._bounded_budget(
             self._pct_amount(equity, p.max_total_open_risk_pct), p.max_total_open_risk_amount
         )
@@ -389,7 +401,20 @@ class BrokerAwareRiskEngine:
         projected_loss = D("0")
         margin = D("0")
         if upper_volume <= 0:
-            reasons.append("MIN_VOLUME_EXCEEDS_RISK")
+            if p.allow_forced_min_lot:
+                min_vol = D(str(contract.volume_min))
+                min_margin = self._calculated_decimal(
+                    lambda: calc_margin(candidate.side, candidate.symbol, min_vol, executable)
+                )
+                reserve = equity * p.min_margin_reserve_pct / D("100")
+                if min_margin is not None and (D(str(account.margin_free)) - min_margin >= reserve):
+                    volume = min_vol
+                    projected_loss = min_loss
+                    margin = min_margin
+                else:
+                    reasons.append("MIN_VOLUME_EXCEEDS_RISK")
+            else:
+                reasons.append("MIN_VOLUME_EXCEEDS_RISK")
         else:
             minimum = D(str(contract.volume_min))
             step = D(str(contract.volume_step))
@@ -417,7 +442,20 @@ class BrokerAwareRiskEngine:
                 else:
                     high = mid - 1
             if not calc_failed and volume <= 0:
-                reasons.append("MIN_VOLUME_EXCEEDS_RISK")
+                if p.allow_forced_min_lot:
+                    min_vol = D(str(contract.volume_min))
+                    min_margin = self._calculated_decimal(
+                        lambda: calc_margin(candidate.side, candidate.symbol, min_vol, executable)
+                    )
+                    reserve = equity * p.min_margin_reserve_pct / D("100")
+                    if min_margin is not None and (D(str(account.margin_free)) - min_margin >= reserve):
+                        volume = min_vol
+                        projected_loss = min_loss
+                        margin = min_margin
+                    else:
+                        reasons.append("MIN_VOLUME_EXCEEDS_RISK")
+                else:
+                    reasons.append("MIN_VOLUME_EXCEEDS_RISK")
             if volume > 0:
                 calculated_margin = self._calculated_decimal(
                     lambda: calc_margin(candidate.side, candidate.symbol, volume, executable)
@@ -426,7 +464,7 @@ class BrokerAwareRiskEngine:
                     reasons.append("INVALID_MARGIN_CALC")
                 else:
                     margin = calculated_margin
-            if projected_loss > per_trade_budget:
+            if projected_loss > per_trade_budget and not p.allow_forced_min_lot:
                 reasons.append("PER_TRADE_RISK_LIMIT")
             if total_open_risk + projected_loss > total_budget:
                 reasons.append("TOTAL_OPEN_RISK_LIMIT")

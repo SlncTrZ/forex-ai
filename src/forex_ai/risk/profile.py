@@ -33,6 +33,9 @@ class RiskProfile(BaseModel):
     cooldown_seconds: int = Field(default=0, ge=0)
     max_drawdown_pct: Decimal = Field(default=Decimal("10"), gt=0, le=Decimal("100"))
     conservative_fee_per_lot: Decimal = Field(default=Decimal("0"), ge=0)
+    enable_tiered_compound: bool = False
+    initial_deposit_v0: Decimal | None = Field(default=None, gt=0)
+    allow_forced_min_lot: bool = False
     enabled: bool = True
     kill_switch: bool = False
 

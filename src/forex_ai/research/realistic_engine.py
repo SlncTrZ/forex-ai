@@ -7,11 +7,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Callable, Iterable, List, Optional, Sequence
 
 from forex_ai.research.models.dynamic_spread import DynamicSpreadModel
 from forex_ai.research.models.simulated_account import SimulatedBrokerAccount
 from forex_ai.research.models.slippage_impact import SlippageModel
+from forex_ai.risk.tiered_compound import TieredCompoundRiskEngine
 from forex_ai.strategy.v1.contracts import CandidateEnvelope, Candle, MarketSnapshot, StrategyConfig, StrategyResult
 
 UTC = timezone.utc
@@ -70,10 +72,12 @@ class RealisticEventEngine:
         leverage: float = 100.0,
         spread_model: Optional[DynamicSpreadModel] = None,
         slippage_model: Optional[SlippageModel] = None,
+        use_tiered_sizing: bool = False,
     ):
         self.strategy = strategy
         self.config = config
         self.initial_balance: float = initial_balance
+        self.use_tiered_sizing: bool = use_tiered_sizing
         self.account = SimulatedBrokerAccount(initial_balance=initial_balance, leverage=leverage)
         self.spread_model = spread_model or DynamicSpreadModel()
         self.slippage_model = slippage_model or SlippageModel()
@@ -197,7 +201,15 @@ class RealisticEventEngine:
 
                 if exit_triggered:
                     contract_size = pos.contract_size
-                    gross = (exit_price - pos.open_price if pos.side == "BUY" else pos.open_price - exit_price) * pos.volume * contract_size
+                    if "JPY" in pos.symbol.upper():
+                        gross = ((exit_price - pos.open_price if pos.side == "BUY" else pos.open_price - exit_price) * pos.volume * contract_size) / exit_price
+                        spread_c = (current_spread * pos.volume * contract_size) / exit_price
+                        slip_c = (abs(exit_price - (pos.stop_loss if reason == "STOP_LOSS" else pos.take_profit)) * pos.volume * contract_size) / exit_price
+                    else:
+                        gross = (exit_price - pos.open_price if pos.side == "BUY" else pos.open_price - exit_price) * pos.volume * contract_size
+                        spread_c = current_spread * pos.volume * contract_size
+                        slip_c = abs(exit_price - (pos.stop_loss if reason == "STOP_LOSS" else pos.take_profit)) * pos.volume * contract_size
+
                     comm = self.account.commission_rate * pos.volume * 2.0
                     net_pnl = self.account.close_position(pid, exit_price, time_utc)
                     self.closed_trades.append(
@@ -215,8 +227,8 @@ class RealisticEventEngine:
                             volume=pos.volume,
                             net_pnl=net_pnl,
                             gross_pnl=gross,
-                            spread_cost=current_spread * pos.volume * contract_size,
-                            slippage_cost=abs(exit_price - (pos.stop_loss if reason == "STOP_LOSS" else pos.take_profit)) * pos.volume * contract_size,
+                            spread_cost=spread_c,
+                            slippage_cost=slip_c,
                             commission_cost=comm,
                             swap_cost=pos.accumulated_swap,
                             exit_reason=reason,
@@ -227,7 +239,25 @@ class RealisticEventEngine:
         result = self.strategy(snapshot, self.config, time_utc)
         candidate = result.candidate
         if candidate and candidate.candidate_id not in self.account.positions:
-            volume = 0.01  # Kích thước lot tiêu chuẩn
+            if self.use_tiered_sizing:
+                current_eq = self.account.get_equity(price_dict)
+                tiered_engine = TieredCompoundRiskEngine(Decimal(str(self.initial_balance)))
+                tiered_eval = tiered_engine.evaluate_budget(Decimal(str(max(0.0, current_eq))))
+                risk_budget = float(tiered_eval.risk_budget)
+                entry_ref = candidate.reference_entry if candidate.reference_entry > 0 else (effective_ask if candidate.side == "BUY" else effective_bid)
+                risk_dist = abs(entry_ref - candidate.stop_loss)
+                contract_size = self.account.get_contract_size(symbol)
+                if "JPY" in symbol.upper():
+                    loss_per_lot = (risk_dist * contract_size) / entry_ref
+                else:
+                    loss_per_lot = risk_dist * contract_size
+                if loss_per_lot > 0:
+                    raw_vol = risk_budget / loss_per_lot
+                    volume = max(0.01, min(100.0, math.floor(raw_vol * 100.0) / 100.0))
+                else:
+                    volume = 0.01
+            else:
+                volume = 0.01  # Kích thước lot tiêu chuẩn (Canary baseline)
             entry_slip = self.slippage_model.calculate_slippage(symbol, "MARKET", volume)
             actual_entry = (effective_ask + entry_slip) if candidate.side == "BUY" else (effective_bid - entry_slip)
 

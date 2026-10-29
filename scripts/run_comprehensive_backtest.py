@@ -45,6 +45,18 @@ STRATEGY_DISPATCH = {
 }
 
 
+def get_symbol_point(symbol: str) -> float:
+    sym = symbol.upper()
+    if "XAU" in sym or "GOLD" in sym:
+        return 0.001
+    elif "BTC" in sym:
+        return 0.01
+    elif "JPY" in sym:
+        return 0.001
+    else:
+        return 0.00001
+
+
 def load_parquet_rows(file_path: Path) -> list[dict[str, Any]]:
     if not file_path.exists():
         raise FileNotFoundError(f"Missing parquet file: {file_path}")
@@ -59,6 +71,7 @@ def run_strategy_backtest(
     events: list[Any],
     initial_balance: float = 10_000.0,
     point_value: float = 0.001,
+    use_tiered_sizing: bool = False,
 ) -> dict[str, Any]:
     engine = RealisticEventEngine(
         strategy=strategy_fn,
@@ -67,6 +80,7 @@ def run_strategy_backtest(
         leverage=100.0,
         spread_model=DynamicSpreadModel(),
         slippage_model=SlippageModel(seed=42),
+        use_tiered_sizing=use_tiered_sizing,
     )
 
     for event in events:
@@ -112,11 +126,72 @@ def run_strategy_backtest(
     }
 
 
+def backtest_single_symbol(base_sym: str, data_dir: Path, use_tiered_sizing: bool = False) -> tuple[str, dict[str, Any] | None]:
+    strategy_snapshot = load_strategy_snapshot()
+    print(f"\n=======================================================")
+    print(f"=== [PARALLEL] BẮT ĐẦU BACKTEST CHO SYMBOL: {base_sym} (Tiered Sizing: {use_tiered_sizing}) ===")
+    print(f"=======================================================")
+
+    m5_file = data_dir / f"{base_sym}_M5.parquet"
+    m15_file = data_dir / f"{base_sym}_M15.parquet"
+    h1_file = data_dir / f"{base_sym}_H1.parquet"
+    h4_file = data_dir / f"{base_sym}_H4.parquet"
+
+    if not (m15_file.exists() and h1_file.exists() and h4_file.exists()):
+        print(f"[SKIP] Thiếu dữ liệu M15/H1/H4 cho {base_sym}")
+        return base_sym, None
+
+    m5_rows = load_parquet_rows(m5_file) if m5_file.exists() else None
+    m15_rows = load_parquet_rows(m15_file)
+    h1_rows = load_parquet_rows(h1_file)
+    h4_rows = load_parquet_rows(h4_file)
+
+    point = get_symbol_point(base_sym)
+    events = build_replay_events_from_mt5_bars(
+        symbol=f"{base_sym}m",
+        point=point,
+        m15_rows=m15_rows,
+        h1_rows=h1_rows,
+        h4_rows=h4_rows,
+        m5_rows=m5_rows,
+        history_bars=100,
+        min_bars=30,
+    )
+    print(f"[{base_sym}] Đã sinh {len(events):,} sự kiện thị trường Point-in-Time!")
+
+    sym_report: dict[str, Any] = {
+        "total_events": len(events),
+        "date_range": {
+            "start": events[0].clock_utc.strftime("%Y-%m-%d") if events else None,
+            "end": events[-1].clock_utc.strftime("%Y-%m-%d") if events else None,
+        },
+        "strategies": {},
+    }
+
+    for strat_id, strat_fn in STRATEGY_DISPATCH.items():
+        strat_cfg = strategy_snapshot.config_for(strat_id)
+        strat_res = run_strategy_backtest(
+            strategy_id=strat_id,
+            strategy_fn=strat_fn,
+            strategy_cfg=strat_cfg,
+            events=events,
+            initial_balance=10_000.0,
+            point_value=point,
+            use_tiered_sizing=use_tiered_sizing,
+        )
+        sym_report["strategies"][strat_id] = strat_res
+        print(f"[{base_sym} - {strat_id}] Lệnh: {strat_res['total_trades']} | Win: {strat_res['win_rate_pct']}% | PF: {strat_res['profit_factor']} | PnL: ${strat_res['total_net_pnl']} ({strat_res['return_pct']}%) | MDD: {strat_res['max_drawdown_pct']}%")
+
+    return base_sym, sym_report
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Chạy kiểm thử thực tế 2 năm toàn diện cho Forex-AI.")
     parser.add_argument("--data-dir", default="backtest/data/historical_2y", help="Thư mục dữ liệu Parquet")
     parser.add_argument("--output", default="backtest/data/comprehensive_2y_benchmark.json", help="File JSON kết quả")
-    parser.add_argument("--symbols", nargs="+", default=["XAUUSD", "EURUSD"], help="Symbols cần test")
+    parser.add_argument("--symbols", nargs="+", default=["XAUUSD", "EURUSD", "USDJPY", "BTCUSD"], help="Symbols cần test")
+    parser.add_argument("--workers", type=int, default=4, help="Số tiến trình song song (CPU cores)")
+    parser.add_argument("--tiered", action="store_true", help="Bật định cỡ lot động theo mô hình lãi kép lãi kép.xlsx")
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir).expanduser()
@@ -130,68 +205,27 @@ def main() -> int:
         "symbols": {},
     }
 
-    for base_sym in args.symbols:
-        print(f"\n=======================================================")
-        print(f"=== ĐANG CHẠY BACKTEST THỰC TẾ 2 NĂM CHO: {base_sym} ===")
-        print(f"=======================================================")
+    import concurrent.futures
+    num_workers = min(args.workers, len(args.symbols))
+    print(f"Bắt đầu chạy Backtest song song trên {num_workers} tiến trình CPU cho {len(args.symbols)} symbols (Tiered Sizing: {args.tiered})...")
 
-        m15_file = data_dir / f"{base_sym}_M15.parquet"
-        h1_file = data_dir / f"{base_sym}_H1.parquet"
-        h4_file = data_dir / f"{base_sym}_H4.parquet"
-
-        if not (m15_file.exists() and h1_file.exists() and h4_file.exists()):
-            print(f"[SKIP] Thiếu dữ liệu M15/H1/H4 cho {base_sym}")
-            continue
-
-        m15_rows = load_parquet_rows(m15_file)
-        h1_rows = load_parquet_rows(h1_file)
-        h4_rows = load_parquet_rows(h4_file)
-
-        point = 0.001 if base_sym == "XAUUSD" else 0.00001
-        print(f"Đang dựng chuỗi sự kiện ReplayEvent từ {len(m15_rows):,} nến M15...")
-        events = build_replay_events_from_mt5_bars(
-            symbol=f"{base_sym}m",
-            point=point,
-            m15_rows=m15_rows,
-            h1_rows=h1_rows,
-            h4_rows=h4_rows,
-            history_bars=100,
-            min_bars=30,
-        )
-        print(f"Đã sinh {len(events):,} sự kiện thị trường Point-in-Time!")
-
-        benchmark_report["symbols"][base_sym] = {
-            "total_events": len(events),
-            "date_range": {
-                "start": events[0].clock_utc.strftime("%Y-%m-%d") if events else None,
-                "end": events[-1].clock_utc.strftime("%Y-%m-%d") if events else None,
-            },
-            "strategies": {},
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+        future_to_sym = {
+            executor.submit(backtest_single_symbol, sym, data_dir, args.tiered): sym
+            for sym in args.symbols
         }
-
-        for strat_id, strat_fn in STRATEGY_DISPATCH.items():
-            strat_cfg = strategy_snapshot.config_for(strat_id)
-            print(f"\n>>> Đang đánh giá chiến lược: {strat_id}...")
-            strat_res = run_strategy_backtest(
-                strategy_id=strat_id,
-                strategy_fn=strat_fn,
-                strategy_cfg=strat_cfg,
-                events=events,
-                initial_balance=10_000.0,
-                point_value=point,
-            )
-            benchmark_report["symbols"][base_sym]["strategies"][strat_id] = strat_res
-
-            print(f"    - Số lệnh khớp: {strat_res['total_trades']}")
-            print(f"    - Win Rate: {strat_res['win_rate_pct']}% ({strat_res['winning_trades']} thắng / {strat_res['losing_trades']} thua)")
-            print(f"    - Profit Factor: {strat_res['profit_factor']}")
-            print(f"    - Lợi nhuận ròng: ${strat_res['total_net_pnl']} ({strat_res['return_pct']}%)")
-            print(f"    - Max Drawdown: {strat_res['max_drawdown_pct']}% (${strat_res['max_drawdown_amount']})")
-            print(f"    - Tổng chi phí ma sát (Spread+Slip+Comm+Swap): ${strat_res['friction_costs']['total_friction']}")
-            print(f"    - Monte Carlo Risk of Ruin: {strat_res['monte_carlo_risk_of_ruin']['risk_of_ruin_pct']}% (MDD 95%: {strat_res['monte_carlo_risk_of_ruin']['mdd_r_p95']}R)")
+        for future in concurrent.futures.as_completed(future_to_sym):
+            sym = future_to_sym[future]
+            try:
+                base_sym, sym_res = future.result()
+                if sym_res:
+                    benchmark_report["symbols"][base_sym] = sym_res
+            except Exception as e:
+                print(f"[ERROR] Thất bại khi backtest {sym}: {e}")
 
     out_file.write_text(json.dumps(benchmark_report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"\n[HOÀN TẤT] Báo cáo tổng thể đã lưu tại: {out_file}")
+    return 0
     return 0
 
 

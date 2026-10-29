@@ -17,6 +17,9 @@ profile:
   cooldown_seconds: 0
   max_drawdown_pct: 10
   conservative_fee_per_lot: 0
+  enable_tiered_compound: true
+  initial_deposit_v0: 10000
+  allow_forced_min_lot: true
   enabled: true
   kill_switch: false
 allowed_symbols:
@@ -26,6 +29,12 @@ allowed_symbols:
   - EURUSD
   - EURUSDm
   - EURUSDc
+  - USDJPY
+  - USDJPYm
+  - USDJPYc
+  - BTCUSD
+  - BTCUSDm
+  - BTCUSDc
 symbol_overrides:
   XAUUSD:
     max_spread_points: 350
@@ -39,3 +48,15 @@ symbol_overrides:
     max_spread_points: 50
   EURUSDc:
     max_spread_points: 50
+  USDJPY:
+    max_spread_points: 60
+  USDJPYm:
+    max_spread_points: 60
+  USDJPYc:
+    max_spread_points: 60
+  BTCUSD:
+    max_spread_points: 5000
+  BTCUSDm:
+    max_spread_points: 5000
+  BTCUSDc:
+    max_spread_points: 5000

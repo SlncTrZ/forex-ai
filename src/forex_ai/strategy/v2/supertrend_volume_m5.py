@@ -139,9 +139,8 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
         raw_stop = st.value + buffer
 
     raw_risk = abs(entry - raw_stop)
-    min_stop_dist = float(p.get("min_stop_distance", 0.0))
-    if min_stop_dist <= 0.0 and ("XAU" in snapshot.symbol.upper() or "GOLD" in snapshot.symbol.upper()):
-        min_stop_dist = 5.0  # Mặc định an toàn tối thiểu 5 giá ($5.0 = 500 points) cho Vàng
+    from forex_ai.strategy.v2 import resolve_symbol_min_stop
+    min_stop_dist = resolve_symbol_min_stop(snapshot.symbol, float(p.get("min_stop_distance", 0.0)))
 
     risk = max(raw_risk, min_stop_dist)
     if side == "BUY":

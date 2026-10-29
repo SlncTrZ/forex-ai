@@ -21,9 +21,17 @@ class SpreadProfile:
 
 DEFAULT_SPREAD_PROFILES: dict[str, SpreadProfile] = {
     "EURUSD": SpreadProfile(base_spread=0.00015, rollover_multiplier=12.0, news_multiplier=4.0),
+    "EURUSDm": SpreadProfile(base_spread=0.00015, rollover_multiplier=12.0, news_multiplier=4.0),
     "EURUSDc": SpreadProfile(base_spread=0.00015, rollover_multiplier=12.0, news_multiplier=4.0),
     "XAUUSD": SpreadProfile(base_spread=0.18, rollover_multiplier=8.0, news_multiplier=5.0),
+    "XAUUSDm": SpreadProfile(base_spread=0.18, rollover_multiplier=8.0, news_multiplier=5.0),
     "XAUUSDc": SpreadProfile(base_spread=0.18, rollover_multiplier=8.0, news_multiplier=5.0),
+    "USDJPY": SpreadProfile(base_spread=0.012, rollover_multiplier=10.0, news_multiplier=4.0),
+    "USDJPYm": SpreadProfile(base_spread=0.012, rollover_multiplier=10.0, news_multiplier=4.0),
+    "USDJPYc": SpreadProfile(base_spread=0.012, rollover_multiplier=10.0, news_multiplier=4.0),
+    "BTCUSD": SpreadProfile(base_spread=15.0, rollover_multiplier=1.5, news_multiplier=3.0),
+    "BTCUSDm": SpreadProfile(base_spread=15.0, rollover_multiplier=1.5, news_multiplier=3.0),
+    "BTCUSDc": SpreadProfile(base_spread=15.0, rollover_multiplier=1.5, news_multiplier=3.0),
 }
 
 

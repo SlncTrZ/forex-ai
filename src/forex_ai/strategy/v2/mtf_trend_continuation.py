@@ -107,7 +107,8 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
     # 5. Entry & Stop Loss & Target:
     entry = snapshot.ask if side == "BUY" else snapshot.bid
     buffer = 0.2 * m5_atr
-    min_stop_dist = float(p.get("min_stop_distance", 5.0 if "XAU" in snapshot.symbol.upper() else 0.0015))
+    from forex_ai.strategy.v2 import resolve_symbol_min_stop
+    min_stop_dist = resolve_symbol_min_stop(snapshot.symbol, float(p.get("min_stop_distance", 0.0)))
 
     if side == "BUY":
         raw_stop = stop_ref_price - buffer
