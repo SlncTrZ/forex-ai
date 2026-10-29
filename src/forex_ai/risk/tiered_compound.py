@@ -56,9 +56,11 @@ class TieredCompoundRiskEngine:
 
         if equity >= self.v0:
             raw_lvl = int(math.floor((math.log(eq_float / v0_float) / math.log(1.1)) + 1e-9))
+        elif equity >= self.v0 * D("0.9"):
+            raw_lvl = 0
         else:
             k = math.log(eq_float / v0_float) / math.log(0.9)
-            raw_lvl = -int(math.ceil(k - 1e-9))
+            raw_lvl = -int(math.floor(k + 1e-9))
 
         if previous_level is None:
             return raw_lvl

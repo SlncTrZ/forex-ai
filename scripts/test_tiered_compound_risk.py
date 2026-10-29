@@ -59,9 +59,11 @@ class TieredCompoundRiskEngine:
 
         if equity >= self.v0:
             raw_lvl = int(math.floor((math.log(eq_float / v0_float) / math.log(1.1)) + 1e-9))
+        elif equity >= self.v0 * D("0.9"):
+            raw_lvl = 0
         else:
             k = math.log(eq_float / v0_float) / math.log(0.9)
-            raw_lvl = -int(math.ceil(k - 1e-9))
+            raw_lvl = -int(math.floor(k + 1e-9))
 
         if previous_level is None:
             return raw_lvl
@@ -201,13 +203,15 @@ class TestTieredCompoundRiskEngine(unittest.TestCase):
         self.assertEqual(self.engine.calculate_level(D("13780612.35")), 100)
 
     def test_level_mapping_negative(self):
-        self.assertEqual(self.engine.calculate_level(D("999")), -1)
-        self.assertEqual(self.engine.calculate_level(D("900")), -1)
-        self.assertEqual(self.engine.calculate_level(D("899")), -2)
+        self.assertEqual(self.engine.calculate_level(D("1000")), 0)
+        self.assertEqual(self.engine.calculate_level(D("999")), 0)
+        self.assertEqual(self.engine.calculate_level(D("900")), 0)
+        self.assertEqual(self.engine.calculate_level(D("899")), -1)
         self.assertEqual(self.engine.calculate_level(D("810")), -2)
+        self.assertEqual(self.engine.calculate_level(D("809")), -2)
         self.assertEqual(self.engine.calculate_level(D("590.49")), -5)
-        self.assertEqual(self.engine.calculate_level(D("590.00")), -6)
-        self.assertEqual(self.engine.calculate_level(D("205.90")), -15)
+        self.assertEqual(self.engine.calculate_level(D("590.00")), -5)
+        self.assertEqual(self.engine.calculate_level(D("205.89")), -15)
 
     def test_risk_de_escalation(self):
         self.assertEqual(self.engine.get_risk_pct(-10), D("0.03"))
@@ -238,8 +242,8 @@ class TestTieredCompoundRiskEngine(unittest.TestCase):
         # Risk 3% = $6.18. SL = 500 points ($5.00/oz on gold) -> loss per lot = $500
         # raw lot = 6.18 / 500 = 0.01236 -> exec lot = 0.01
         res = self.engine.evaluate(
-            equity=D("205.90"),
-            free_margin=D("205.90"),
+            equity=D("205.89"),
+            free_margin=D("205.89"),
             stop_loss_points=D("500"),
             current_price=D("2000"),
             spec=self.gold_spec
