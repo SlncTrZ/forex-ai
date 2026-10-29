@@ -557,6 +557,10 @@ class MT5Client:
             "TRADE_RETCODE_LOCKED",
             "DEAL_REASON_SL",
             "DEAL_REASON_TP",
+            "TRADE_ACTION_PENDING",
+            "ORDER_TYPE_BUY_LIMIT",
+            "ORDER_TYPE_SELL_LIMIT",
+            "ORDER_TIME_SPECIFIED",
         )
         values = {name: int(self._remote_eval(f"mt5.{name}")) for name in required_names}
         for name in optional_names:

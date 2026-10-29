@@ -20,7 +20,13 @@ from forex_ai.config import load_execution_enabled, load_fixed_lot, load_risk_pr
 from forex_ai.execution.account_mode import expected_trade_mode_for_runtime, require_account_trade_mode
 from forex_ai.execution.live_canary import assess_live_canary_readiness
 from forex_ai.execution.demo_campaign import assess_demo_campaign_readiness
-from forex_ai.execution.mt5 import MT5MarketRequestPolicy, MT5RetcodeClassifier, build_market_request, order_check_passed
+from forex_ai.execution.mt5 import (
+    MT5MarketRequestPolicy,
+    MT5RetcodeClassifier,
+    build_market_request,
+    build_smart_trade_request,
+    order_check_passed,
+)
 from forex_ai.integration.adapters import candidate_input
 from forex_ai.integration.execution import GuardedExecutionService
 from forex_ai.journal.db import initialize, log_audit_event
@@ -144,7 +150,10 @@ def main() -> int:
             identity_guard=identity_guard,
         )
         intent = service.create_intent(risk_result, now_utc=datetime.now(UTC))
-        request = build_market_request(intent, contract=contract, constants=constants, policy=_policy())
+        prefer_limit = candidate.strategy_id in {"smc_pro_fvg_v2", "breakout_retest_v1"}
+        ticks = {item.symbol: item for item in broker.ticks}
+        tick = ticks[intent.symbol]
+        request = build_smart_trade_request(intent, contract=contract, tick=tick, constants=constants, policy=_policy(), prefer_limit=prefer_limit)
         if intent.state.value == "RISK_APPROVED":
             intent = service.preflight(
                 intent.intent_id,

@@ -13,8 +13,10 @@ from forex_ai.execution.mt5 import (
     ProtectionDisposition,
     ProtectionPolicy,
     build_close_request,
+    build_limit_order_request,
     build_market_request,
     build_protection_request,
+    build_smart_trade_request,
     intent_comment,
     order_check_passed,
     protection_disposition,
@@ -475,3 +477,29 @@ def test_timeout_but_accepted_without_protection_remains_blocking():
     result = reconcile_intent(item, positions=(broker_position,))
     assert result.intent.state is ExecutionState.FILLED
     assert "UNPROTECTED_POSITION" in result.blocking_reasons
+
+
+def test_smart_trade_request_selects_limit_when_market_is_away():
+    c = contract(filling_mode=3)
+    consts = {
+        **constants(),
+        "TRADE_ACTION_PENDING": 5,
+        "ORDER_TYPE_BUY_LIMIT": 2,
+        "ORDER_TYPE_SELL_LIMIT": 3,
+    }
+    pol = MT5MarketRequestPolicy(deviation_points=30, magic=260904)
+
+    # 1. Buy request with target entry 1.1000, market ask is higher at 1.1050 -> Expect BUY LIMIT
+    buy_intent = intent(ExecutionState.PREFLIGHT_PASSED)
+    tick_away = TickSnapshot(symbol="EURUSD", bid=1.1048, ask=1.1050, time_msc=1000, captured_at_utc=NOW)
+    req_limit = build_smart_trade_request(buy_intent, contract=c, tick=tick_away, constants=consts, policy=pol, prefer_limit=True)
+    assert req_limit["action"] == 5  # TRADE_ACTION_PENDING
+    assert req_limit["type"] == 2    # ORDER_TYPE_BUY_LIMIT
+    assert req_limit["price"] == 1.1000
+
+    # 2. Buy request with target entry 1.1000, market ask is already lower/at entry (1.0990) -> Expect DEAL
+    tick_better = TickSnapshot(symbol="EURUSD", bid=1.0988, ask=1.0990, time_msc=1000, captured_at_utc=NOW)
+    req_deal = build_smart_trade_request(buy_intent, contract=c, tick=tick_better, constants=consts, policy=pol, prefer_limit=True)
+    assert req_deal["action"] == 1  # TRADE_ACTION_DEAL
+    assert req_deal["type"] == 0    # ORDER_TYPE_BUY
+

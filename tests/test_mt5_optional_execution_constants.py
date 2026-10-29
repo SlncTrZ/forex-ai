@@ -48,13 +48,17 @@ def test_execution_constants_tolerate_missing_optional_constant(monkeypatch):
         "TRADE_RETCODE_LOCKED": 10028,
         "DEAL_REASON_SL": 4,
         "DEAL_REASON_TP": 5,
+        "TRADE_ACTION_PENDING": 5,
+        "ORDER_TYPE_BUY_LIMIT": 2,
+        "ORDER_TYPE_SELL_LIMIT": 3,
+        "ORDER_TIME_SPECIFIED": 2,
     }
 
     def fake_eval(self, code: str):
         if code.startswith("mt5."):
             return required_values[code.removeprefix("mt5.")]
         name = code.split("'")[1]
-        return optional_values[name]
+        return optional_values.get(name)
 
     monkeypatch.setattr(MT5Client, "_remote_eval", fake_eval)
     client = object.__new__(MT5Client)

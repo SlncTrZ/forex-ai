@@ -162,6 +162,75 @@ def build_market_request(
     }
 
 
+def build_limit_order_request(
+    intent: OrderIntent,
+    *,
+    contract: SymbolContract,
+    constants: Mapping[str, int],
+    policy: MT5MarketRequestPolicy,
+) -> dict[str, Any]:
+    """Tạo dictionary cấu hình yêu cầu đặt lệnh chờ LIMIT (Buy Limit / Sell Limit) trên MT5."""
+    if intent.side not in {"BUY", "SELL"}:
+        raise MT5RequestError("unsupported intent side")
+    if intent.volume <= 0:
+        raise MT5RequestError("intent volume must be > 0")
+    if intent.side == "BUY" and not (intent.stop_loss < intent.entry < intent.take_profit):
+        raise MT5RequestError("BUY LIMIT request requires SL < entry < TP")
+    if intent.side == "SELL" and not (intent.take_profit < intent.entry < intent.stop_loss):
+        raise MT5RequestError("SELL LIMIT request requires TP < entry < SL")
+    volume_step = Decimal(str(contract.volume_step))
+    price_step = Decimal(str(contract.trade_tick_size or contract.point))
+    if not _aligned(intent.volume - Decimal(str(contract.volume_min)), volume_step):
+        raise MT5RequestError("intent volume is not aligned to broker volume step")
+    if any(not _aligned(price, price_step) for price in (intent.entry, intent.stop_loss, intent.take_profit)):
+        raise MT5RequestError("intent prices are not aligned to broker tick size")
+    if contract.filling_mode is None:
+        raise MT5RequestError("symbol filling mode unavailable")
+
+    order_type = int(constants.get("ORDER_TYPE_BUY_LIMIT", 2)) if intent.side == "BUY" else int(constants.get("ORDER_TYPE_SELL_LIMIT", 3))
+    comment = intent_comment(intent.intent_id, policy.comment_prefix)
+    return {
+        "action": int(constants.get("TRADE_ACTION_PENDING", 5)),
+        "symbol": intent.symbol,
+        "volume": _decimal_float(intent.volume),
+        "type": order_type,
+        "price": _decimal_float(intent.entry),
+        "sl": _decimal_float(intent.stop_loss),
+        "tp": _decimal_float(intent.take_profit),
+        "deviation": int(policy.deviation_points),
+        "magic": int(policy.magic),
+        "comment": comment,
+        "type_time": int(constants.get("ORDER_TIME_GTC", 0)),
+        "type_filling": choose_filling_mode(int(contract.filling_mode), constants),
+    }
+
+
+def build_smart_trade_request(
+    intent: OrderIntent,
+    *,
+    contract: SymbolContract,
+    tick: TickSnapshot,
+    constants: Mapping[str, int],
+    policy: MT5MarketRequestPolicy,
+    prefer_limit: bool = False,
+) -> dict[str, Any]:
+    """Tự động xây dựng request Market Order hoặc Pending Limit Order:
+    - Nếu prefer_limit=True:
+      + BUY: Nếu current ask > limit_price -> đặt BUY LIMIT chờ giá hồi về. Nếu ask <= limit_price -> khớp ngay DEAL.
+      + SELL: Nếu current bid < limit_price -> đặt SELL LIMIT chờ giá hồi về. Nếu bid >= limit_price -> khớp ngay DEAL.
+    - Nếu prefer_limit=False: gửi Market Order DEAL thông thường.
+    """
+    if prefer_limit:
+        ask = Decimal(str(tick.ask))
+        bid = Decimal(str(tick.bid))
+        if intent.side == "BUY" and ask > intent.entry:
+            return build_limit_order_request(intent, contract=contract, constants=constants, policy=policy)
+        elif intent.side == "SELL" and bid < intent.entry:
+            return build_limit_order_request(intent, contract=contract, constants=constants, policy=policy)
+
+    return build_market_request(intent, contract=contract, constants=constants, policy=policy)
+
+
 def build_protection_request(
     position: BrokerPosition,
     *,

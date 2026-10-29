@@ -82,7 +82,7 @@ strategies:
       supertrend_multiplier: 3.0
       min_volume_ratio: 1.2
       target_r: 1.8
-      min_stop_distance: 5.0
+      min_stop_distance: 6.0
       allow_pullback_entry: true
       expiry_minutes: 60
       require_h1_trend: true
@@ -95,7 +95,7 @@ strategies:
     parameters:
       decision_timeframe: M5
       target_r: 2.0
-      min_stop_distance: 5.0
+      min_stop_distance: 6.0
       session_start_hour: 7.0
       session_end_hour: 17.0
       expiry_minutes: 120
@@ -106,7 +106,7 @@ strategies:
     parameters:
       decision_timeframe: M15
       target_r: 2.0
-      min_stop_distance: 5.0
+      min_stop_distance: 6.0
       expiry_minutes: 180
 
   mtf_trend_continuation_v2:
@@ -117,7 +117,7 @@ strategies:
       min_h1_adx: 20.0
       min_volume_zscore: 0.8
       target_r: 1.8
-      min_stop_distance: 5.0
+      min_stop_distance: 6.0
       session_start_hour: 7.0
       session_end_hour: 17.0
       expiry_minutes: 60
