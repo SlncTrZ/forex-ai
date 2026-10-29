@@ -1,28 +1,49 @@
 # Forex-AI — Current Status
 
-Last updated: 2026-09-03
+Last updated: 2026-10-29 19:30
 
-## Runtime
+## Runtime (v0.0.4)
 
-- DEV source-of-truth: `<DEV_TREE>` (backed by `DEV_HOST`)
-- Runtime host: `RUNTIME_HOST` / `RUNTIME_HOST`
-- Current release: `$HOME/apps/forex-ai/releases/20260903T045757Z`
-- Current symlink: `$HOME/apps/forex-ai/current`
+- DEV source-of-truth: `<DEV_TREE>` (backed by Workstation `.171`)
+- Compute & Backtest node: Ubuntu 26.04 (`192.168.1.152`), 56 vCPUs, 30 GB RAM, NVMe 151 GB
+- Production runtime host: Ubuntu 24.04 (`192.168.1.227`), Docker `forex-mt5`, Exness Demo Trial7
+- Current release: `$HOME/apps/forex-ai/current` -> `releases/20261029T043513Z-a48d9b9e1c9a`
 - Runtime venv: `$HOME/.venvs/forex-ai-runtime`
 - SQLite: `$HOME/.local/share/forex-ai/forex.db`
-- MT5 container: `forex-mt5`
-- Observer service: active
-- Candidate scanner timer: active, every 30 seconds
-- DeepSeek pending-review timer: active + enabled; reviews only newly created signals in SHADOW mode
+- Observer service: `forex-ai-observe.service` active & healthy (78MB RAM, 0 leaks)
+- Candidate scanner timer: `forex-ai-candidate-scan.timer` active, every 30 seconds
+- Execution runner timer: `forex-ai-execute-pending.timer` active, every 10 seconds
+- Reconcile timer: `forex-ai-execution-reconcile.timer` active, every 15 seconds
+- Health watchdog: `forex-ai-ops-health.timer` active, every minute
 
-## Account / symbols
+## Account & Target Symbols
 
-- Broker/server: Exness / `Exness-MT5Real36`
-- Account currency: `USC` (cent account)
-- `XAUUSD -> XAUUSDc`
-- `EURUSD -> EURUSDc`
-- Minimum lot: 0.01 for both supported symbols
-- Forex-AI real execution remains disabled
+- Broker / Server: Exness / `Exness-MT5Trial7` (Demo) & `Exness-MT5Real36` (Real)
+- Account currency: `USD` ($10,000 initial capital V0)
+- Target Assets:
+  - `XAUUSD -> XAUUSDm / XAUUSDc` (Gold, point = 0.001, min SL = 6.0$ / 600 pts)
+  - `BTCUSD -> BTCUSDm / BTCUSDc` (Bitcoin 24/7, point = 0.01, min SL = 150.0$ / 15,000 pts)
+  - `EURUSD -> EURUSDm / EURUSDc` (Euro FX, point = 0.00001, min SL = 0.0015 / 150 pts)
+  - `USDJPY -> USDJPYm / USDJPYc` (Yen FX, point = 0.001, min SL = 0.15 / 150 pts)
+- Sizing Mechanism: **Tiered Compound Risk Engine** (`_private/lãi kép.xlsx`)
+  - Dynamic sizing scaled by Account Level ($L \le 17 \implies 3.0\%$; $18 \le L \le 50 \implies 2.0\%$; $51 \le L \le 99 \implies 1.0\%$; $L \ge 100 \implies 0.5\%$).
+  - Drawdown de-escalation: When $L < -5$, continues trading with forced minimum volume (0.01 lot) until margin exhaustion.
+  - Concurrent limit: `max_active_orders: 3`, `max_total_open_risk_pct: 9%`.
+
+## Production Strategies (V2 Suite)
+
+1. `supertrend_volume_m5` (v2.0.0 — Bát Cơm M5):
+   - M5 Supertrend (10, 3.0) + H1 Trend Bias filter + Volume Ratio >= 1.2 SMA(20).
+   - 2-year backtest on Gold: Win Rate 48.15%, Profit Factor 1.51, Net PnL +$20,390.10 (+203.9%), Max DD 26.11%.
+2. `smc_pro_fvg_v2` (v2.0.0 — Smart Money Concepts Order Block & FVG):
+   - Institutional displacement detection + Limit Order entry at 50% Fair Value Gap Consequent Encroachment (zero adverse entry slippage).
+   - 2-year backtest on Gold: 686 trades, Win Rate 36.15% (RR 1:2.0), Profit Factor 1.06, Net PnL +$7,576.67 (+75.77%).
+3. `mtf_trend_continuation_v2` (v2.0.0 — Multi-Timeframe Value Area Riding):
+   - H1 ADX >= 20 strong trend filter + M5 EMA 20/50 pullback bounce + Volume Z-score >= 0.8.
+   - 2-year backtest on Gold: Win Rate 45.21%, Profit Factor 1.37, Net PnL +$5,503.48 (+55.03%), Max DD 21.84%.
+   - Month 10/2026 on EURUSD: Win Rate 80.00% (4 wins / 1 loss), Profit Factor 5.55.
+
+*Note: Legacy breakout strategies (`breakout_retest_v1`, `inside_bar_momentum_breakout_v1`) are disabled due to 100% risk of ruin in 2-year empirical testing.*
 
 ## Logging / audit guarantees
 
@@ -134,46 +155,35 @@ Budget guards are configured at:
 
 The DeepSeek key is installed locally with mode `600`; the automatic shadow reviewer is enabled. Paid smoke validation succeeded with `deepseek-v4-flash`: decision `NO_TRADE`, confidence `0.62`, 52,560 input tokens, 3,144 output tokens, 40,192 cached input tokens, API cost `$0.005077344`, latency about 30.5s. Total tracked DeepSeek spend for the four validation attempts was about `$0.01933`.
 
-## Safety state
+## Safety & Execution State
 
-- runtime mode: `OBSERVE`
-- `execution_enabled: false`
-- no LLM has an order-execution tool
-- candidate scanner is read-only and now persists deterministic `BrokerAwareRiskEngine` verdicts
-- pending DeepSeek reviewer consumes V1 candidates through `AdvisoryRuntime`; the legacy provider bridge is forced to advisory `NO_CHANGE` and has no trade authority
-- persistent account binding is required for execution-capable paths; binding is never created automatically
-- fresh risk revalidation + final broker preflight are mandatory before any future send
+- Runtime mode: `DEMO` (Campaign: `demo_month_continuous`)
+- `execution_enabled: true` in production `~/.config/forex-ai/risk.yaml`
+- Execution arm state: `armed: true`, `arm_expires_at_utc: 2026-11-28`, `kill_switch: false`
+- `BrokerAwareRiskEngine` integrated with `TieredCompoundRiskEngine`:
+  - `enable_tiered_compound: true`
+  - `initial_deposit_v0: 10000`
+  - `allow_forced_min_lot: true`
+  - `max_active_orders: 3`, `max_total_open_risk_pct: 9%`
+- Reconcile engine classifies manual trader interventions as `MANUAL_CLOSE` and updates equity in real-time.
+- Unbound or foreign positions are tagged as `ORPHAN_BROKER_POSITION` and block conflicting automated orders.
 
 ## Tests
 
-Current remediation working tree: **152 passing tests** (`pytest -q -p no:cacheprovider`).
+Current remediation working tree: **271 passing tests** on Linux `.152` / **257 passing tests** on Windows `.171` (`pytest -q`).
 
-It covers the earlier suite plus:
+Key test suites:
+- `tests/test_tiered_risk_integration.py` — Tiered Compound Level calculation & dynamic volume sizing
+- `tests/test_execution_lifecycle_close.py` — Manual close, broker reconciliation, and reason classification
+- `tests/test_strategy_v2.py` — Strategy V2 institutional logic (Supertrend, SMC FVG, MTF Continuation)
+- `tests/agent_a/test_kernel.py` & `tests/agent_b/` — Kernel and risk invariants
+- `tests/test_auto_week.py` — Live approval and schedule constraints
 
-- execution locks / risk modes
-- symbol mapping
-- MT5 history upsert
-- entry/exit deal audit + idempotency
-- timestamp/correlation audit
-- signal -> LLM correlation
-- feature calculations
-- DeepSeek cost calculations
-- persistent account identity binding/fail-closed mismatch handling
-- database-enforced opportunity deduplication
-- V1 Strategy -> deterministic RiskEngine persistence
-- strict advisory schemas and persistent daily advisory budget
-- fresh-risk drift rejection before broker send
-- narrow broker-rollover gap classification and runtime resilience
+## Current Milestone (Completed v0.0.4)
 
-## Next implementation stage
-
-No owner action is currently required for data collection or DeepSeek shadow review.
-
-The next engineering stage is the deterministic risk + execution path for the cent account:
-
-1. finish account fingerprint enforcement and broker/spec revalidation before every order
-2. implement deterministic position sizing from stop distance and cent-account equity
-3. implement order preflight / duplicate prevention / spread-slippage / daily-loss guards
-4. connect accepted BOT+LLM decisions to an execution adapter while retaining `execution_enabled: false`
-5. exercise the full path in dry-run and reconciliation tests
-6. only after those tests, explicitly enable guarded cent execution
+1. [x] Implement Tiered Compound Risk Engine from `_private/lãi kép.xlsx` with Level 0-100+ de-escalation.
+2. [x] Implement 3 institutional V2 strategies (`supertrend_volume_m5`, `smc_pro_fvg_v2`, `mtf_trend_continuation_v2`).
+3. [x] Complete 2-year multi-asset backtest on node `.152` across 4 symbols (XAUUSD, BTCUSD, EURUSD, USDJPY).
+4. [x] Complete 3-month segmented empirical audit (August, September, October 2026) demonstrating steady compounding.
+5. [x] Scale `max_active_orders: 3` and remove fixed volume constraints on production node `.227`.
+6. [x] Stand by for next operator command.

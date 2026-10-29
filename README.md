@@ -1,45 +1,30 @@
-# Forex-AI
+# Forex-AI (v0.0.4)
 
-Live cent-account Forex research harness for:
+Account-neutral deterministic Forex & Crypto research and automated trading engine for:
 
-- XAUUSD
-- EURUSD
+- **XAUUSD** (Spot Gold)
+- **BTCUSD** (Bitcoin 24/7)
+- **EURUSD** (Euro FX)
+- **USDJPY** (Yen FX)
 
-The project compares deterministic bot decisions with LLM-assisted decisions while keeping execution behind a deterministic risk gate.
+The project combines institutional quantitative strategies with a strict mathematical Level-based compounding engine (`TieredCompoundRiskEngine`), backed by empirical backtesting and deterministic risk controls.
 
-## Development vs runtime
+## Architecture & Sizing Engine
 
-Development happens in the checked-out Git tree. The live runtime is a separate
-local release so that a development-storage outage cannot take down a long-running
-service. Mutable state (SQLite DB, logs) lives on the runtime host's local disk,
-never in the repo.
+The system features an automated **Tiered Compound Risk Engine** (`_private/lãi kép.xlsx`):
+- Dynamic position sizing calculated from exact stop-loss distance and equity Level.
+- Progressive risk reduction:
+  * Level 0–17 ($V_0 \to \approx 5.05 V_0$): **3.0%** risk per trade
+  * Level 18–50 ($\approx 5.56 V_0 \to \approx 117 V_0$): **2.0%** risk per trade (De-escalation)
+  * Level 51–99: **1.0%** risk per trade
+  * Level 100+: **0.5%** risk per trade
+- Drawdown resilience: When $L < -5$, preserves 3% risk and enforces minimum lot (0.01) until margin exhaustion.
+- Multi-order concurrency: `max_active_orders: 3`, `max_total_open_risk_pct: 9%`.
 
-Key layout:
-
-- Runtime release root: `~/apps/forex-ai`
-- Python venv: `~/.venvs/forex-ai`
-- SQLite: `~/.local/share/forex-ai/forex.db`
-- Logs: `~/.local/state/forex-ai/logs`
-- MT5 container: `forex-mt5`
-- MT5 bridge: `127.0.0.1:18812`
-- MT5 noVNC UI: `http://127.0.0.1:8080`
-
-The active SQLite database and long-running service must never run directly from a
-network-mounted development path; keep them on the runtime host's local filesystem.
-
-## Safety defaults
-
-The repository currently defaults to:
+The execution path is strictly deterministic:
 
 ```text
-FOREX_AI_MODE=OBSERVE
-execution_enabled=false
-```
-
-The LLM must never call MT5 execution directly. The required path is:
-
-```text
-market/signal -> optional LLM -> deterministic RiskEngine -> execution adapter -> MT5
+market/signal -> strategy (V2 Suite) -> optional Advisory -> deterministic RiskEngine (Tiered Compound) -> execution adapter -> MT5
 ```
 
 No real order path should be enabled until broker contract details and all risk guards have been validated.
@@ -143,41 +128,29 @@ STATUS=READY_READ_ONLY
 
 The script resolves broker-specific variants of XAUUSD/EURUSD and prints account/symbol contract details without placing any orders.
 
-Validated live account profile on 2026-09-03:
+Valid account profile and supported instruments:
 
-- Broker/server: Exness / `Exness-MT5Real36`
-- Account currency: `USC` (cent account)
-- Symbol mapping: `XAUUSD -> XAUUSDc`, `EURUSD -> EURUSDc`
-- Minimum volume: `0.01` for both supported symbols
-- `EURUSDc` contract size: `1000`
-- `XAUUSDc` contract size: `1`
-- Current observer mode: read-only; no order path enabled
-
-Non-secret validated mapping/specs are stored in `config/broker.exness-cent.yaml`. Runtime still reads live MT5 properties on every startup rather than trusting static config alone.
-
-## One-shot live collection
-
-After MT5 login and successful health check:
-
-```bash
-python scripts/collect_once.py
-```
-
-This records an account snapshot plus current tick and M15 bars into local SQLite.
+- Broker / Server: Exness (`Exness-MT5Trial7` / `Exness-MT5Real36`)
+- Account currency: USD / USC
+- Symbol mapping:
+  * `XAUUSD -> XAUUSDm / XAUUSDc` (Min SL 6.0$, tick size 0.01)
+  * `BTCUSD -> BTCUSDm / BTCUSDc` (Min SL 150.0$, 24/7 continuous trading)
+  * `EURUSD -> EURUSDm / EURUSDc` (Min SL 0.0015, spread < 0.7 pips)
+  * `USDJPY -> USDJPYm / USDJPYc` (Min SL 0.15, Tokyo Fix session window)
+- Position sizing: Dynamic lot computed from `TieredCompoundRiskEngine` with broker contract tick values.
 
 ## Configuration
 
+- `config/strategy.yaml` — production and exploration strategy parameters
+- `config/risk.yaml` — hard risk limits, Tiered Compound activation, symbol spread overrides
 - `config/app.yaml` — runtime mode, symbols, local storage, MT5 bridge
 - `config/symbols.yaml` — supported instruments/timeframes
-- `config/risk.yaml` — hard risk limits; execution remains off by default
-- `config/llm.yaml` — LLM disabled by default; future budget/memory controls
 - `config/runtime.env.template` — environment variable names only
 
-## Research modes
+## Operational Runbook & Deploy
 
-1. `OBSERVE` — read and journal only
-2. `SHADOW` — bot/LLM decisions are recorded but not executed
-3. `CENT_GUARDED` — real cent-account execution through hard risk controls
-4. `CENT_EXPERIMENT` — controlled BOT_ONLY vs BOT_LLM experiment
-
-See `PLAN.md` for the full implementation plan.
+Production services are managed on host `.227` via systemd:
+- `forex-ai-observe.service` (Continuous state monitoring)
+- `forex-ai-candidate-scan.timer` (M5/M15 strategy evaluation every 30s)
+- `forex-ai-execute-pending.timer` (Guarded order dispatching every 10s)
+- `forex-ai-execution-reconcile.timer` (Broker deal reconciliation every 15s)
