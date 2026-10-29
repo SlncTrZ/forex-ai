@@ -189,7 +189,7 @@ def main() -> int:
         client=client,
         symbols=cfg.symbols,
         db_path=cfg.db_path,
-        bars_count=required_raw_bars(strategy_snapshot),
+        bars_count=max(80, required_raw_bars(strategy_snapshot, production_only=False)),
         load_history=False,
         market_context=market_context_snapshot,
     )
