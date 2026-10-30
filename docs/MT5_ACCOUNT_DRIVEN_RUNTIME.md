@@ -55,6 +55,20 @@ even when an execution gate is disarmed.
   operator-controlled deployment with read-only telemetry checks.
   Any decision to ARM and allow REAL orders is a separate owner action.
 
+## Tick-by-tick dashboard channel
+
+- Only the dashboard service maintains the market-data SSE fan-out: one
+  read-only MT5 adapter, `copy_ticks_range`, a bounded ring buffer and
+  explicit gap/collector-health events.
+- Viewer sessions never connect directly to MT5 or execute trading commands.
+- The tick channel and 12-second operational polling are independent.
+  The broker `time_msc` and local `received_ms` expose timing and
+  clock-skew limitations; neither is an exchange-certified round-trip latency.
+- History saturation, disconnection, and slow-client drops are reported instead
+  of falsely claiming complete tick history. No per-tick SQLite writes.
+- A dashboard deploy or reconnect cannot modify ARM, Kill Switch, bindings,
+  strategy approval or open broker positions.
+
 ## Known follow-up
 
 Legacy manual preflight commands retain their names but now evaluate explicit

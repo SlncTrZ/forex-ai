@@ -45,7 +45,41 @@
             <div class="hero-main"><div class="eyebrow bright">TRADING ENGINE · PRODUCTION</div><div class="hero-title"><span id="hero-state">Monitoring infrastructure</span><span id="hero-dot" class="hero-indicator"></span></div><p>Strategy processing and broker reconciliation continue independently of trade authorization.</p><div class="hero-pills"><span>MT5 ACCOUNT <b id="hero-account">—</b></span><span>ENTRIES <b id="hero-entries">—</b></span><span>RELEASE <b id="hero-release">—</b></span></div></div>
             <div class="hero-art" aria-hidden="true"><div class="orbit a"></div><div class="orbit b"></div><div class="orbit c"></div><div class="pulse-core">∿</div><span class="art-caption">BROKER SYNC / RUNTIME</span></div>
           </div>
-          <div class="section-header"><h2>Real-time indicators</h2><span class="subtle">From production SQLite • polling every 12s</span></div>
+          <section class="live-terminal">
+            <div class="live-header">
+              <div class="live-title-wrap">
+                <span class="live-glyph">⌁</span>
+                <div><div class="live-kicker">BROKER MARKET DATA / DIRECT TICK HISTORY</div><h2>Live Market Terminal <span class="live-subline">XAUUSD · MT5</span></h2></div>
+              </div>
+              <div class="live-status-wrap"><span id="tick-lag" class="live-lag">Ingest latency —</span><span id="tick-state" class="pill warning">CONNECTING</span></div>
+            </div>
+            <div class="market-grid">
+              <div class="quote-column">
+                <div class="quote-symbol"><span id="tick-symbol">—</span><span id="tick-direction" class="quote-delta">—</span></div>
+                <div class="quote-books"><div class="quote-card bid"><span>BID / SELL</span><strong id="tick-bid">—</strong></div><div class="quote-card ask"><span>ASK / BUY</span><strong id="tick-ask">—</strong></div></div>
+                <div class="quote-meta">
+                  <div><span>Live Spread</span><b id="tick-spread">—</b></div>
+                  <div><span>Broker tick age</span><b id="tick-age">—</b></div>
+                  <div><span>Tick time (UTC)</span><b id="tick-time">—</b></div>
+                  <div><span>Collector</span><b id="tick-poll">—</b></div>
+                  <div><span>Session ticks</span><b id="tick-total">0</b></div>
+                  <div><span>Gap warnings</span><b id="tick-gaps">0</b></div>
+                </div>
+              </div>
+              <div class="chart-column">
+                <div class="chart-title"><span>Price action <small>Tick mid-price, last 300 received ticks</small></span><span class="chart-tag">LIVE</span></div>
+                <canvas id="tick-canvas" height="265" aria-label="Real-time tick mid-price chart" role="img"></canvas>
+                <div class="chart-footer"><span id="chart-low">LOW —</span><span id="chart-high">HIGH —</span></div>
+              </div>
+              <div class="tape-column">
+                <div class="tape-title">Tick Tape <span>LAST 25</span></div>
+                <div class="tape-cols"><span>UTC</span><span>BID</span><span>ASK</span></div>
+                <div id="tick-tape" class="tick-tape"><div class="empty">Waiting for live broker ticks…</div></div>
+              </div>
+            </div>
+            <div class="live-footer"><span id="tick-message">Broker events are streamed over the secure SSH socket; no simulated prices.</span><span><i class="dot-mini"></i> SSE / bounded ring buffer / read-only MT5</span></div>
+          </section>
+          <div class="section-header"><h2>Operational indicators</h2><span class="subtle">Runtime accounting refreshes every 12s; market tick stream is independent</span></div>
           <div class="metric-grid">
             <article class="metric-card"><div class="metric-top">Account equity <span>↗</span></div><div id="equity" class="metric-value">—</div><div class="metric-foot" id="equity-foot">Latest broker snapshot</div></article>
             <article class="metric-card"><div class="metric-top">Account balance <span>◈</span></div><div id="balance" class="metric-value">—</div><div class="metric-foot">Broker account currency</div></article>

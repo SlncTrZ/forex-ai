@@ -72,5 +72,110 @@
   $('modal-submit').addEventListener('click',submitModal);
   $('refresh-btn').addEventListener('click',()=>refresh(false));
   $('log-source').addEventListener('change',loadLogs);$('log-filter').addEventListener('input',renderLogs);$('log-refresh').addEventListener('click',loadLogs);
+
+  // Direct broker tick history over one shared SSE stream. Operational status
+  // deliberately keeps its slower polling; no HTTP request is made per tick.
+  let tickStream=null, tickOnline=false, tickHealth='CONNECTING', latestTick=null;
+  let pointSeries=[], tapeSeries=[], latestStreamId=0, totalTicks=0, streamGaps=0, paintScheduled=false;
+  const brokerFormat=(price)=>Number.isFinite(Number(price)) ? Number(price).toFixed(3) : '—';
+  function ingestTick(event) {
+    if(!event || event.type!=='tick' || !Number.isFinite(Number(event.bid)) || !Number.isFinite(Number(event.ask)))return;
+    if(event.id && event.id<=latestStreamId)return;
+    latestStreamId=Math.max(latestStreamId,Number(event.id)||0);
+    latestTick=event; totalTicks++;
+    lastCollectorPoll=Math.max(lastCollectorPoll,Number(event.received_ms)||0);
+    const mid=(Number(event.bid)+Number(event.ask))/2;
+    pointSeries.push(mid);if(pointSeries.length>300)pointSeries.shift();
+    tapeSeries.unshift(event);if(tapeSeries.length>25)tapeSeries.pop();
+    if(!paintScheduled){paintScheduled=true;requestAnimationFrame(()=>{paintScheduled=false;paintMarket();});}
+  }
+  function marketState() {
+    const age=latestTick ? Date.now()-Number(latestTick.broker_time_ms) : Infinity;
+    const pollAge=lastCollectorPoll?Date.now()-lastCollectorPoll:Infinity;
+    let label='WAITING', kind='warning';
+    if(!tickOnline || tickHealth==='RECONNECTING' || tickHealth==='STOPPED'){
+      label='DISCONNECTED';kind='danger';
+    } else if(pollAge>5000){label='COLLECTOR STALE';kind='danger';}
+    else if(!latestTick){label='AWAITING TICKS';kind='warning';}
+    else if(age>5000){label='MARKET IDLE';kind='warning';}
+    else {label='LIVE STREAM';kind='success';}
+    setPill('tick-state',label,kind);
+    text('tick-age',Number.isFinite(age)?(age<0?'CLOCK SKEW':Math.round(age)+' ms'):'—');
+    text('tick-poll',Number.isFinite(pollAge)?Math.max(0,Math.round(pollAge))+' ms ago':'—');
+  }
+  let lastCollectorPoll=0;
+  function applySnapshot(s) {
+    if(!s)return;
+    if(Number(s.latest_id)<latestStreamId){
+      // The collector restarted; old event IDs are not comparable.
+      latestStreamId=0;latestTick=null;pointSeries=[];tapeSeries=[];
+    }
+    tickHealth=s.stream_state||'CONNECTING';
+    lastCollectorPoll=Number(s.last_poll_ms||0);
+    streamGaps=Math.max(streamGaps,Number(s.overflows||0));
+    if(Array.isArray(s.quotes)){
+      // Quote snapshot is a recovery hint, not a historical tick event.
+      for(const item of s.quotes){if(item.type==='tick' && (!latestTick || Number(item.id)>latestStreamId)){ingestTick(item);}}
+    }
+    if(s.stream_state==='RECONNECTING')text('tick-message','MT5 bridge unavailable; prices may be stale. Reconnecting…');
+    marketState();
+  }
+  function paintMarket(){
+    if(!latestTick)return;
+    const prior=tapeSeries[1];
+    const diff=prior ? Number(latestTick.bid)-Number(prior.bid) : 0;
+    text('tick-symbol',latestTick.symbol);
+    text('tick-bid',brokerFormat(latestTick.bid));
+    text('tick-ask',brokerFormat(latestTick.ask));
+    text('tick-spread',Number(latestTick.spread).toFixed(3)+' (price)');
+    text('tick-time',new Date(Number(latestTick.broker_time_ms)).toISOString().slice(11,23));
+    text('tick-total',num(totalTicks));text('tick-gaps',num(streamGaps));
+    const delta=$('tick-direction');delta.textContent=(diff>0?'▲ +':diff<0?'▼ ':'')+diff.toFixed(3);
+    delta.classList.toggle('down',diff<0);
+    const tape=$('tick-tape');clear(tape);
+    for(const item of tapeSeries){
+      const row=el('div','tape-item');
+      row.append(el('span','',new Date(Number(item.broker_time_ms)).toISOString().slice(11,23)),
+                 el('span','',brokerFormat(item.bid)),el('span','',brokerFormat(item.ask)));
+      tape.append(row);
+    }
+    drawTickChart();
+    marketState();
+  }
+  function drawTickChart(){
+    const canvas=$('tick-canvas');const ctx=canvas.getContext('2d');
+    const width=Math.max(170,canvas.clientWidth);const height=Math.max(150,canvas.clientHeight);
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    if(canvas.width!==Math.round(width*dpr)||canvas.height!==Math.round(height*dpr)){
+      canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);
+    }
+    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,width,height);
+    const points=pointSeries;if(!points.length)return;
+    const hi=Math.max(...points),lo=Math.min(...points),range=Math.max(hi-lo,0.001);
+    const pad=22;const plotH=height-pad*2;
+    ctx.strokeStyle='rgba(101,229,186,.11)';ctx.lineWidth=1;
+    for(let i=0;i<5;i++){const y=pad+(i/4)*plotH;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();}
+    const coords=points.map((value,i)=>[points.length>1?(i/(points.length-1))*(width-4):width-4,
+      pad+plotH-((value-lo)/range)*plotH]);
+    ctx.beginPath();coords.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
+    ctx.strokeStyle='#72edc3';ctx.lineWidth=2;ctx.lineJoin='round';ctx.stroke();
+    const [lx,ly]=coords[coords.length-1];
+    ctx.beginPath();ctx.arc(lx,ly,4.4,0,Math.PI*2);ctx.fillStyle='#b1ffda';ctx.fill();
+    text('chart-low','LOW '+brokerFormat(lo));text('chart-high','HIGH '+brokerFormat(hi));
+  }
+  function launchTickStream(){
+    if(!window.EventSource){text('tick-message','Browser does not support Server-Sent Events.');return;}
+    tickStream=new EventSource('/api/stream/ticks');
+    tickStream.onopen=()=>{tickOnline=true;marketState();text('tick-message','Connected to live MT5 tick history · broker timestamps shown in UTC');};
+    tickStream.addEventListener('snapshot',e=>{try{applySnapshot(JSON.parse(e.data));}catch{}});
+    tickStream.addEventListener('tick',e=>{try{ingestTick(JSON.parse(e.data));}catch{}});
+    tickStream.addEventListener('health',e=>{try{const v=JSON.parse(e.data);tickHealth=v.state;marketState();}catch{}});
+    tickStream.addEventListener('poll',e=>{try{lastCollectorPoll=Number(JSON.parse(e.data).last_poll_ms)||0;marketState();}catch{}});
+    tickStream.addEventListener('gap',e=>{streamGaps++;try{const v=JSON.parse(e.data);if(v.snapshot)applySnapshot(v.snapshot);text('tick-message','Tick stream gap detected: '+(v.reason||'history truncated')+' · do not assume complete tape');}catch{}text('tick-gaps',num(streamGaps));});
+    tickStream.onerror=()=>{tickOnline=false;text('tick-message','Stream interrupted; automatic reconnect in progress.');marketState();};
+  }
+  window.addEventListener('resize',()=>{if(latestTick)drawTickChart();});
+  setInterval(marketState,1000);
+  launchTickStream();
   refresh(true);setInterval(()=>{if(!document.hidden)refresh(true);},12000);
 })();

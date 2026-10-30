@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from forex_ai.config import load_execution_enabled, load_risk_profile, load_runtime_config
 from forex_ai.dashboard.control import ControlDenied, arm_preflight, change_control
+from forex_ai.dashboard.ticks import TickCollector, TickHub
 from forex_ai.execution.account_mode import detect_account_trade_mode
 from forex_ai.journal.integration_repository import load_trading_control
 from forex_ai.risk.account_guard import account_matches
@@ -31,6 +32,8 @@ SERVICES = (
     "forex-ai-auto-live-week.timer",
 )
 SENSITIVE = re.compile(r"(passw|token|secret|credential|api.?key|login|server|auth|private)", re.I)
+TICK_HUB = TickHub()
+STREAM_SLOTS = __import__('threading').BoundedSemaphore(8)
 
 
 def _db() -> sqlite3.Connection:
@@ -92,7 +95,7 @@ def read_status() -> dict:
         "metrics": {"uncertain_orders": int(stats["n"]), "external_positions": int(position_count), "audit_24h": int(last_events)},
         "heartbeat": dict(latest) if latest else None,
         "risk": _risk_summary(), "services": read_services(),
-        "release": _release_info(),
+        "release": _release_info(), "ticks": TICK_HUB.snapshot(),
     }
 
 
@@ -188,6 +191,56 @@ class Handler(BaseHTTPRequestHandler):
     def _trusted_host(self) -> bool:
         return self.headers.get("Host", "") in HOSTS
 
+    def _stream_ticks(self):
+        """SSE uses bounded in-memory fanout; slow browsers get reset/gap markers."""
+        if not STREAM_SLOTS.acquire(blocking=False):
+            return self._json(429, {"error": "MAX_STREAM_CLIENTS"})
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-transform")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            raw_cursor = self.headers.get("Last-Event-ID", "")
+            try:
+                cursor = int(raw_cursor) if raw_cursor else TICK_HUB.snapshot()["latest_id"]
+                if cursor < 0:
+                    cursor = 0
+            except ValueError:
+                cursor = TICK_HUB.snapshot()["latest_id"]
+            # Snapshot has no ID: it is not a replayable market event.
+            snapshot = TICK_HUB.snapshot()
+            if cursor > snapshot["latest_id"]:
+                # Source restarted and the browser retained an event ID from
+                # the previous process. It must not wait for an old cursor.
+                self.wfile.write(b"event: gap\ndata: " + json.dumps({
+                    "reason": "STREAM_RESTART", "snapshot": snapshot,
+                }).encode() + b"\n\n")
+                cursor = snapshot["latest_id"]
+            self.wfile.write(b"event: snapshot\ndata: " + json.dumps(snapshot).encode() + b"\n\n")
+            self.wfile.flush()
+            while True:
+                events, gap = TICK_HUB.wait_after(cursor, timeout=8)
+                if gap:
+                    snapshot = TICK_HUB.snapshot()
+                    self.wfile.write(b"event: gap\ndata: " + json.dumps({
+                        "reason": "CLIENT_BUFFER_OVERRUN", "snapshot": snapshot,
+                    }).encode() + b"\n\n")
+                    cursor = max(0, snapshot["latest_id"]-len(events))
+                if not events:
+                    self.wfile.write(b": heartbeat\n\n")
+                for event in events:
+                    cursor = event["id"]
+                    payload = json.dumps(event, separators=(",", ":"), ensure_ascii=False)
+                    self.wfile.write(f"id: {cursor}\nevent: {event['type']}\ndata: {payload}\n\n".encode())
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+            pass
+        finally:
+            STREAM_SLOTS.release()
+
     def do_GET(self):
         if not self._trusted_host():
             return self._json(403, {"error":"UNTRUSTED_HOST"})
@@ -202,6 +255,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, payload, "text/html; charset=utf-8" if name.endswith(".html") else
                               "text/css; charset=utf-8" if name.endswith(".css") else "application/javascript; charset=utf-8")
         try:
+            if path.path == "/api/stream/ticks":
+                return self._stream_ticks()
+            if path.path == "/api/ticks":
+                return self._json(200, TICK_HUB.snapshot())
             if path.path == "/api/status":
                 return self._json(200, read_status())
             if path.path == "/api/events":
@@ -266,8 +323,11 @@ def serve(path: Path = SOCKET) -> None:
     finally:
         os.umask(old)
     os.chmod(path, 0o600)
+    collector = TickCollector(TICK_HUB)
+    collector.start()
     try:
         server.serve_forever(poll_interval=0.3)
     finally:
+        collector.stop()
         server.server_close()
         path.unlink(missing_ok=True)

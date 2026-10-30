@@ -171,6 +171,23 @@ Open **http://127.0.0.1:8765/** while the SSH tunnel is active. The target socke
 
 ARM is allowed only after a fresh MT5 account/binding check and the existing DEMO campaign or REAL strategy/risk approval gates. Leases are 5–1440 minutes. DISARM preserves the Kill Switch. Emergency Stop prevents new orders but does not forcibly close positions. A sticky manual kill cannot be reset by the web UI. The CLI `scripts/arm_trading.py` uses the same guarded control layer and requires explicit `--confirm`.
 
+### Live tick-by-tick market panel
+
+The **Live Market Terminal** on Overview streams Bid, Ask, raw spread, tick UTC,
+broker tick age, ingest latency, a rolling price chart and the latest 25 broker
+ticks through `/api/stream/ticks` (Server-Sent Events). A dedicated read-only
+MT5 collector thread runs inside the dashboard systemd service. It uses
+`MT5.copy_ticks_range()`, not one latest-price query per browser, and shares a
+bounded 12,000-event in-memory ring with at most eight simultaneous SSE clients.
+The broker history is queried approximately every 350 ms when connected.
+
+The tick timeline is **best-effort**, not an exchange-grade guaranteed-lossless
+feed. Tick history saturation, slow browser overflow, MT5 disconnection and
+stale prices are explicitly displayed. The collector emits a live heartbeat
+even when no ticks arrive. MT5 trading execution and SQLite observer stay
+independent; the ticker never calls `order_send` and does not write ticks to
+SQLite. Operations / account summary still refresh every 12 seconds.
+
 ## Operational Runbook & Deploy
 
 Production services are managed on host `.227` via systemd:
