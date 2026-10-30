@@ -56,13 +56,8 @@ def _market_payload(base_symbol: str, market: MarketSnapshot, health_state: str)
     return payload
 
 
-ALLOWED_OBSERVER_MODES = {"OBSERVE", "DEMO", "LIVE_CANARY", "GUARDED_LIVE", "SHADOW"}
-
-
 def run_observer(cfg: RuntimeConfig) -> int:
-    """Resilient read-only live journal loop. This module contains no order path."""
-    if cfg.mode not in ALLOWED_OBSERVER_MODES:
-        raise RuntimeError(f"Observer does not support mode {cfg.mode}, allowed: {sorted(ALLOWED_OBSERVER_MODES)}")
+    """Resilient read-only journal loop; account type and execution state are independent."""
 
     min_free_bytes = int(os.getenv("FOREX_AI_MIN_FREE_BYTES", str(512 * 1024 * 1024)))
     ensure_disk_headroom(cfg.db_path, min_free_bytes=min_free_bytes)

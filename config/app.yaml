@@ -1,4 +1,4 @@
-mode: OBSERVE
+mode: TRADING
 symbols:
   - XAUUSD
 runtime:

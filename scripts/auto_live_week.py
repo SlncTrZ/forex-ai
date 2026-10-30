@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from forex_ai.config import load_execution_enabled, load_risk_profile, load_runtime_config
+from forex_ai.execution.account_mode import MT5AccountTradeMode, detect_account_trade_mode
 from forex_ai.execution.auto_week import (
     AutoWeekApproval,
     auto_live_window,
@@ -57,11 +58,32 @@ def _save_transition(db_path: Path, previous: TradingControlState, current: Trad
     )
 
 
+def _connected_account_mode(cfg) -> tuple[MT5AccountTradeMode, bool]:
+    """Probe MT5 before touching the shared trading control record."""
+    client = MT5Client(cfg)
+    try:
+        if not client.connect():
+            raise RuntimeError("MT5_CONNECT_FAILED")
+        account = client.account_info() or {}
+        return detect_account_trade_mode(account), account_matches(account)
+    finally:
+        client.close()
+
+
 def main() -> int:
     cfg = load_runtime_config()
     initialize(cfg.db_path)
     now = datetime.now(UTC)
     control = load_trading_control(cfg.db_path)
+
+    try:
+        trade_mode, identity_bound = _connected_account_mode(cfg)
+    except Exception as exc:
+        print(json.dumps({"status": "blocked", "reasons": [f"ACCOUNT_PROBE_FAILED:{type(exc).__name__}"]}, sort_keys=True))
+        return 0
+    if trade_mode is not MT5AccountTradeMode.REAL:
+        print(json.dumps({"status": "not_applicable", "reason": f"ACCOUNT_{trade_mode.name}_NOT_REAL"}, sort_keys=True))
+        return 0
 
     if not auto_live_window(now):
         if control.armed or (is_auto_managed_control(control) and not control.kill_switch):
@@ -95,25 +117,12 @@ def main() -> int:
         health = assess_runtime_health(cfg.db_path, now_utc=now)
         reasons.extend(f"OPS_{reason}" for reason in health.reasons)
 
-        client = MT5Client(cfg)
-        trade_mode = None
-        identity_bound = False
-        if not client.connect():
-            reasons.append("MT5_CONNECT_FAILED")
-        else:
-            try:
-                account = client.account_info() or {}
-                trade_mode = account.get("trade_mode")
-                identity_bound = account_matches(account)
-            finally:
-                client.close()
-
         reasons.extend(validate_auto_week_approval(
             approval,
             strategy_config_fingerprint=strategy_snapshot.production_fingerprint,
             symbols=cfg.symbols,
             risk_profile=risk_profile,
-            account_trade_mode=trade_mode,
+            account_trade_mode=int(trade_mode),
             account_identity_bound=identity_bound,
             execution_enabled=load_execution_enabled(),
         ))

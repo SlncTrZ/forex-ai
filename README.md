@@ -18,7 +18,7 @@ The system features an automated **Tiered Compound Risk Engine** (`_private/lãi
   * Level 18–50 ($\approx 5.56 V_0 \to \approx 117 V_0$): **2.0%** risk per trade (De-escalation)
   * Level 51–99: **1.0%** risk per trade
   * Level 100+: **0.5%** risk per trade
-- Drawdown resilience: When $L < -5$, preserves 3% risk and enforces minimum lot (0.01) until margin exhaustion.
+- Drawdown resilience: When $L < -5$, nominal risk falls to 0.5%; broker-aware risk and drawdown limits still constrain minimum-lot decisions.
 - Multi-order concurrency: `max_active_orders: 3`, `max_total_open_risk_pct: 9%`.
 
 The execution path is strictly deterministic:
@@ -28,6 +28,16 @@ market/signal -> strategy (V2 Suite) -> deterministic RiskEngine (Tiered Compoun
 ```
 
 No real order path should be enabled until broker contract details and all risk guards have been validated.
+
+## Account-driven live infrastructure
+
+Forex-AI's infrastructure runs continuously under `mode: TRADING`. This is **not** an MT5
+account type. The connected broker account's `trade_mode` decides DEMO or REAL;
+unknown and CONTEST accounts cannot send automated orders. The same executor is
+used for both, while REAL requires separate owner-approved strategy evidence,
+account binding, and all safety interlocks. A broker account switch fails closed
+until the new identity is explicitly bound and authorized; neither source edits
+nor deployment should auto-arm trading. See [MT5 account-driven runtime](docs/MT5_ACCOUNT_DRIVEN_RUNTIME.md).
 
 ## Python environment
 

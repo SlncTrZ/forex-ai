@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 
 from forex_ai.config import load_execution_enabled, load_runtime_config
-from forex_ai.execution.account_mode import expected_trade_mode_for_runtime, require_account_trade_mode
+from forex_ai.execution.account_mode import MT5AccountTradeMode, detect_account_trade_mode, require_account_trade_mode
 from forex_ai.execution.close_service import GuardedCloseService
 from forex_ai.execution.mt5 import MT5MarketRequestPolicy, MT5RetcodeClassifier, build_close_request, order_check_passed
 from forex_ai.journal.db import initialize, log_audit_event
@@ -48,10 +48,6 @@ def main() -> int:
         print(json.dumps({"status": "blocked", "reason": "EXECUTION_DISABLED"}))
         return 2
 
-    if cfg.mode not in {"DEMO", "LIVE_CANARY"}:
-        print(json.dumps({"status": "blocked", "reason": "MODE_NOT_EXECUTION_CAPABLE"}))
-        return 3
-
     strategy_snapshot = load_strategy_snapshot()
     client = MT5Client(cfg)
     coordinator = MT5ResyncCoordinator(
@@ -75,7 +71,10 @@ def main() -> int:
             print(json.dumps({"status": "blocked", "reason": reason}))
             return 4
 
-        expected_mode = expected_trade_mode_for_runtime(cfg.mode)
+        expected_mode = detect_account_trade_mode(outcome.raw_account)
+        if expected_mode is MT5AccountTradeMode.CONTEST:
+            print(json.dumps({"status": "blocked", "reason": "ACCOUNT_TRADE_MODE_NOT_SUPPORTED:CONTEST"}))
+            return 3
 
         def identity_guard() -> None:
             raw = client.account_info() or {}

@@ -121,19 +121,20 @@ MARKET_CONTEXT_CONFIG="${FOREX_AI_MARKET_CONTEXT_CONFIG:-$HOME_DIR/.config/forex
 RELEASE_DIR="$RELEASES/$RELEASE_ID"
 STAGING="$RELEASES/.staging-$RELEASE_ID-$$"
 mkdir -p "$RELEASES" "$BACKTEST_ROOT/data" "$(dirname "$STRATEGY_CONFIG")" "$(dirname "$MARKET_CONTEXT_CONFIG")"
-if [ -f "$LIVE_APPROVAL" ]; then
-  STRATEGY_TMP="${STRATEGY_CONFIG}.approved.$$"
-  cp "$SRC/config/strategy.yaml" "$STRATEGY_TMP"
-  chmod 0644 "$STRATEGY_TMP"
-  mv -f "$STRATEGY_TMP" "$STRATEGY_CONFIG"
-elif [ ! -f "$STRATEGY_CONFIG" ]; then
+# Do not replace an operator's effective strategy on deployment.
+# A strategy mismatch must fail closed in readiness, not silently be "fixed".
+if [ ! -f "$STRATEGY_CONFIG" ]; then
   cp "$SRC/config/strategy.yaml" "$STRATEGY_CONFIG"
 fi
 if [ ! -f "$MARKET_CONTEXT_CONFIG" ]; then
   cp "$SRC/config/market-context.yaml" "$MARKET_CONTEXT_CONFIG"
 fi
 chmod 0644 "$STRATEGY_CONFIG" "$MARKET_CONTEXT_CONFIG"
-rm -rf "$STAGING"
+# Unique staging directories must never overwrite an existing deployment artifact.
+if [ -e "$STAGING" ]; then
+  echo "Refusing deploy: staging path already exists: $STAGING" >&2
+  exit 16
+fi
 mkdir -p "$STAGING"
 
 rsync -a --delete \
@@ -146,6 +147,30 @@ rsync -a --delete \
   --exclude '*.db-shm' \
   --exclude 'logs/' \
   "$SRC/" "$STAGING/"
+# _private is intentionally Git-ignored; validate the 5 internal authorities
+# and fingerprint them separately so a deployed release remains auditable.
+"$TEST_PYTHON" - "$STAGING/_private" "$STAGING/private_control_manifest.json" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+directory, output = map(Path, sys.argv[1:])
+expected = [
+    "00_FOREX_AI_MASTER_ARCHITECTURE.md",
+    "01_FOREX_AI_ROLES_AND_BOUNDARIES.md",
+    "02_FOREX_AI_RUNTIME_TOPOLOGY.md",
+    "03_FOREX_AI_LIFECYCLE_AND_RECOVERY.md",
+    "04_FOREX_AI_STRATEGY_AND_EXECUTION_CONTROL.md",
+]
+actual = sorted(p.name for p in directory.glob("*.md"))
+if actual != expected:
+    raise SystemExit(f"Refusing deploy: 5 private control documents required, found: {actual}")
+digests = {}
+for name in expected:
+    data = (directory / name).read_bytes()
+    if not data or b"rev 2026-10-30" not in data:
+        raise SystemExit(f"Refusing deploy: private control is empty/stale: {name}")
+    digests[name] = hashlib.sha256(data).hexdigest()
+output.write_text(json.dumps({"schema": "forex-ai-private-controls-v1", "sha256": digests}, indent=2) + "\n")
+PY
 cp "$MANIFEST_TMP" "$STAGING/release_manifest.json"
 
 if [ ! -x "$RUNTIME_VENV/bin/python" ]; then
@@ -165,7 +190,8 @@ mv -Tf "$RUNTIME_ROOT/current.new" "$RUNTIME_ROOT/current"
 
 audit_release "RELEASE_START" "$RELEASE_DIR"
 
-if [ -f "$LIVE_APPROVAL" ] && [ "${FOREX_AI_MODE:-}" != "DEMO" ]; then
+if [ -f "$LIVE_APPROVAL" ]; then
+  # Deployment is never permission to arm an MT5 REAL account.
   USER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
   USER_BUS="$USER_RUNTIME_DIR/bus"
   test -S "$USER_BUS" || { echo "Refusing live-approved deploy: user systemd bus unavailable at $USER_BUS" >&2; exit 15; }
@@ -181,11 +207,12 @@ if [ -f "$LIVE_APPROVAL" ] && [ "${FOREX_AI_MODE:-}" != "DEMO" ]; then
     chmod 0644 "$USER_UNIT_DIR/$unit"
   done
   systemctl --user daemon-reload
+  # Keep the REAL-account automatic arming scheduler disabled by default.
+  # Any future activation requires a distinct owner-authorized operation.
+  systemctl --user disable --now forex-ai-auto-live-week.timer
   systemctl --user enable --now \
-    forex-ai-auto-live-week.timer \
     forex-ai-execute-pending.timer \
     forex-ai-weekend-close.timer
-  systemctl --user start forex-ai-auto-live-week.service
 fi
 
 mapfile -t OLD_RELEASES < <(find "$RELEASES" -mindepth 1 -maxdepth 1 -type d ! -name '.staging-*' -printf '%T@ %p\n' | sort -nr | tail -n +$((KEEP_RELEASES + 1)) | cut -d' ' -f2-)
@@ -193,7 +220,7 @@ for old in "${OLD_RELEASES[@]:-}"; do
   [ -n "$old" ] || continue
   [ "$old" = "$(current_target || true)" ] && continue
   [ -L "$RUNTIME_ROOT/previous" ] && [ "$old" = "$(readlink -f "$RUNTIME_ROOT/previous")" ] && continue
-  rm -rf "$old"
+  printf 'old_release_retained_for_manual_review=%s\n' "$old"
 done
 
 printf 'release=%s\n' "$RELEASE_ID"

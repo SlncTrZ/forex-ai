@@ -65,9 +65,10 @@ def load_runtime_config(path: Path | None = None) -> RuntimeConfig:
     raw = _load_yaml(path or _default_config_path("app.yaml"))
     runtime = raw.get("runtime", {})
     mt5 = raw.get("mt5", {})
-    mode = os.getenv("FOREX_AI_MODE", raw.get("mode", "OBSERVE")).upper()
+    # Legacy mode is accepted for compatibility but never determines MT5 account type.
+    mode = os.getenv("FOREX_AI_MODE", raw.get("mode", "TRADING")).upper()
     if mode not in {
-        "OBSERVE", "SHADOW", "DEMO", "LIVE_CANARY", "GUARDED_LIVE", "LIVE_EXPERIMENT",
+        "TRADING", "OBSERVE", "SHADOW", "DEMO", "LIVE_CANARY", "GUARDED_LIVE", "LIVE_EXPERIMENT",
         "CENT_GUARDED", "CENT_EXPERIMENT",
     }:
         raise ValueError(f"Unsupported FOREX_AI_MODE={mode}")

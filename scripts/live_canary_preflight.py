@@ -8,7 +8,7 @@ from pathlib import Path
 
 from forex_ai.mt5.client import MT5Client
 from forex_ai.risk.account_guard import account_matches
-from forex_ai.config import load_risk_profile, load_runtime_config
+from forex_ai.config import load_execution_enabled, load_risk_profile, load_runtime_config
 from forex_ai.execution.live_canary import assess_live_canary_readiness
 from forex_ai.strategy.config import load_strategy_snapshot
 
@@ -28,8 +28,8 @@ def main() -> int:
     strategy_snapshot = load_strategy_snapshot()
     report = assess_live_canary_readiness(
         db_path=cfg.db_path,
-        mode=cfg.mode,
-        execution_enabled=os.getenv("FOREX_AI_EXECUTION_ENABLED", "false").lower() in {"1", "true", "yes"},
+        mode="LIVE_CANARY",
+        execution_enabled=load_execution_enabled(),
         symbols=cfg.symbols,
         risk_profile=load_risk_profile(),
         strategy_config_fingerprint=strategy_snapshot.production_fingerprint,
