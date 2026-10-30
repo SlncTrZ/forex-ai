@@ -20,6 +20,13 @@ _private/
 logs/
 data/runtime/
 backtest/data/
+data/
+
+# Local agent configuration
+AGENTS.md
+.agents/
+CLAUDE.md
+.claude/
 
 # Deployment templates are portable and version-controlled.
 # Runtime-installed copies live outside the repo under the user's systemd config.

@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forex-AI Backtest Studio | SlncTrZ</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-base: #0a0d14;
+            --bg-card: #101622;
+            --bg-card-hover: #151d2d;
+            --border: #1e283d;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.25);
+            --gold: #f59e0b;
+            --gold-glow: rgba(245, 158, 11, 0.2);
+            --green: #10b981;
+            --red: #ef4444;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 20px 32px;
+            background: rgba(16, 22, 34, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-badge {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #000;
+            font-weight: 800;
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 24px 32px;
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 28px;
+            flex: 1;
+            width: 100%;
+        }
+
+        .sidebar {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+            height: fit-content;
+        }
+
+        .panel-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select {
+            background: #0b0f19;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: #0b0f19;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        .checkbox-group input {
+            width: auto;
+            cursor: pointer;
+        }
+
+        .btn-run {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 8px 20px -4px var(--primary-glow);
+            margin-top: 8px;
+        }
+
+        .btn-run:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px -4px var(--primary-glow);
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 24px;
+            font-weight: 800;
+            margin-top: 6px;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+            height: 440px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .chart-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .table-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(30, 40, 61, 0.5);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .text-green { color: var(--green); }
+        .text-red { color: var(--red); }
+        .text-gold { color: var(--gold); }
+
+        .loader {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #fff;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            animation: rotation 0.8s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <span class="brand-badge">SlncTrZ</span>
+            <h1>Forex-AI Backtest Studio</h1>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">
+            Node .171 Localhost | Data: Exness Live Feed
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- SIDEBAR CONTROLS -->
+        <div class="sidebar">
+            <div class="panel-title">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                Tham Số Chiến Lược
+            </div>
+
+            <div class="form-group">
+                <label>Tài Sản Giao Dịch</label>
+                <select id="symbol">
+                    <option value="XAUUSD" selected>XAUUSD (Vàng)</option>
+                    <option value="BTCUSD">BTCUSD (Bitcoin)</option>
+                    <option value="EURUSD">EURUSD (Euro)</option>
+                </select>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>H1 EMA Nhanh</label>
+                    <input type="number" id="h1_ema_fast" value="21" min="2" max="200">
+                </div>
+                <div class="form-group">
+                    <label>H1 EMA Chậm</label>
+                    <input type="number" id="h1_ema_slow" value="50" min="5" max="500">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Khoảng Dữ Liệu MT5 (ngày)</label>
+                <input type="number" id="history_days" value="365" min="30" max="1500">
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>M5 RSI Ngưỡng Mua</label>
+                    <input type="number" id="rsi_threshold" value="68" min="50" max="95">
+                </div>
+                <div class="form-group">
+                    <label>M5 EMA Cắt Ngang</label>
+                    <input type="number" id="m5_ema" value="21" min="5" max="100">
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Cắt Lỗ SL ($ Giá)</label>
+                    <input type="number" id="sl_dist_usd" value="5.5" step="0.5" min="1.0">
+                </div>
+                <div class="form-group">
+                    <label>Tỷ Lệ RR (TP/SL)</label>
+                    <input type="number" id="rr_ratio" value="1.4" step="0.1" min="1.0" max="5.0">
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Trade to LevelUp</label>
+                    <input type="number" id="trades_to_levelup" value="3" min="1" max="10">
+                </div>
+                <div class="form-group">
+                    <label>Vốn Cent Khởi Tạo</label>
+                    <input type="number" id="initial_capital_cent" value="10000" step="1000">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Chế Độ Phiên Giao Dịch</label>
+                <select id="session_mode">
+                    <option value="AU_MY" selected>Phiên Âu - Mỹ (13h - 22h VN)</option>
+                    <option value="24_5">Toàn Bộ 24/5</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enable_dca">
+                    <label for="enable_dca" style="cursor: pointer; text-transform: none; margin: 0; color: #fff;">Cho phép DCA 3 nấc</label>
+                </div>
+            </div>
+
+            <div id="dca_options" style="display: none;" class="grid-2">
+                <div class="form-group">
+                    <label>DCA Step ($)</label>
+                    <input type="number" id="dca_step" value="4.0" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>DCA TP Hồi ($)</label>
+                    <input type="number" id="dca_tp" value="3.0" step="0.5">
+                </div>
+            </div>
+
+            <button class="btn-run" id="btnRun" onclick="runBacktest()">
+                <div class="loader" id="loader"></div>
+                <span id="btnText">Chạy Backtest Ngay</span>
+            </button>
+        </div>
+
+        <!-- MAIN DASHBOARD -->
+        <div class="main-content">
+            <!-- METRICS -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-title">Vốn Sau 1 Năm</div>
+                    <div class="metric-value text-green" id="res_equity_1y">$0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="res_pnl_1y">+0.0%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">Tỷ Lệ Thắng (Winrate)</div>
+                    <div class="metric-value text-gold" id="res_winrate">0.0%</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="res_trades">0 lệnh</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">Max Drawdown</div>
+                    <div class="metric-value text-red" id="res_max_dd">0.0%</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Sụt giảm tối đa</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">Level Đạt Được</div>
+                    <div class="metric-value text-primary" id="res_level">Level 0</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="res_lot">Max lot: 0.00</div>
+                </div>
+            </div>
+
+            <!-- EQUITY CHART -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="panel-title" style="margin: 0;">Đường Cong Vốn Thực Tế (Equity Curve)</div>
+                    <div style="font-size: 12px; color: var(--text-muted);" id="chart_info">100,000 nến M5 Exness</div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="equityChart"></canvas>
+                </div>
+            </div>
+
+            <!-- RECENT TRADES -->
+            <div class="table-card">
+                <div class="panel-title" style="margin-bottom: 16px;">10 Giao Dịch Gần Nhất</div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Thời Gian</th>
+                                <th>Loại</th>
+                                <th>Entry</th>
+                                <th>Exit</th>
+                                <th>Lot Cent</th>
+                                <th>Kết Quả (Cent)</th>
+                                <th>Lãi/Lỗ ($ USD)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trades_table_body">
+                            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Bấm "Chạy Backtest Ngay" để xem dữ liệu</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chartInstance = null;
+
+        document.getElementById('enable_dca').addEventListener('change', function() {
+            document.getElementById('dca_options').style.display = this.checked ? 'grid' : 'none';
+        });
+
+        async function runBacktest() {
+            const btn = document.getElementById('btnRun');
+            const loader = document.getElementById('loader');
+            const btnText = document.getElementById('btnText');
+
+            loader.style.display = 'block';
+            btnText.innerText = 'Đang Tính Toán...';
+            btn.disabled = true;
+
+            const payload = {
+                symbol: document.getElementById('symbol').value,
+                h1_ema_fast: parseInt(document.getElementById('h1_ema_fast').value),
+                h1_ema_slow: parseInt(document.getElementById('h1_ema_slow').value),
+                rsi_threshold: parseFloat(document.getElementById('rsi_threshold').value),
+                m5_ema: parseInt(document.getElementById('m5_ema').value),
+                sl_dist_usd: parseFloat(document.getElementById('sl_dist_usd').value),
+                rr_ratio: parseFloat(document.getElementById('rr_ratio').value),
+                trades_to_levelup: parseInt(document.getElementById('trades_to_levelup').value),
+                initial_capital_cent: parseFloat(document.getElementById('initial_capital_cent').value),
+                history_days: parseInt(document.getElementById('history_days').value),
+                session_mode: document.getElementById('session_mode').value,
+                enable_dca: document.getElementById('enable_dca').checked,
+                dca_step: parseFloat(document.getElementById('dca_step').value),
+                dca_tp: parseFloat(document.getElementById('dca_tp').value)
+            };
+
+            try {
+                const resp = await fetch('/api/backtest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+
+                if (data.status === 'success') {
+                    renderDashboard(data.result);
+                } else {
+                    alert('Lỗi: ' + data.message);
+                }
+            } catch (err) {
+                alert('Lỗi kết nối máy chủ backtest: ' + err);
+            } finally {
+                loader.style.display = 'none';
+                btnText.innerText = 'Chạy Backtest Ngay';
+                btn.disabled = false;
+            }
+        }
+
+        function renderDashboard(r) {
+            const m = r.metrics;
+            document.getElementById('res_equity_1y').innerText = `$${m.final_equity.toFixed(2)}`;
+            document.getElementById('res_pnl_1y').innerText = `${m.return_pct >= 0 ? '+' : ''}${m.return_pct.toFixed(2)}% | ${r.source}`;
+            document.getElementById('res_pnl_1y').className = m.return_pct >= 0 ? 'text-green' : 'text-red';
+
+            document.getElementById('res_winrate').innerText = `${m.winrate.toFixed(1)}%`;
+            document.getElementById('res_trades').innerText = `${m.trades} baskets | ${r.period.m5_bars.toLocaleString()} M5 MT5`;
+
+            document.getElementById('res_max_dd').innerText = `-${m.max_drawdown_pct.toFixed(2)}%`;
+            document.getElementById('res_level').innerText = r.contract.name;
+            document.getElementById('res_lot').innerText = `Max volume: ${m.max_volume.toFixed(2)}`;
+
+            // Chart render
+            renderChart(r.equity_curve.map(x => x.time.slice(0, 10)), r.equity_curve.map(x => x.equity));
+
+            // Table render
+            const tbody = document.getElementById('trades_table_body');
+            tbody.innerHTML = '';
+            r.trades.slice().reverse().slice(0, 10).forEach(t => {
+                const tr = document.createElement('tr');
+                const pnlClass = t.pnl >= 0 ? 'text-green' : 'text-red';
+                tr.innerHTML = `
+                    <td>${t.time.replace('T', ' ').slice(0, 16)}</td>
+                    <td class="${t.side === 'BUY' ? 'text-green' : 'text-red'}">${t.side}</td>
+                    <td>${t.entry.toFixed(2)}</td>
+                    <td>${t.exit.toFixed(2)}</td>
+                    <td>${t.volume.toFixed(2)} (${t.layers} layers)</td>
+                    <td class="${pnlClass}">${t.reason}</td>
+                    <td class="${pnlClass}">$${t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderChart(dates, values) {
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Số Dư Vốn (USD)',
+                        data: values,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                        fill: true,
+                        tension: 0.1,
+                        borderWidth: 2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(30, 40, 61, 0.4)' },
+                            ticks: { color: '#6b7280', maxTicksLimit: 8 }
+                        },
+                        y: {
+                            grid: { color: 'rgba(30, 40, 61, 0.4)' },
+                            ticks: {
+                                color: '#9ca3af',
+                                callback: function(value) { return '$' + value; }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) { return '$' + context.parsed.y.toFixed(2); }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Auto run initial backtest
+        window.addEventListener('DOMContentLoaded', () => {
+            runBacktest();
+        });
+    </script>
+</body>
+</html>

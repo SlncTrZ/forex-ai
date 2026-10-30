@@ -8,7 +8,10 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 
 import rpyc
-from mt5linux import MetaTrader5
+try:
+    from mt5linux import MetaTrader5
+except ImportError:  # External RPyC mode needs no local mt5linux installation.
+    MetaTrader5 = Any  # type: ignore[misc,assignment]
 
 from forex_ai.config import RuntimeConfig
 
