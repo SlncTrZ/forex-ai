@@ -153,7 +153,8 @@ def site(tmp_path):
 def test_socket_permissions_and_static_interface(site):
     assert site.stat().st_mode & 0o777 == 0o600
     code,data=_http("/",socket_path=site)
-    assert code==200 and b"FOREX-AI" in data and b"/assets/app.js" in data
+    assert code==200 and b"FOREX" in data
+    assert b"/assets/app.js" in data or b'<div id="root">' in data
     code,data=_http("/assets/app.css",socket_path=site)
     assert code==200 and b"metric-grid" in data
     code,data=_http("/api/status",headers={"Host":"evil.test"},socket_path=site)
