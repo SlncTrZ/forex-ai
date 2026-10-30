@@ -27,6 +27,7 @@ PRODUCTION_STRATEGY_IDS = (
     "mtf_trend_continuation_v2",
     "pro_volatility_expansion_v2",
     "ichimoku_mtf_v2",
+    "keylevel_breakout_v2",
 )
 V2_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS
 EXPLORATION_STRATEGY_IDS: tuple[str, ...] = ()
@@ -88,12 +89,20 @@ class MTFTrendContinuationParameters(_StrictModel):
     expiry_minutes: int = Field(default=60, gt=0)
 
 
+class KeylevelBreakoutParameters(_StrictModel):
+    decision_timeframe: str = "M30"
+    left_bars: int = Field(default=15, ge=2)
+    right_bars: int = Field(default=5, ge=1)
+    expiry_minutes: int = Field(default=120, gt=0)
+
+
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "pro_volatility_expansion_v2": ProVolatilityParameters,
     "supertrend_volume_m5": SupertrendVolumeParameters,
     "smc_pro_fvg_v2": SMCProParameters,
     "ichimoku_mtf_v2": IchimokuMTFParameters,
     "mtf_trend_continuation_v2": MTFTrendContinuationParameters,
+    "keylevel_breakout_v2": KeylevelBreakoutParameters,
 })
 
 

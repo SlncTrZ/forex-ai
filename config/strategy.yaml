@@ -61,3 +61,12 @@ strategies:
       target_r: 2.0
       min_stop_distance: 6.0
       expiry_minutes: 180
+
+  keylevel_breakout_v2:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M30
+      left_bars: 15
+      right_bars: 5
+      expiry_minutes: 120

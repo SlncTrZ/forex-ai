@@ -4,6 +4,7 @@ Wing: code | Topic: strategy_v2 | Updated: 2026-10-29 17:55
 
 from forex_ai.strategy.v2 import (
     ichimoku_mtf,
+    keylevel_breakout,
     mtf_trend_continuation,
     pro_volatility_expansion_v2,
     smc_pro_fvg,
@@ -27,6 +28,7 @@ def resolve_symbol_min_stop(symbol: str, configured_val: float = 0.0) -> float:
 
 __all__ = [
     "ichimoku_mtf",
+    "keylevel_breakout",
     "mtf_trend_continuation",
     "pro_volatility_expansion_v2",
     "smc_pro_fvg",

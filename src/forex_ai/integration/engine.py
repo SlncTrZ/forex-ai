@@ -14,6 +14,7 @@ from forex_ai.strategy.v1.contracts import MarketSnapshot, StrategyConfig, Strat
 from forex_ai.config import load_fixed_lot
 from forex_ai.strategy.config import StrategyConfigSnapshot, bundled_strategy_snapshot
 from forex_ai.strategy.v2.ichimoku_mtf import evaluate as evaluate_ichimoku
+from forex_ai.strategy.v2.keylevel_breakout import evaluate as evaluate_keylevel
 from forex_ai.strategy.v2.mtf_trend_continuation import evaluate as evaluate_mtf_trend
 from forex_ai.strategy.v2.pro_volatility_expansion_v2 import evaluate as evaluate_pro_volatility
 from forex_ai.strategy.v2.smc_pro_fvg import evaluate as evaluate_smc
@@ -51,6 +52,8 @@ def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[Stra
     # authoritative and blocks all later signals through the risk context.
     if snapshot.enabled("supertrend_volume_m5"):
         bindings.append(StrategyBinding(evaluate_supertrend, snapshot.config_for("supertrend_volume_m5")))
+    if snapshot.enabled("keylevel_breakout_v2"):
+        bindings.append(StrategyBinding(evaluate_keylevel, snapshot.config_for("keylevel_breakout_v2")))
     if snapshot.enabled("smc_pro_fvg_v2"):
         bindings.append(StrategyBinding(evaluate_smc, snapshot.config_for("smc_pro_fvg_v2")))
     if snapshot.enabled("mtf_trend_continuation_v2"):
