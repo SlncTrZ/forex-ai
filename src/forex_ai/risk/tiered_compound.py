@@ -80,8 +80,22 @@ class TieredCompoundRiskEngine:
         return raw_lvl
 
     def get_risk_pct(self, level: int) -> Decimal:
-        """Trả về tỷ lệ rủi ro danh nghĩa (nominal risk pct) ứng với Level."""
-        if level <= 17:
+        """Trả về tỷ lệ rủi ro danh nghĩa (nominal risk pct) ứng với Level.
+        
+        Có cơ chế de-escalation thật sự:
+        - Tăng trưởng (L >= 0): bậc rủi ro giảm dần theo quy mô vốn (3% -> 2% -> 1% -> 0.5%).
+        - Sụt giảm (L < 0): giảm quy mô rủi ro để bảo toàn vốn sống sót:
+            * -2 <= L < 0: 2.0%
+            * -5 <= L < -2: 1.0%
+            * L < -5: 0.5% (chế độ bảo toàn phòng thủ, không giữ 3% liều lĩnh)
+        """
+        if level < -5:
+            return D("0.005")
+        elif level < -2:
+            return D("0.01")
+        elif level < 0:
+            return D("0.02")
+        elif level <= 17:
             return D("0.03")
         elif 18 <= level <= 50:
             return D("0.02")

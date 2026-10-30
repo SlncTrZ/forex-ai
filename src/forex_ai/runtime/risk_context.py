@@ -103,6 +103,17 @@ def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime)
         weekly_cash = _net_cash_flow(con, week_eval_start)
 
         if login is not None:
+            all_time_peak_row = con.execute(
+                "SELECT MAX(balance) FROM accounts WHERE login=? AND balance IS NOT NULL",
+                (login,),
+            ).fetchone()
+        else:
+            all_time_peak_row = con.execute(
+                "SELECT MAX(balance) FROM accounts WHERE balance IS NOT NULL",
+            ).fetchone()
+        hwm = current_equity if (all_time_peak_row is None or all_time_peak_row[0] is None or D(str(all_time_peak_row[0])) <= 0) else max(current_equity, D(str(all_time_peak_row[0])))
+
+        if login is not None:
             peak_row = con.execute(
                 "SELECT MAX(balance) FROM accounts WHERE timestamp>=? AND login=? AND balance IS NOT NULL",
                 (week_eval_start.isoformat(), login),
@@ -143,4 +154,5 @@ def build_risk_context(db_path: Path, broker: BrokerState, *, now_utc: datetime)
         weekly_reference_equity=weekly_reference,
         daily_net_cash_flow=daily_cash,
         weekly_net_cash_flow=weekly_cash,
+        high_water_mark=hwm,
     )

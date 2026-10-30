@@ -83,6 +83,7 @@ class RiskContext:
     weekly_reference_equity: Decimal | None = None
     daily_net_cash_flow: Decimal = D("0")
     weekly_net_cash_flow: Decimal = D("0")
+    high_water_mark: Decimal | None = None
     cooldown_active: bool = False
 
     def __post_init__(self) -> None:
@@ -91,7 +92,7 @@ class RiskContext:
             self.daily_realized_loss_amount, self.weekly_realized_loss_amount,
             self.drawdown_amount, self.daily_net_cash_flow, self.weekly_net_cash_flow,
         )
-        optional = (self.daily_reference_equity, self.weekly_reference_equity)
+        optional = (self.daily_reference_equity, self.weekly_reference_equity, self.high_water_mark)
         if any(not value.is_finite() for value in values):
             raise ValueError("risk context numeric values must be finite")
         if any(value is not None and not value.is_finite() for value in optional):
@@ -313,7 +314,9 @@ class BrokerAwareRiskEngine:
             reasons.append("INVALID_WEEKLY_REFERENCE_EQUITY")
 
         if p.enable_tiered_compound:
-            if context.daily_net_cash_flow != 0 or context.weekly_net_cash_flow != 0 or p.initial_deposit_v0 is None:
+            if context.high_water_mark is not None and context.high_water_mark > 0:
+                v0 = context.high_water_mark
+            elif context.daily_net_cash_flow != 0 or context.weekly_net_cash_flow != 0 or p.initial_deposit_v0 is None:
                 v0 = daily_reference
             else:
                 v0 = p.initial_deposit_v0
@@ -321,7 +324,7 @@ class BrokerAwareRiskEngine:
                 v0 = equity
             tiered_engine = TieredCompoundRiskEngine(v0)
             tiered_eval = tiered_engine.evaluate_budget(equity)
-            nominal_risk_pct = tiered_eval.risk_pct * D("100")
+            nominal_risk_pct = min(tiered_eval.risk_pct * D("100"), p.max_risk_per_trade_pct)
             per_trade_budget = self._bounded_budget(
                 self._pct_amount(equity, nominal_risk_pct), p.max_risk_per_trade_amount
             )
@@ -383,7 +386,7 @@ class BrokerAwareRiskEngine:
             reasons.append("DAILY_LOSS_LIMIT")
         if context.weekly_realized_loss_amount >= weekly_budget:
             reasons.append("WEEKLY_LOSS_LIMIT")
-        if context.drawdown_amount >= dd_budget and not p.allow_forced_min_lot:
+        if context.drawdown_amount >= dd_budget:
             reasons.append("DRAWDOWN_LIMIT")
 
         min_vol = D(str(contract.volume_min))

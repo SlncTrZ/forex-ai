@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from forex_ai.config import RuntimeConfig
 from forex_ai.journal.db import initialize, log_event
 from forex_ai.journal.deal_audit import audit_mt5_deals
+from forex_ai.journal.trade_sync import sync_trades_from_deals
 from forex_ai.journal.integration_repository import persist_safety_snapshot
 from forex_ai.journal.external_positions import trace_external_positions
 from forex_ai.journal.repository import (
@@ -103,6 +104,7 @@ def run_observer(cfg: RuntimeConfig) -> int:
                 trace_external_positions(cfg.db_path, list(outcome.raw_positions), observed_at_utc=now)
                 upsert_mt5_deals(cfg.db_path, list(outcome.raw_deals))
                 audit_mt5_deals(cfg.db_path, list(outcome.raw_deals))
+                sync_trades_from_deals(cfg.db_path)
                 upsert_mt5_orders(cfg.db_path, list(outcome.raw_orders))
 
             if not outcome.ready:

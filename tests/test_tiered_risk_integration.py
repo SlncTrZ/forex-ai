@@ -96,13 +96,17 @@ def test_tiered_standalone_engine():
     assert engine.get_risk_pct(18) == D("0.02")
     assert engine.get_risk_pct(52) == D("0.01")
     assert engine.get_risk_pct(100) == D("0.005")
+    # De-escalation khi drawdown
+    assert engine.get_risk_pct(-1) == D("0.02")
+    assert engine.get_risk_pct(-3) == D("0.01")
+    assert engine.get_risk_pct(-6) == D("0.005")
 
 
 def test_tiered_compound_broker_engine_integration_level_0():
-    # Level 0 ($1000 equity) -> Risk 3% = $30.
+    # Khi p.max_risk_per_trade_pct = 3%, Level 0 ($1000 equity) -> Risk 3% = $30.
     # SL = 100 pips (1.1000 - 1.0900) -> $1000 loss per lot.
     # Raw volume = 30 / 1000 = 0.03 lots.
-    p = make_profile(enable_tiered_compound=True, initial_deposit_v0=D("1000"))
+    p = make_profile(enable_tiered_compound=True, initial_deposit_v0=D("1000"), max_risk_per_trade_pct=D("3"))
     engine = BrokerAwareRiskEngine(p)
     result = engine.evaluate(
         make_candidate(),
@@ -123,7 +127,7 @@ def test_tiered_compound_broker_engine_integration_level_18():
     # Level 18 ($6000 equity) -> Risk 2% = $120.
     # SL = 100 pips -> $1000 loss per lot.
     # Raw volume = 120 / 1000 = 0.12 lots.
-    p = make_profile(enable_tiered_compound=True, initial_deposit_v0=D("1000"))
+    p = make_profile(enable_tiered_compound=True, initial_deposit_v0=D("1000"), max_risk_per_trade_pct=D("3"))
     engine = BrokerAwareRiskEngine(p)
     result = engine.evaluate(
         make_candidate(),
@@ -183,7 +187,7 @@ def test_tiered_compound_withdrawal_resets_to_level_0():
     # Ban đầu V0 = $10,000. Sau đó rút -$9,000 ra, equity còn $1,000.
     # daily_reference_equity = $10,000, daily_net_cash_flow = -$9,000 -> daily_reference = $1,000.
     # Hệ thống tự động nhận diện cash flow và reset về Level 0 (thay vì coi là lỗ -90% thành Level -22)!
-    p = make_profile(enable_tiered_compound=True, initial_deposit_v0=D("10000"))
+    p = make_profile(enable_tiered_compound=True, initial_deposit_v0=D("10000"), max_risk_per_trade_pct=D("3"))
     engine = BrokerAwareRiskEngine(p)
     result = engine.evaluate(
         make_candidate(),
@@ -204,3 +208,36 @@ def test_tiered_compound_withdrawal_resets_to_level_0():
     assert result.approved
     # Với Level 0 trên $1,000, risk 3% = $30. SL 100 pips = $1000/lot -> volume = 0.03 lot!
     assert result.normalized_volume == D("0.03")
+
+
+def test_high_water_mark_and_drawdown_limit_integration():
+    # Khi tài khoản bị Drawdown >= max_drawdown_pct (10%):
+    # Dù allow_forced_min_lot=True thì vẫn PHẢI BỊ CHẶN DRAWDOWN_LIMIT!
+    p = make_profile(
+        enable_tiered_compound=True,
+        initial_deposit_v0=D("10000"),
+        max_drawdown_pct=D("10"),
+        allow_forced_min_lot=True,
+    )
+    engine = BrokerAwareRiskEngine(p)
+
+    # HWM = $10,000, hiện tại equity còn $8,900 (drawdown = $1,100 = 11% > 10% budget)
+    res = engine.evaluate(
+        make_candidate(),
+        account=make_account(equity=D("8900")),
+        contract=make_contract(),
+        tick=make_tick(),
+        safety=make_safety(),
+        context=RiskContext(
+            daily_reference_equity=D("8900"),
+            weekly_reference_equity=D("8900"),
+            drawdown_amount=D("1100"),
+            high_water_mark=D("10000"),
+        ),
+        calc_profit=calc_profit,
+        calc_margin=calc_margin,
+        now_utc=NOW,
+    )
+    assert not res.approved
+    assert "DRAWDOWN_LIMIT" in res.reason_codes
+

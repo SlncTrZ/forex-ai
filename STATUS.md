@@ -25,19 +25,22 @@ Last updated: 2026-10-29 19:30
   - `BTCUSD -> BTCUSDm / BTCUSDc` (Bitcoin 24/7, point = 0.01, min SL = 150.0$ / 15,000 pts)
   - `EURUSD -> EURUSDm / EURUSDc` (Euro FX, point = 0.00001, min SL = 0.0015 / 150 pts)
   - `USDJPY -> USDJPYm / USDJPYc` (Yen FX, point = 0.001, min SL = 0.15 / 150 pts)
-- Sizing Mechanism: **Tiered Compound Risk Engine** (`_private/lãi kép.xlsx`)
-  - Dynamic sizing scaled by Account Level ($L \le 17 \implies 3.0\%$; $18 \le L \le 50 \implies 2.0\%$; $51 \le L \le 99 \implies 1.0\%$; $L \ge 100 \implies 0.5\%$).
-  - Drawdown de-escalation: When $L < -5$, continues trading with forced minimum volume (0.01 lot) until margin exhaustion.
-  - Concurrent limit: `max_active_orders: 3`, `max_total_open_risk_pct: 9%`.
+- Sizing Mechanism: **Tiered Compound Risk Engine** (đã audit & khắc phục 2026-10-30)
+  - V0 đồng bộ động theo High-Water Mark (HWM) hoặc vốn nạp ròng, không dùng số cứng $10,000.
+  - Tỷ lệ rủi ro có de-escalation thật sự khi drawdown ($L < 0 \implies 2\% \to 1\% \to 0.5\%$).
+  - Chốt chặn bảo vệ `DRAWDOWN_LIMIT` 10% luôn có hiệu lực, không bị bypass bởi forced min lot.
+  - Giới hạn rủi ro danh nghĩa được gông cứng bởi `max_risk_per_trade_pct`.
 
-## Production Strategies (V2 Suite)
+## Production Strategies (V2 Suite — Audit Findings 2026-10-30)
+
+> ⚠️ **LƯU Ý NGHIỆM THU ĐỊNH LƯỢNG:** Các con số backtest cũ dưới đây (+203.9%, +75.77%) được ghi nhận từ backtest ngắn hạn (2 năm), chỉ ăn theo sóng tăng beta của Vàng (Gold Buy & Hold cùng kỳ +19.8% đến +40%) và âm nặng trên các cặp FX/Crypto. Kiểm định độc lập 12.8 năm (2014-2026) trên 30 symbol xác nhận không có alpha thực chất vượt Buy & Hold. Giữ lại để đối chiếu lịch sử:
 
 1. `supertrend_volume_m5` (v2.0.0 — Bát Cơm M5):
    - M5 Supertrend (10, 3.0) + H1 Trend Bias filter + Volume Ratio >= 1.2 SMA(20).
-   - 2-year backtest on Gold: Win Rate 48.15%, Profit Factor 1.51, Net PnL +$20,390.10 (+203.9%), Max DD 26.11%.
+   - 2-year backtest on Gold (Historic reference): Win Rate 48.15%, Profit Factor 1.51, Net PnL +$20,390.10 (+203.9%), Max DD 26.11%.
 2. `smc_pro_fvg_v2` (v2.0.0 — Smart Money Concepts Order Block & FVG):
    - Institutional displacement detection + Limit Order entry at 50% Fair Value Gap Consequent Encroachment (zero adverse entry slippage).
-   - 2-year backtest on Gold: 686 trades, Win Rate 36.15% (RR 1:2.0), Profit Factor 1.06, Net PnL +$7,576.67 (+75.77%).
+   - 2-year backtest on Gold (Historic reference): 686 trades, Win Rate 36.15% (RR 1:2.0), Profit Factor 1.06, Net PnL +$7,576.67 (+75.77%).
 3. `mtf_trend_continuation_v2` (v2.0.0 — Multi-Timeframe Value Area Riding):
    - H1 ADX >= 20 strong trend filter + M5 EMA 20/50 pullback bounce + Volume Z-score >= 0.8.
    - 2-year backtest on Gold: Win Rate 45.21%, Profit Factor 1.37, Net PnL +$5,503.48 (+55.03%), Max DD 21.84%.
