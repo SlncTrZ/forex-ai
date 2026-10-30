@@ -110,7 +110,17 @@ def run_mt5_backtest(client: MT5Client, request: BacktestRequest) -> dict[str, A
     end = datetime.now(UTC)
     # Warmup covers the longest H1 EMA before requested evaluation range.
     start = end - timedelta(days=request.history_days + max(30, request.h1_ema_slow // 6))
-    m5 = _to_frame(client.bars_range(request.symbol, TIMEFRAME_M5, start.timestamp(), end.timestamp()))
+    m5_rows = client.bars_range(request.symbol, TIMEFRAME_M5, start.timestamp(), end.timestamp())
+    history_was_limited = False
+    if not m5_rows:
+        # Some MT5 terminals return no rows when the requested *start* predates
+        # their locally downloaded history.  Ask for the newest bars instead;
+        # this still comes exclusively from MT5 and lets the UI use its actual
+        # available history rather than failing a valid backtest request.
+        requested_bars = min(100_000, max(2_000, (request.history_days + max(30, request.h1_ema_slow // 6)) * 288))
+        m5_rows = client.bars(request.symbol, TIMEFRAME_M5, requested_bars)
+        history_was_limited = True
+    m5 = _to_frame(m5_rows)
     h1_rows = client.bars_range(request.symbol, TIMEFRAME_H1, start.timestamp(), end.timestamp())
     h1_is_derived = not h1_rows
     h1 = _h1_from_mt5_m5(m5) if h1_is_derived else _to_frame(h1_rows)
@@ -206,4 +216,6 @@ def run_mt5_backtest(client: MT5Client, request: BacktestRequest) -> dict[str, A
     source = "MT5 M5/H1 broker history + MT5 order_calc_profit"
     if h1_is_derived:
         source = "MT5 M5 broker history (H1 OHLC derived from closed M5) + MT5 order_calc_profit"
-    return {"source": source, "symbol": request.symbol, "period": {"from": m5.index[0].isoformat(), "to": m5.index[-1].isoformat(), "m5_bars": len(m5), "h1_bars": len(h1), "h1_derived_from_mt5_m5": h1_is_derived}, "contract": {key: info.get(key) for key in ("name", "currency_profit", "trade_contract_size", "trade_tick_size", "point", "volume_min", "volume_max", "volume_step")}, "metrics": {"initial_equity": request.initial_equity, "final_equity": round(equity, 2), "return_pct": round((equity / request.initial_equity - 1) * 100, 2), "trades": completed, "winrate": round(100 * wins / completed, 2) if completed else 0.0, "max_drawdown_pct": round(max_drawdown * 100, 2), "max_volume": max_volume}, "equity_curve": curve[-300:], "trades": trades[-100:]}
+    if history_was_limited:
+        source += "; requested range exceeded terminal history, used newest available MT5 M5 bars"
+    return {"source": source, "symbol": request.symbol, "period": {"from": m5.index[0].isoformat(), "to": m5.index[-1].isoformat(), "m5_bars": len(m5), "h1_bars": len(h1), "h1_derived_from_mt5_m5": h1_is_derived, "history_limited_to_terminal_data": history_was_limited}, "contract": {key: info.get(key) for key in ("name", "currency_profit", "trade_contract_size", "trade_tick_size", "point", "volume_min", "volume_max", "volume_step")}, "metrics": {"initial_equity": request.initial_equity, "final_equity": round(equity, 2), "return_pct": round((equity / request.initial_equity - 1) * 100, 2), "trades": completed, "winrate": round(100 * wins / completed, 2) if completed else 0.0, "max_drawdown_pct": round(max_drawdown * 100, 2), "max_volume": max_volume}, "equity_curve": curve[-300:], "trades": trades[-100:]}

@@ -95,7 +95,9 @@ def backtest():
         request_data = BacktestRequest(
             symbol=aliases.get(symbol, symbol), h1_ema_fast=int(body["h1_ema_fast"]), h1_ema_slow=int(body["h1_ema_slow"]),
             rsi_threshold=float(body["rsi_threshold"]), m5_ema=int(body["m5_ema"]), sl_distance=float(body["sl_dist_usd"]),
-            rr_ratio=float(body["rr_ratio"]), trades_to_levelup=int(body["trades_to_levelup"]), initial_equity=float(body["initial_capital_cent"]),
+            rr_ratio=float(body["rr_ratio"]), trades_to_levelup=int(body["trades_to_levelup"]),
+            # Legacy key supports an already-open tab; the current UI submits USD.
+            initial_equity=float(body.get("initial_capital_usd", body.get("initial_capital_cent"))),
             session_mode=str(body["session_mode"]), enable_dca=bool(body.get("enable_dca")), dca_step=float(body.get("dca_step", 3.0)),
             dca_recovery=float(body.get("dca_tp", 3.0)), history_days=int(body.get("history_days", 365)),
         )

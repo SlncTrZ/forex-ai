@@ -330,7 +330,7 @@
 
             <div class="form-group">
                 <label>Khoảng Dữ Liệu MT5 (ngày)</label>
-                <input type="number" id="history_days" value="365" min="30" max="1500">
+                <input type="number" id="history_days" value="90" min="30" max="1500">
             </div>
 
             <div class="grid-2">
@@ -361,8 +361,8 @@
                     <input type="number" id="trades_to_levelup" value="3" min="1" max="10">
                 </div>
                 <div class="form-group">
-                    <label>Vốn Cent Khởi Tạo</label>
-                    <input type="number" id="initial_capital_cent" value="10000" step="1000">
+                    <label>Vốn Khởi Tạo ($)</label>
+                    <input type="number" id="initial_capital_usd" value="1000" step="100" min="1">
                 </div>
             </div>
 
@@ -403,7 +403,7 @@
             <!-- METRICS -->
             <div class="metrics-grid">
                 <div class="metric-card">
-                    <div class="metric-title">Vốn Sau 1 Năm</div>
+                    <div class="metric-title">Vốn Cuối Kỳ ($)</div>
                     <div class="metric-value text-green" id="res_equity_1y">$0.00</div>
                     <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="res_pnl_1y">+0.0%</div>
                 </div>
@@ -446,9 +446,9 @@
                                 <th>Loại</th>
                                 <th>Entry</th>
                                 <th>Exit</th>
-                                <th>Lot Cent</th>
-                                <th>Kết Quả (Cent)</th>
-                                <th>Lãi/Lỗ ($ USD)</th>
+                                <th>Khối Lượng (lot)</th>
+                                <th>Lý Do Đóng</th>
+                                <th>Lãi/Lỗ ($)</th>
                             </tr>
                         </thead>
                         <tbody id="trades_table_body">
@@ -485,7 +485,7 @@
                 sl_dist_usd: parseFloat(document.getElementById('sl_dist_usd').value),
                 rr_ratio: parseFloat(document.getElementById('rr_ratio').value),
                 trades_to_levelup: parseInt(document.getElementById('trades_to_levelup').value),
-                initial_capital_cent: parseFloat(document.getElementById('initial_capital_cent').value),
+                initial_capital_usd: parseFloat(document.getElementById('initial_capital_usd').value),
                 history_days: parseInt(document.getElementById('history_days').value),
                 session_mode: document.getElementById('session_mode').value,
                 enable_dca: document.getElementById('enable_dca').checked,
@@ -561,7 +561,7 @@
                 data: {
                     labels: dates,
                     datasets: [{
-                        label: 'Số Dư Vốn (USD)',
+                        label: 'Số Dư Vốn ($)',
                         data: values,
                         borderColor: '#3b82f6',
                         backgroundColor: 'rgba(59, 130, 246, 0.08)',
