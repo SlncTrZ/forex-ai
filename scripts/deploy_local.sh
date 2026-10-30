@@ -231,8 +231,18 @@ chmod 0644 "$USER_UNIT_DIR/forex-ai-dashboard.service"
 systemctl --user daemon-reload
 systemctl --user enable --now forex-ai-dashboard.service
 systemctl --user restart forex-ai-dashboard.service
+# Service activation is asynchronous. Probe the real socket with a bounded gate,
+# then assert the service is still active. Do not mistake startup latency for failure.
+SOCKET_READY=0
+for attempt in $(seq 1 50); do
+  if [ -S "$USER_RUNTIME_DIR/forex-ai-dashboard.sock" ]; then
+    SOCKET_READY=1
+    break
+  fi
+  sleep 0.2
+done
+test "$SOCKET_READY" = "1" || { echo "Dashboard socket not available" >&2; exit 20; }
 systemctl --user is-active --quiet forex-ai-dashboard.service || { echo "Dashboard health gate failed" >&2; exit 19; }
-test -S "$USER_RUNTIME_DIR/forex-ai-dashboard.sock" || { echo "Dashboard socket not available" >&2; exit 20; }
 
 mapfile -t OLD_RELEASES < <(find "$RELEASES" -mindepth 1 -maxdepth 1 -type d ! -name '.staging-*' -printf '%T@ %p\n' | sort -nr | tail -n +$((KEEP_RELEASES + 1)) | cut -d' ' -f2-)
 for old in "${OLD_RELEASES[@]:-}"; do
