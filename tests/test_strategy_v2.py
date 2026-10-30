@@ -1,5 +1,5 @@
-"""Unit tests for Pro Volatility Expansion V2 and Supertrend Volume M5 strategies.
-Wing: code | Topic: test_strategy_v2 | Updated: 2026-10-28 14:05
+"""Unit tests for Pro Volatility Expansion V2, Supertrend Volume M5, and Supertrend Stochastic M5 strategies.
+Wing: code | Topic: test_strategy_v2 | Updated: 2026-10-30 20:37
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from forex_ai.strategy.v1.contracts import (
     StrategyVersion,
     TimeframeSnapshot,
 )
-from forex_ai.strategy.v2 import pro_volatility_expansion_v2, supertrend_volume_m5
+from forex_ai.strategy.v2 import pro_volatility_expansion_v2, supertrend_stochastic_m5, supertrend_volume_m5
 
 UTC = timezone.utc
 
@@ -180,3 +180,122 @@ def test_supertrend_volume_m5_confirms_trend_flip():
     assert res.candidate.stop_loss < res.candidate.reference_entry
     assert res.candidate.take_profit > res.candidate.reference_entry
     assert "SUPERTREND_VOLUME_CONFIRMED" in res.evidence.reason_codes
+
+
+def test_supertrend_stochastic_m5_confirms_buy():
+    cfg = StrategyConfig(
+        StrategyVersion("supertrend_stochastic_m5", "2.0.0"),
+        {
+            "supertrend_period": 10,
+            "supertrend_multiplier": 3.0,
+            "stoch_k_period": 7,
+            "stoch_d_period": 3,
+            "stoch_oversold": 20.0,
+            "trigger_mode": "CROSS_DOWN",
+            "sl_buffer": 3.0,
+            "target_r": 1.5,
+        },
+    )
+    now = datetime(2026, 10, 30, 14, 0, tzinfo=UTC)
+    # 50 nến tăng nhẹ từ 2675 lên 2700 để Supertrend vững ở mức ~2692
+    bars = _make_bars(50, start_price=2675.0, step=0.5, base_time=now - timedelta(minutes=300))
+    # Nến 51 và 52 hồi nhẹ để Stochastic %K trong 7 nến gần nhất rơi xuống < 20
+    last_t = now - timedelta(minutes=5)
+    prev_t = now - timedelta(minutes=10)
+    bars.append(
+        Candle(
+            time_utc=prev_t,
+            open=2700.0,
+            high=2701.0,
+            low=2699.0,
+            close=2699.8,
+            volume=100.0,
+        )
+    )
+    bars.append(
+        Candle(
+            time_utc=last_t,
+            open=2699.8,
+            high=2700.2,
+            low=2697.0,
+            close=2697.2,
+            volume=120.0,
+        )
+    )
+
+    snap = MarketSnapshot(
+        symbol="XAUUSDm",
+        captured_at_utc=now,
+        market_time_msc=int(now.timestamp() * 1000),
+        bid=2697.0,
+        ask=2697.4,
+        timeframes={"M5": TimeframeSnapshot("M5", tuple(bars))},
+    )
+
+    res = supertrend_stochastic_m5.evaluate(snap, cfg, now)
+    assert res.candidate is not None
+    assert res.candidate.side == "BUY"
+    assert res.candidate.stop_loss < res.candidate.reference_entry
+    assert res.candidate.take_profit > res.candidate.reference_entry
+    assert "SUPERTREND_STOCHASTIC_CONFIRMED" in res.evidence.reason_codes
+    assert res.evidence.values["trigger"] in {"STOCH_CROSS_DOWN_20", "STOCH_TOUCH_20"}
+
+
+def test_supertrend_stochastic_m5_confirms_sell():
+    cfg = StrategyConfig(
+        StrategyVersion("supertrend_stochastic_m5", "2.0.0"),
+        {
+            "supertrend_period": 10,
+            "supertrend_multiplier": 3.0,
+            "stoch_k_period": 7,
+            "stoch_d_period": 3,
+            "stoch_overbought": 80.0,
+            "trigger_mode": "CROSS_DOWN",
+            "sl_buffer": 3.0,
+            "target_r": 1.5,
+        },
+    )
+    now = datetime(2026, 10, 30, 14, 0, tzinfo=UTC)
+    # 50 nến giảm nhẹ từ 2725 xuống 2700 để Supertrend vững ở xu hướng DOWN ~2708
+    bars = _make_bars(50, start_price=2725.0, step=-0.5, base_time=now - timedelta(minutes=300))
+    # Nến 51 và 52 hồi tăng nhẹ để Stochastic %K trong 7 nến gần nhất vọt lên >= 80
+    last_t = now - timedelta(minutes=5)
+    prev_t = now - timedelta(minutes=10)
+    bars.append(
+        Candle(
+            time_utc=prev_t,
+            open=2700.0,
+            high=2701.0,
+            low=2699.0,
+            close=2700.2,
+            volume=100.0,
+        )
+    )
+    bars.append(
+        Candle(
+            time_utc=last_t,
+            open=2700.2,
+            high=2703.0,
+            low=2699.8,
+            close=2702.8,
+            volume=120.0,
+        )
+    )
+
+    snap = MarketSnapshot(
+        symbol="XAUUSDm",
+        captured_at_utc=now,
+        market_time_msc=int(now.timestamp() * 1000),
+        bid=2702.6,
+        ask=2703.0,
+        timeframes={"M5": TimeframeSnapshot("M5", tuple(bars))},
+    )
+
+    res = supertrend_stochastic_m5.evaluate(snap, cfg, now)
+    assert res.candidate is not None
+    assert res.candidate.side == "SELL"
+    assert res.candidate.stop_loss > res.candidate.reference_entry
+    assert res.candidate.take_profit < res.candidate.reference_entry
+    assert "SUPERTREND_STOCHASTIC_CONFIRMED" in res.evidence.reason_codes
+    assert res.evidence.values["trigger"] in {"STOCH_CROSS_UP_80", "STOCH_TOUCH_80"}
+

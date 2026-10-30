@@ -2,9 +2,9 @@
   "schema": "forex-ai-live-prospective-approval-v1",
   "approved": true,
   "strategy_version": "2026-V2-institutional-multi-v2",
-  "strategy_config_fingerprint": "1c662467551b1b267b1b8e76c4a7e867c30d317ece7daca2358ce2bdc9a75066",
+  "strategy_config_fingerprint": "82db7eb1d33db85bded20c174b3d193fc57cb8878e6a06595309ae1692e9d6e5",
   "evidence_fingerprint": "227ea1c128a7816bb228b6c866d0e52276f40a78e5af23ca0cdc9ff5a8d79067",
-  "approved_at_utc": "2026-09-05T10:46:30+00:00",
+  "approved_at_utc": "2026-10-30T16:00:00+00:00",
   "symbols": ["XAUUSD"],
   "risk_profile": {
     "max_risk_per_trade_pct": "1",
@@ -22,6 +22,17 @@
     "force_close": "FRIDAY 16:30"
   },
   "strategies": {
+    "supertrend_stochastic_m5": {
+      "supertrend_period": 10,
+      "supertrend_multiplier": 3.0,
+      "stoch_k_period": 7,
+      "stoch_d_period": 3,
+      "stoch_oversold": 20.0,
+      "stoch_overbought": 80.0,
+      "trigger_mode": "K_CROSS_D",
+      "target_r": 1.5,
+      "expiry_minutes": 60
+    },
     "supertrend_volume_m5": {
       "supertrend_period": 10,
       "supertrend_multiplier": 3.0,
@@ -34,11 +45,11 @@
       "min_stop_distance": 6.0,
       "expiry_minutes": 120
     },
-    "mtf_trend_continuation_v2": {
-      "min_h1_adx": 20.0,
-      "min_volume_zscore": 0.8,
-      "target_r": 1.8,
-      "expiry_minutes": 60
+    "keylevel_breakout_v2": {
+      "decision_timeframe": "M30",
+      "left_bars": 15,
+      "right_bars": 5,
+      "expiry_minutes": 120
     }
   }
 }

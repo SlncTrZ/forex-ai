@@ -421,3 +421,73 @@ def ichimoku(
         price_relative_to_cloud=price_pos,
         tenkan_kijun_cross=cross,
     )
+
+
+def cci(bars: Sequence[OHLCV], period: int = 14) -> float | None:
+    """Return Commodity Channel Index (CCI) for the latest bar."""
+    _require_period(period)
+    if len(bars) < period:
+        return None
+    typical_prices = [(float(b.high) + float(b.low) + float(b.close)) / 3.0 for b in bars[-period:]]
+    sma = sum(typical_prices) / period
+    mad = sum(abs(tp - sma) for tp in typical_prices) / period
+    if mad == 0:
+        return 0.0
+    return (typical_prices[-1] - sma) / (0.015 * mad)
+
+
+def stoch_rsi(
+    values: Sequence[float],
+    rsi_period: int = 14,
+    stoch_period: int = 14,
+    k_smooth: int = 3,
+    d_smooth: int = 3,
+) -> StochasticValue | None:
+    """Return Stochastic RSI (StochRSI) for the sequence."""
+    _require_period(rsi_period)
+    _require_period(stoch_period)
+    total_needed = rsi_period + stoch_period + k_smooth + d_smooth
+    if len(values) < total_needed:
+        return None
+
+    rsi_series: list[float] = []
+    deltas = [float(r) - float(l) for l, r in zip(values[:-1], values[1:])]
+    gains = [max(d, 0.0) for d in deltas]
+    losses = [max(-d, 0.0) for d in deltas]
+
+    avg_gain = sum(gains[:rsi_period]) / rsi_period
+    avg_loss = sum(losses[:rsi_period]) / rsi_period
+    r = 100.0 if avg_loss == 0 else 100.0 - (100.0 / (1.0 + (avg_gain / avg_loss)))
+    rsi_series.append(r)
+
+    for g, l in zip(gains[rsi_period:], losses[rsi_period:]):
+        avg_gain = ((rsi_period - 1) * avg_gain + g) / rsi_period
+        avg_loss = ((rsi_period - 1) * avg_loss + l) / rsi_period
+        r = 100.0 if avg_loss == 0 else 100.0 - (100.0 / (1.0 + (avg_gain / avg_loss)))
+        rsi_series.append(r)
+
+    if len(rsi_series) < stoch_period + k_smooth + d_smooth - 2:
+        return None
+
+    raw_k: list[float] = []
+    for idx in range(stoch_period - 1, len(rsi_series)):
+        window = rsi_series[idx - stoch_period + 1 : idx + 1]
+        min_r = min(window)
+        max_r = max(window)
+        diff = max_r - min_r
+        val = 50.0 if diff == 0 else 100.0 * (rsi_series[idx] - min_r) / diff
+        raw_k.append(val)
+
+    if len(raw_k) < k_smooth:
+        return None
+
+    smoothed_k: list[float] = []
+    for idx in range(k_smooth - 1, len(raw_k)):
+        smoothed_k.append(sum(raw_k[idx - k_smooth + 1 : idx + 1]) / k_smooth)
+
+    if len(smoothed_k) < d_smooth:
+        return None
+
+    d_val = sum(smoothed_k[-d_smooth:]) / d_smooth
+    return StochasticValue(round(smoothed_k[-1], 2), round(d_val, 2))
+

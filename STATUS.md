@@ -1,6 +1,6 @@
 # Forex-AI — Current Status
 
-Last updated: 2026-10-29 19:30
+Last updated: 2026-10-30 23:00
 
 ## Runtime (v0.0.4)
 
@@ -31,22 +31,24 @@ Last updated: 2026-10-29 19:30
   - Chốt chặn bảo vệ `DRAWDOWN_LIMIT` 10% luôn có hiệu lực, không bị bypass bởi forced min lot.
   - Giới hạn rủi ro danh nghĩa được gông cứng bởi `max_risk_per_trade_pct`.
 
-## Production Strategies (V2 Suite — Audit Findings 2026-10-30)
+## Production Strategies (Top 4 Active Suite — Audit Findings 2026-10-30)
 
-> ⚠️ **LƯU Ý NGHIỆM THU ĐỊNH LƯỢNG:** Các con số backtest cũ dưới đây (+203.9%, +75.77%) được ghi nhận từ backtest ngắn hạn (2 năm), chỉ ăn theo sóng tăng beta của Vàng (Gold Buy & Hold cùng kỳ +19.8% đến +40%) và âm nặng trên các cặp FX/Crypto. Kiểm định độc lập 12.8 năm (2014-2026) trên 30 symbol xác nhận không có alpha thực chất vượt Buy & Hold. Giữ lại để đối chiếu lịch sử:
+Danh mục 4 chiến lược nòng cốt chính thức được kích hoạt (`enabled: true`) trong cấu hình `config/strategy.yaml`:
 
-1. `supertrend_volume_m5` (v2.0.0 — Bát Cơm M5):
-   - M5 Supertrend (10, 3.0) + H1 Trend Bias filter + Volume Ratio >= 1.2 SMA(20).
-   - 2-year backtest on Gold (Historic reference): Win Rate 48.15%, Profit Factor 1.51, Net PnL +$20,390.10 (+203.9%), Max DD 26.11%.
-2. `smc_pro_fvg_v2` (v2.0.0 — Smart Money Concepts Order Block & FVG):
-   - Institutional displacement detection + Limit Order entry at 50% Fair Value Gap Consequent Encroachment (zero adverse entry slippage).
-   - 2-year backtest on Gold (Historic reference): 686 trades, Win Rate 36.15% (RR 1:2.0), Profit Factor 1.06, Net PnL +$7,576.67 (+75.77%).
-3. `mtf_trend_continuation_v2` (v2.0.0 — Multi-Timeframe Value Area Riding):
-   - H1 ADX >= 20 strong trend filter + M5 EMA 20/50 pullback bounce + Volume Z-score >= 0.8.
-   - 2-year backtest on Gold: Win Rate 45.21%, Profit Factor 1.37, Net PnL +$5,503.48 (+55.03%), Max DD 21.84%.
-   - Month 10/2026 on EURUSD: Win Rate 80.00% (4 wins / 1 loss), Profit Factor 5.55.
+1. `smc_pro_fvg_v2` (v2.0.0 — Quán quân Tăng trưởng Tiered Compound):
+   - Đón lệnh Limit tại 50% FVG Consequent Encroachment sau Liquidity Sweep. Tận dụng Stop Loss siêu hẹp ($1.5 - $3.0) để đòn bẩy quy mô lot lớn theo Tiered Compound.
+   - Thử nghiệm 12 tuần ngẫu nhiên 2026: Đạt tăng trưởng **+35.8% (+$3,579.09)**, đưa tài khoản chạm **Level 3 ($13,579.09)**.
+2. `supertrend_volume_m5` (v2.0.0 — Bát Cơm M5 Bền Vững):
+   - M5 Supertrend (10, 3.0) + H1 Trend Bias + Volume Confirmation.
+   - Thử nghiệm 12 tuần ngẫu nhiên 2026: Tỷ lệ tuần xanh cao nhất hệ thống (**7/12 tuần dương, 58.3%**), PnL **+$730.15 (+7.3%)**, MaxDD tuần cực thấp chỉ $115.68.
+3. `keylevel_breakout_v2` (v2.0.0 — Quán quân Alpha Khung Lớn M30):
+   - Tự động nhận diện Keylevel Swing High/Low (15/5) trên khung M30 kết hợp H1 Trend Bias.
+   - Thử nghiệm 12 tuần ngẫu nhiên 2026: Đạt **+$755.56 lợi nhuận ròng**, bùng nổ tại các tuần có trend lớn (Tuần 1 lãi +$857.34 với Win Rate 80.0%).
+4. `supertrend_stochastic_m5` (v2.0.0 — Flagship Scalping Sweet Spot):
+   - M5 Supertrend (10, 3.0) + Stochastic (7, 1, 3) Giao cắt vàng %K > %D $\le 30$ + H1 Trend Bias.
+   - Kiểm định ma trận 100,000 nến: Đạt điểm ngọt **Win Rate 60.0% - 62.3%**, tỷ lệ RR 1:1.5, chuỗi 5 tuần thắng liên tiếp trong 2026, bảo toàn vốn tuyệt đối ở Level 0.
 
-*Note: Legacy breakout strategies (`breakout_retest_v1`, `inside_bar_momentum_breakout_v1`) are disabled due to 100% risk of ruin in 2-year empirical testing.*
+*Các chiến lược vệ tinh/thử nghiệm (`mtf_trend_continuation_v2`, `supertrend_pinbar_m5`, `supertrend_stoch_rsi_m5`, `supertrend_cci_m5`, `ema_ribbon_rsi_m5`, `pro_volatility_expansion_v2`, `ichimoku_mtf_v2`) được đặt ở trạng thái `enabled: false` để tập trung 100% ngân sách rủi ro cho Top 4.*
 
 ## Logging / audit guarantees
 

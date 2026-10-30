@@ -1,13 +1,18 @@
 """Strategy V2 Package — Advanced Production Strategies.
-Wing: code | Topic: strategy_v2 | Updated: 2026-10-29 17:55
+Wing: code | Topic: strategy_v2 | Updated: 2026-10-30 20:45
 """
 
 from forex_ai.strategy.v2 import (
+    ema_ribbon_rsi_m5,
     ichimoku_mtf,
     keylevel_breakout,
     mtf_trend_continuation,
     pro_volatility_expansion_v2,
     smc_pro_fvg,
+    supertrend_cci_m5,
+    supertrend_pinbar_m5,
+    supertrend_stoch_rsi_m5,
+    supertrend_stochastic_m5,
     supertrend_volume_m5,
 )
 
@@ -27,11 +32,16 @@ def resolve_symbol_min_stop(symbol: str, configured_val: float = 0.0) -> float:
 
 
 __all__ = [
+    "ema_ribbon_rsi_m5",
     "ichimoku_mtf",
     "keylevel_breakout",
     "mtf_trend_continuation",
     "pro_volatility_expansion_v2",
     "smc_pro_fvg",
+    "supertrend_cci_m5",
+    "supertrend_pinbar_m5",
+    "supertrend_stoch_rsi_m5",
+    "supertrend_stochastic_m5",
     "supertrend_volume_m5",
     "resolve_symbol_min_stop",
 ]

@@ -1,6 +1,86 @@
 schema_version: 1
 
 strategies:
+  supertrend_stochastic_m5:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      supertrend_period: 10
+      supertrend_multiplier: 3.0
+      stoch_k_period: 7
+      stoch_d_period: 3
+      stoch_oversold: 20.0
+      stoch_overbought: 80.0
+      trigger_mode: "K_CROSS_D"
+      allow_touch: false
+      sl_mode: "ST_BUFFER"
+      sl_buffer: 3.0
+      max_sl_distance: 4.5
+      target_r: 1.5
+      require_h1_trend: true
+      session_start_hour: 6.5
+      session_end_hour: 16.5
+      expiry_minutes: 60
+
+  supertrend_pinbar_m5:
+    enabled: false
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      supertrend_period: 10
+      supertrend_multiplier: 3.0
+      sl_atr_multiplier: 2.0
+      max_sl_distance: 6.5
+      target_r: 1.6
+      require_h1_trend: true
+      session_start_hour: 6.0
+      session_end_hour: 15.5
+      expiry_minutes: 60
+
+  supertrend_stoch_rsi_m5:
+    enabled: false
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      supertrend_period: 10
+      supertrend_multiplier: 3.0
+      sl_atr_multiplier: 2.0
+      max_sl_distance: 5.5
+      target_r: 1.6
+      require_h1_trend: true
+      session_start_hour: 6.0
+      session_end_hour: 15.5
+      expiry_minutes: 60
+
+  supertrend_cci_m5:
+    enabled: false
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      supertrend_period: 10
+      supertrend_multiplier: 3.0
+      sl_atr_multiplier: 2.0
+      max_sl_distance: 5.5
+      target_r: 1.6
+      require_h1_trend: true
+      session_start_hour: 6.0
+      session_end_hour: 15.5
+      expiry_minutes: 60
+
+  ema_ribbon_rsi_m5:
+    enabled: false
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      sl_atr_multiplier: 2.0
+      max_sl_distance: 5.0
+      target_r: 1.6
+      require_h1_trend: true
+      session_start_hour: 6.0
+      session_end_hour: 15.5
+      expiry_minutes: 60
+
   supertrend_volume_m5:
     enabled: true
     version: "2.0.0"
@@ -14,7 +94,7 @@ strategies:
       allow_pullback_entry: true
       expiry_minutes: 60
       require_h1_trend: true
-      session_start_hour: 7.5
+      session_start_hour: 6.5
       session_end_hour: 16.5
 
   smc_pro_fvg_v2:
@@ -24,12 +104,12 @@ strategies:
       decision_timeframe: M5
       target_r: 2.0
       min_stop_distance: 6.0
-      session_start_hour: 7.0
-      session_end_hour: 17.0
+      session_start_hour: 6.5
+      session_end_hour: 16.5
       expiry_minutes: 120
 
   mtf_trend_continuation_v2:
-    enabled: true
+    enabled: false
     version: "2.0.0"
     parameters:
       decision_timeframe: M5
@@ -69,4 +149,6 @@ strategies:
       decision_timeframe: M30
       left_bars: 15
       right_bars: 5
+      session_start_hour: 6.5
+      session_end_hour: 16.5
       expiry_minutes: 120

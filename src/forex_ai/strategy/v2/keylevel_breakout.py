@@ -36,11 +36,14 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
     latest = bars[-1]
     prev = bars[-2]
 
-    # 1. Bo loc Phien: Rollover blackout
+    # 1. Bo loc Phien: Chi giao dich phien Au - My & Rollover blackout
     t = now_utc.astimezone(UTC)
-    if t.hour in {21, 22}:
-        evidence = DecisionEvidence(("ROLLOVER_BLACKOUT",), {"hour": t.hour})
-        return StrategyResult(None, None, evidence, ("ROLLOVER_BLACKOUT",))
+    hour = t.hour + t.minute / 60.0
+    s_start = float(p.get("session_start_hour", 6.5))
+    s_end = float(p.get("session_end_hour", 16.5))
+    if t.hour in {21, 22} or hour < s_start or hour > s_end:
+        evidence = DecisionEvidence(("SESSION_OR_ROLLOVER_BLACKOUT",), {"hour": hour, "start": s_start, "end": s_end})
+        return StrategyResult(None, None, evidence, ("SESSION_OR_ROLLOVER_BLACKOUT",))
 
     # 2. Bo loc Trend Bias tren H1 (EMA 50 / 200 tren H1)
     h1_tf = snapshot.timeframes.get("H1")
@@ -127,14 +130,15 @@ def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime
     expiry = now_utc + timedelta(minutes=int(p.get("expiry_minutes", 120)))
     candidate = build_candidate(
         snapshot=snapshot,
-        strategy_id=config.version.strategy_id,
+        config=config,
         side=side,
         entry=entry,
         stop_loss=sl,
         take_profit=tp,
-        expires_at=expiry,
+        generated_at_utc=now_utc,
+        expires_at_utc=expiry,
         evidence=evidence,
-        now_utc=now_utc,
+        decision_timeframe=tf_name,
     )
 
     return StrategyResult(candidate, None, evidence, ("KEYLEVEL_SIGNAL_CONFIRMED",))

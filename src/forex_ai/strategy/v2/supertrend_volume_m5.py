@@ -23,17 +23,7 @@ UTC = timezone.utc
 
 def evaluate(snapshot: MarketSnapshot, config: StrategyConfig, now_utc: datetime) -> StrategyResult:
     p = config.parameters
-    # Ưu tiên lấy M5, nếu snapshot chỉ có M15 thì dùng M15
-    tf = snapshot.timeframes.get("M5") or snapshot.timeframes.get("M15")
-    if not tf or len(tf.closed_bars) < 30:
-        evidence = DecisionEvidence(("INSUFFICIENT_CLOSED_BARS",), {})
-        return StrategyResult(None, None, evidence, ("INSUFFICIENT_CLOSED_BARS",))
-
-    bars = tf.closed_bars
-    latest = bars[-1]
-    prev = bars[-2]
-
-    tf_name = "M5" if "M5" in snapshot.timeframes else "M15"
+    tf_name = str(p.get("decision_timeframe", "M5" if "M5" in snapshot.timeframes else "M15"))
     tf = snapshot.timeframes.get(tf_name)
     if not tf or len(tf.closed_bars) < 30:
         evidence = DecisionEvidence(("INSUFFICIENT_CLOSED_BARS",), {})

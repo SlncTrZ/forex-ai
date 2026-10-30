@@ -23,6 +23,11 @@ from forex_ai.strategy.v1.contracts import StrategyConfig, StrategyVersion, fing
 SCHEMA_VERSION = 1
 PRODUCTION_STRATEGY_IDS = (
     "supertrend_volume_m5",
+    "supertrend_stochastic_m5",
+    "supertrend_pinbar_m5",
+    "supertrend_stoch_rsi_m5",
+    "supertrend_cci_m5",
+    "ema_ribbon_rsi_m5",
     "smc_pro_fvg_v2",
     "mtf_trend_continuation_v2",
     "pro_volatility_expansion_v2",
@@ -62,6 +67,76 @@ class SupertrendVolumeParameters(_StrictModel):
     min_stop_distance: float = Field(default=0.0, ge=0.0)
 
 
+class SupertrendStochasticParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    supertrend_period: int = Field(default=10, ge=2)
+    supertrend_multiplier: float = Field(default=3.0, gt=0.0)
+    stoch_k_period: int = Field(default=7, ge=2)
+    stoch_d_period: int = Field(default=3, ge=1)
+    stoch_oversold: float = Field(default=20.0, ge=0.0, le=100.0)
+    stoch_overbought: float = Field(default=80.0, ge=0.0, le=100.0)
+    trigger_mode: str = Field(default="K_CROSS_D")
+    allow_touch: bool = Field(default=False)
+    sl_mode: str = Field(default="ST_BUFFER")
+    sl_buffer: float = Field(default=3.0, ge=0.0)
+    max_sl_distance: float = Field(default=15.0, gt=0.0)
+    target_r: float = Field(default=1.5, gt=0.0)
+    require_h1_trend: bool = Field(default=False)
+    session_start_hour: float = Field(default=0.0, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=24.0, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=60, gt=0)
+
+
+class SupertrendPinbarParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    supertrend_period: int = Field(default=10, ge=2)
+    supertrend_multiplier: float = Field(default=3.0, gt=0.0)
+    sl_atr_multiplier: float = Field(default=2.0, gt=0.0)
+    max_sl_distance: float = Field(default=6.5, gt=0.0)
+    target_r: float = Field(default=1.6, gt=0.0)
+    require_h1_trend: bool = Field(default=True)
+    session_start_hour: float = Field(default=6.0, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=15.5, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=60, gt=0)
+
+
+class SupertrendStochRSIParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    supertrend_period: int = Field(default=10, ge=2)
+    supertrend_multiplier: float = Field(default=3.0, gt=0.0)
+    sl_atr_multiplier: float = Field(default=2.0, gt=0.0)
+    max_sl_distance: float = Field(default=5.5, gt=0.0)
+    target_r: float = Field(default=1.6, gt=0.0)
+    require_h1_trend: bool = Field(default=True)
+    session_start_hour: float = Field(default=6.0, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=15.5, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=60, gt=0)
+
+
+class SupertrendCCIParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    supertrend_period: int = Field(default=10, ge=2)
+    supertrend_multiplier: float = Field(default=3.0, gt=0.0)
+    sl_atr_multiplier: float = Field(default=2.0, gt=0.0)
+    max_sl_distance: float = Field(default=5.5, gt=0.0)
+    target_r: float = Field(default=1.6, gt=0.0)
+    require_h1_trend: bool = Field(default=True)
+    session_start_hour: float = Field(default=6.0, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=15.5, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=60, gt=0)
+
+
+class EMARibbonRSIParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    sl_atr_multiplier: float = Field(default=2.0, gt=0.0)
+    max_sl_distance: float = Field(default=5.0, gt=0.0)
+    target_r: float = Field(default=1.6, gt=0.0)
+    require_h1_trend: bool = Field(default=True)
+    session_start_hour: float = Field(default=6.0, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=15.5, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=60, gt=0)
+
+
 class SMCProParameters(_StrictModel):
     decision_timeframe: str = "M5"
     target_r: float = Field(default=2.0, gt=0.0)
@@ -93,12 +168,19 @@ class KeylevelBreakoutParameters(_StrictModel):
     decision_timeframe: str = "M30"
     left_bars: int = Field(default=15, ge=2)
     right_bars: int = Field(default=5, ge=1)
+    session_start_hour: float = Field(default=6.5, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=16.5, ge=0.0, le=24.0)
     expiry_minutes: int = Field(default=120, gt=0)
 
 
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "pro_volatility_expansion_v2": ProVolatilityParameters,
     "supertrend_volume_m5": SupertrendVolumeParameters,
+    "supertrend_stochastic_m5": SupertrendStochasticParameters,
+    "supertrend_pinbar_m5": SupertrendPinbarParameters,
+    "supertrend_stoch_rsi_m5": SupertrendStochRSIParameters,
+    "supertrend_cci_m5": SupertrendCCIParameters,
+    "ema_ribbon_rsi_m5": EMARibbonRSIParameters,
     "smc_pro_fvg_v2": SMCProParameters,
     "ichimoku_mtf_v2": IchimokuMTFParameters,
     "mtf_trend_continuation_v2": MTFTrendContinuationParameters,
@@ -361,7 +443,16 @@ def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: b
         if spec is None or not spec.enabled:
             continue
         p = spec.config.parameters
-        if strategy_id in {"supertrend_volume_m5", "mtf_trend_continuation_v2", "smc_pro_fvg_v2"}:
+        if strategy_id in {
+            "supertrend_volume_m5",
+            "supertrend_stochastic_m5",
+            "supertrend_pinbar_m5",
+            "supertrend_stoch_rsi_m5",
+            "supertrend_cci_m5",
+            "ema_ribbon_rsi_m5",
+            "mtf_trend_continuation_v2",
+            "smc_pro_fvg_v2",
+        }:
             required = max(required, int(p.get("supertrend_period", 10)) + 30, 40)
         elif strategy_id == "pro_volatility_expansion_v2":
             required = max(required, int(p.get("atr_period", 14)) + 20)

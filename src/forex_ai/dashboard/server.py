@@ -23,7 +23,7 @@ from forex_ai.runtime.ops import assess_runtime_health
 
 UTC = timezone.utc
 BASE = Path(__file__).resolve().parents[3] / "dashboard" / "assets"
-SOCKET = Path(os.getenv("FOREX_AI_DASHBOARD_SOCKET", f"/run/user/{os.getuid()}/forex-ai-dashboard.sock"))
+SOCKET = Path(os.getenv("FOREX_AI_DASHBOARD_SOCKET", f"/run/user/{getattr(os, 'getuid', lambda: 1000)()}/forex-ai-dashboard.sock"))
 HOSTS = {"127.0.0.1:8765", "localhost:8765"}
 SERVICES = (
     "forex-ai-observe.service", "forex-ai-candidate-scan.timer",

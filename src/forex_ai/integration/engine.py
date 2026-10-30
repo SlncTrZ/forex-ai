@@ -18,6 +18,7 @@ from forex_ai.strategy.v2.keylevel_breakout import evaluate as evaluate_keylevel
 from forex_ai.strategy.v2.mtf_trend_continuation import evaluate as evaluate_mtf_trend
 from forex_ai.strategy.v2.pro_volatility_expansion_v2 import evaluate as evaluate_pro_volatility
 from forex_ai.strategy.v2.smc_pro_fvg import evaluate as evaluate_smc
+from forex_ai.strategy.v2.supertrend_stochastic_m5 import evaluate as evaluate_supertrend_stoch
 from forex_ai.strategy.v2.supertrend_volume_m5 import evaluate as evaluate_supertrend
 
 from forex_ai.journal.integration_repository import persist_advisory, persist_candidate, persist_risk_result, persist_safety_snapshot
@@ -52,6 +53,8 @@ def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[Stra
     # authoritative and blocks all later signals through the risk context.
     if snapshot.enabled("supertrend_volume_m5"):
         bindings.append(StrategyBinding(evaluate_supertrend, snapshot.config_for("supertrend_volume_m5")))
+    if snapshot.enabled("supertrend_stochastic_m5"):
+        bindings.append(StrategyBinding(evaluate_supertrend_stoch, snapshot.config_for("supertrend_stochastic_m5")))
     if snapshot.enabled("keylevel_breakout_v2"):
         bindings.append(StrategyBinding(evaluate_keylevel, snapshot.config_for("keylevel_breakout_v2")))
     if snapshot.enabled("smc_pro_fvg_v2"):
