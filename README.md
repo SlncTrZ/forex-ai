@@ -157,6 +157,20 @@ Valid account profile and supported instruments:
 - `config/symbols.yaml` — supported instruments/timeframes
 - `config/runtime.env.template` — environment variable names only
 
+## Professional Operator Dashboard
+
+The dashboard is a separate SSH-gated operator console on production host .227, **not** the research Flask app. It provides live account/health/status data, audited ARM/DISARM/Emergency Stop, order intent lists, safety readouts, and searchable audit/system logs. There is no public HTTP listener and no additional web credential to store.
+
+From the workstation (with an authenticated SSH login to .227), run:
+
+```bash
+ssh -N -L 127.0.0.1:8765:/run/user/1000/forex-ai-dashboard.sock dinhtc@192.168.1.227
+```
+
+Open **http://127.0.0.1:8765/** while the SSH tunnel is active. The target socket is accessible only to the owning Unix user (mode 0600). Confirm the runtime UID with `id -u` if it differs from the example. The dashboard itself requires no new password file, API key, or public network port.
+
+ARM is allowed only after a fresh MT5 account/binding check and the existing DEMO campaign or REAL strategy/risk approval gates. Leases are 5–1440 minutes. DISARM preserves the Kill Switch. Emergency Stop prevents new orders but does not forcibly close positions. A sticky manual kill cannot be reset by the web UI. The CLI `scripts/arm_trading.py` uses the same guarded control layer and requires explicit `--confirm`.
+
 ## Operational Runbook & Deploy
 
 Production services are managed on host `.227` via systemd:

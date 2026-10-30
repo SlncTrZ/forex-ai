@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Forex-AI | Operator Console</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brandmark"><span class="brand-wave">∿</span></div><div><strong>FOREX<span>AI</span></strong><small>OPERATOR CONSOLE</small></div></div>
+      <div class="side-label">WORKSPACE</div>
+      <nav aria-label="Main navigation">
+        <button class="nav-item selected" data-tab="overview"><span class="nav-icon">◫</span> Overview <span class="nav-dot"></span></button>
+        <button class="nav-item" data-tab="trading"><span class="nav-icon">◇</span> Trading Control</button>
+        <button class="nav-item" data-tab="orders"><span class="nav-icon">≡</span> Orders & Positions</button>
+        <button class="nav-item" data-tab="activity"><span class="nav-icon">◷</span> Activity & Audit</button>
+        <button class="nav-item" data-tab="systems"><span class="nav-icon">▦</span> Infrastructure</button>
+      </nav>
+      <div class="side-divider"></div>
+      <div class="side-label">ENVIRONMENT</div>
+      <div class="side-env"><span class="signal"></span><div>PRODUCTION NODE<small>Runtime · .227</small></div></div>
+      <div class="sidebar-bottom">
+        <div class="secure-chip">⌁ &nbsp; SSH / UNIX SOCKET</div>
+        <div class="sidebar-note">Only your authenticated system account can access this console through its private socket.</div>
+        <div class="side-footer">FOREX-AI <span>CONTROL PLANE / v1</span></div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div class="crumbs">Workspace <span>/</span> <b id="page-crumb">Overview</b></div>
+        <div class="top-actions"><span id="last-updated" class="clock">Waiting for telemetry</span><span class="top-divider"></span><span id="top-health" class="status-tag muted"><i></i> Connecting</span><span class="avatar">OP</span></div>
+      </header>
+      <div class="page">
+        <section class="page-intro">
+          <div><div class="eyebrow">LIVE OPERATIONS <span class="eyebrow-line"></span> SECURE CONTROL PLANE</div><h1 id="page-title">System overview</h1><p id="page-desc">Everything happening in your trading infrastructure, in one place.</p></div>
+          <button id="refresh-btn" class="btn btn-outline"><span class="refresh-icon">↻</span> Refresh telemetry</button>
+        </section>
+        <div id="connection-error" class="error-strip hidden" role="alert"></div>
+        <section id="tab-overview" class="tabpanel">
+          <div class="hero">
+            <div class="hero-main"><div class="eyebrow bright">TRADING ENGINE · PRODUCTION</div><div class="hero-title"><span id="hero-state">Monitoring infrastructure</span><span id="hero-dot" class="hero-indicator"></span></div><p>Strategy processing and broker reconciliation continue independently of trade authorization.</p><div class="hero-pills"><span>MT5 ACCOUNT <b id="hero-account">—</b></span><span>ENTRIES <b id="hero-entries">—</b></span><span>RELEASE <b id="hero-release">—</b></span></div></div>
+            <div class="hero-art" aria-hidden="true"><div class="orbit a"></div><div class="orbit b"></div><div class="orbit c"></div><div class="pulse-core">∿</div><span class="art-caption">BROKER SYNC / RUNTIME</span></div>
+          </div>
+          <div class="section-header"><h2>Real-time indicators</h2><span class="subtle">From production SQLite • polling every 12s</span></div>
+          <div class="metric-grid">
+            <article class="metric-card"><div class="metric-top">Account equity <span>↗</span></div><div id="equity" class="metric-value">—</div><div class="metric-foot" id="equity-foot">Latest broker snapshot</div></article>
+            <article class="metric-card"><div class="metric-top">Account balance <span>◈</span></div><div id="balance" class="metric-value">—</div><div class="metric-foot">Broker account currency</div></article>
+            <article class="metric-card"><div class="metric-top">Uncertain orders <span>≋</span></div><div id="unknown-count" class="metric-value">—</div><div class="metric-foot">Pending execution reconciliation</div></article>
+            <article class="metric-card"><div class="metric-top">Audit events (24h) <span>◷</span></div><div id="audit-count" class="metric-value">—</div><div class="metric-foot">Immutable execution evidence</div></article>
+          </div>
+          <div class="split">
+            <section class="panel"><div class="panel-head"><div><h2>Trading authorization</h2><p>Independent of infrastructure health</p></div><span id="overview-arm-pill" class="pill neutral">—</span></div>
+              <div class="control-rows"><div><span class="control-name">MT5 account type</span><b id="account-type">—</b></div><div><span class="control-name">Account binding</span><b id="account-binding">—</b></div><div><span class="control-name">Kill switch</span><b id="kill-state">—</b></div><div><span class="control-name">ARM expiry</span><b id="expiry-state">—</b></div></div>
+              <button class="inline-link" data-go="trading">Open Trading Control <span>→</span></button>
+            </section>
+            <section class="panel"><div class="panel-head"><div><h2>Operational health</h2><p>Runtime data, storage and safety gates</p></div><span id="health-pill" class="pill neutral">—</span></div>
+              <div class="control-rows"><div><span class="control-name">Heartbeat</span><b id="heartbeat-state">—</b></div><div><span class="control-name">Database integrity</span><b id="db-state">—</b></div><div><span class="control-name">Free disk space</span><b id="disk-state">—</b></div><div><span class="control-name">Risk max / trade</span><b id="risk-state">—</b></div></div>
+              <button class="inline-link" data-go="systems">View infrastructure <span>→</span></button>
+            </section>
+          </div>
+          <div class="panel activity-preview"><div class="panel-head"><div><h2>Recent events</h2><p>Latest audited system activity</p></div><button class="inline-link no-margin" data-go="activity">See all events →</button></div><div id="overview-events" class="event-stack"><div class="empty">Waiting for events…</div></div></div>
+        </section>
+        <section id="tab-trading" class="tabpanel hidden">
+          <div class="section-header"><h2>Execution authorization</h2><span class="subtle">Every command is verified against live MT5 and stored in the audit trail</span></div>
+          <div class="split trading-split">
+            <div class="panel trading-panel"><div class="panel-head"><div><h2>Control state</h2><p>Owner-authorized operating lease</p></div><span id="trade-state" class="pill neutral">—</span></div>
+              <div class="large-status" id="large-arm">DISARMED</div><div class="trade-subtext" id="trade-reason">Readiness not loaded.</div>
+              <div class="lease-row"><label for="lease-duration">ARM duration</label><select id="lease-duration"><option value="15">15 minutes</option><option value="60" selected>1 hour</option><option value="360">6 hours</option><option value="1440">24 hours</option></select></div>
+              <div class="control-buttons"><button id="arm-btn" class="btn btn-primary">◇ &nbsp; ARM trading</button><button id="disarm-btn" class="btn btn-outline">Ⅱ &nbsp; Disarm</button></div>
+              <div class="safety-rule"><span>ⓘ</span> ARM is never automatic. Real accounts require matching strategy approval and a fresh broker safety check.</div>
+            </div>
+            <div class="panel safety-panel"><div class="panel-head"><div><h2>Emergency protection</h2><p>Immediate block on all new entries</p></div><span class="danger-icon">!</span></div><div class="safety-copy">Emergency Stop sets the persistent Kill Switch and disarms trading. It does not liquidate open positions.</div><button id="kill-btn" class="btn btn-danger">⚠ &nbsp; EMERGENCY STOP</button><div class="emergency-foot">Manual safety lock requires an offline owner reset before ARM is possible again.</div></div>
+          </div>
+          <div class="panel"><div class="panel-head"><div><h2>Preflight & policy gates</h2><p>Only a fresh broker verification can authorize ARM</p></div><button id="preflight-btn" class="btn btn-outline small">Run preflight</button></div><div id="preflight-results" class="gate-grid"><div class="empty">Run preflight to inspect the current account's eligibility.</div></div></div>
+        </section>
+        <section id="tab-orders" class="tabpanel hidden"><div class="panel"><div class="panel-head"><div><h2>Recent order intents</h2><p>Broker execution journal, not hypothetical trades</p></div><span class="subtle">Most recent 35</span></div><div class="table-scroll"><table><thead><tr><th>Symbol</th><th>Side</th><th>Volume</th><th>State</th><th>Updated (UTC)</th><th>Reason</th></tr></thead><tbody id="orders-body"></tbody></table></div></div><div class="panel top-gap"><div class="panel-head"><div><h2>External positions</h2><p>Open positions detected outside owned intents</p></div></div><div class="table-scroll"><table><thead><tr><th>Symbol</th><th>Side</th><th>Volume</th><th>Ownership</th><th>Last seen (UTC)</th></tr></thead><tbody id="positions-body"></tbody></table></div></div></section>
+        <section id="tab-activity" class="tabpanel hidden"><div class="panel"><div class="panel-head"><div><h2>Log explorer</h2><p>Audit trail and system events · latest first</p></div><div class="filter-controls"><select id="log-source"><option value="audit">Audit trail</option><option value="system">System events</option></select><input id="log-filter" placeholder="Filter event, component, reason…"><button id="log-refresh" class="btn btn-outline small">Refresh</button></div></div><div class="table-scroll"><table><thead><tr><th>Timestamp (UTC)</th><th>Level</th><th>Component</th><th>Event</th><th>Details</th></tr></thead><tbody id="logs-body"></tbody></table></div></div></section>
+        <section id="tab-systems" class="tabpanel hidden"><div class="panel"><div class="panel-head"><div><h2>Runtime services</h2><p>Real systemd service and timer state</p></div><span class="pill neutral" id="service-summary">—</span></div><div id="services-list" class="services-list"></div></div><div class="split top-gap"><div class="panel"><div class="panel-head"><h2>Deployment</h2></div><div class="control-rows"><div><span class="control-name">Active release</span><b id="release-full">—</b></div><div><span class="control-name">Runtime node</span><b>.227 · Linux</b></div><div><span class="control-name">Access method</span><b>SSH forward → Unix socket</b></div></div></div><div class="panel"><div class="panel-head"><h2>Storage and operations</h2></div><div class="control-rows"><div><span class="control-name">Database quick-check</span><b id="sys-db">—</b></div><div><span class="control-name">Storage available</span><b id="sys-disk">—</b></div><div><span class="control-name">Operational blockers</span><b id="sys-blockers">—</b></div></div></div></div></section>
+        <footer class="page-footer"><span>FOREX-AI / OPERATOR CONTROL PLANE</span><span>Access restricted · No public listener · Safety first</span></footer>
+      </div>
+    </main>
+  </div>
+  <div id="modal" class="modal-layer hidden" role="presentation"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><span class="modal-kicker">TRADE AUTHORIZATION</span><button id="modal-close" aria-label="Close dialog" class="close-btn">✕</button></div><h2 id="modal-title">Confirm action</h2><p id="modal-desc">Verify the account and type the confirmation to continue.</p><div id="modal-detail" class="modal-detail"></div><label class="confirm-label" for="modal-confirm">Type exactly <b id="expected-confirm"></b> to confirm</label><input id="modal-confirm" autocomplete="off" spellcheck="false" placeholder="Enter confirmation"><div class="modal-actions"><button id="modal-cancel" class="btn btn-outline">Cancel</button><button id="modal-submit" class="btn btn-primary" disabled>Confirm</button></div><div id="modal-error" class="modal-error hidden"></div></div></div>
+  <div id="toast" class="toast hidden" role="status"></div>
+</body>
+</html>

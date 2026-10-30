@@ -1,0 +1,22 @@
+[Unit]
+Description=Forex-AI private owner dashboard (SSH Unix socket)
+After=network-online.target forex-ai-observe.service
+Wants=forex-ai-observe.service
+
+[Service]
+Type=simple
+Environment=FOREX_AI_CONFIG_DIR=%h/.config/forex-ai
+EnvironmentFile=-%h/.config/forex-ai/execution.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/run_dashboard.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=%t %h/.local/share/forex-ai
+ProtectHome=read-only
+
+[Install]
+WantedBy=default.target

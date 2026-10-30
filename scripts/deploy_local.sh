@@ -217,6 +217,23 @@ if [ -f "$LIVE_APPROVAL" ]; then
     forex-ai-weekend-close.timer
 fi
 
+# Dashboard is a separate owner-only service on a 0600 Unix socket.
+# Restart after the symlink switch so its static assets/code match the release.
+USER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+USER_BUS="$USER_RUNTIME_DIR/bus"
+test -S "$USER_BUS" || { echo "Dashboard deploy requires an authenticated user systemd bus" >&2; exit 18; }
+export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$USER_BUS}"
+USER_UNIT_DIR="$HOME_DIR/.config/systemd/user"
+mkdir -p "$USER_UNIT_DIR"
+cp "$RELEASE_DIR/deploy/forex-ai-dashboard.service" "$USER_UNIT_DIR/forex-ai-dashboard.service"
+chmod 0644 "$USER_UNIT_DIR/forex-ai-dashboard.service"
+systemctl --user daemon-reload
+systemctl --user enable --now forex-ai-dashboard.service
+systemctl --user restart forex-ai-dashboard.service
+systemctl --user is-active --quiet forex-ai-dashboard.service || { echo "Dashboard health gate failed" >&2; exit 19; }
+test -S "$USER_RUNTIME_DIR/forex-ai-dashboard.sock" || { echo "Dashboard socket not available" >&2; exit 20; }
+
 mapfile -t OLD_RELEASES < <(find "$RELEASES" -mindepth 1 -maxdepth 1 -type d ! -name '.staging-*' -printf '%T@ %p\n' | sort -nr | tail -n +$((KEEP_RELEASES + 1)) | cut -d' ' -f2-)
 for old in "${OLD_RELEASES[@]:-}"; do
   [ -n "$old" ] || continue
