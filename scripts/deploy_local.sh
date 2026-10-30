@@ -86,6 +86,8 @@ fi
 
 test -s "$SRC/requirements.lock" || { echo "Missing requirements.lock" >&2; exit 13; }
 
+# Tests include project-relative fixtures; execute from the source root.
+cd "$SRC"
 "$TEST_PYTHON" -m pytest "$SRC/tests" -q
 LIVE_APPROVAL="$SRC/config/live-prospective-approval.json"
 if [ -f "$LIVE_APPROVAL" ]; then
