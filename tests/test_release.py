@@ -22,6 +22,7 @@ def test_release_manifest_is_complete_and_stable_for_fixed_inputs(tmp_path):
     assert first == second
     assert first.fingerprint == second.fingerprint
     assert len(first.git_sha) == 40
+    assert first.release_tag == "" or first.release_tag.startswith("v0.0.")
     assert len(first.config_sha256) == 64
     assert len(first.dependency_lock_sha256) == 64
     assert first.database_schema_version == SCHEMA_VERSION
@@ -30,6 +31,7 @@ def test_release_manifest_is_complete_and_stable_for_fixed_inputs(tmp_path):
     write_release_manifest(repo, output, now_utc=when)
     payload = json.loads(output.read_text())
     assert payload["release_fingerprint"] == first.fingerprint
+    assert payload["release_tag"] == first.release_tag
     assert payload["dependency_lock_sha256"] == sha256_file(repo / "requirements.lock")
 
 

@@ -11,6 +11,7 @@ import yaml
 
 from forex_ai.intelligence.prompts import PROMPT_VERSION
 from forex_ai.journal.db import SCHEMA_VERSION
+from forex_ai.versioning import assert_release_tag, release_tag_or_empty
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -50,6 +51,7 @@ def assert_synced_with_upstream(repo_root: Path) -> None:
 
 @dataclass(frozen=True)
 class ReleaseManifest:
+    release_tag: str
     git_sha: str
     config_sha256: str
     dependency_lock_sha256: str
@@ -71,7 +73,8 @@ class ReleaseManifest:
         return payload
 
 
-def build_release_manifest(repo_root: Path, *, now_utc: datetime | None = None) -> ReleaseManifest:
+def build_release_manifest(repo_root: Path, *, now_utc: datetime | None = None,
+                           require_tag: bool = False) -> ReleaseManifest:
     lock = repo_root / "requirements.lock"
     config_paths = tuple(repo_root / "config" / name for name in ("app.yaml", "risk.yaml", "llm.yaml", "mt5_image.txt"))
     image_file = repo_root / "config" / "mt5_image.txt"
@@ -81,6 +84,7 @@ def build_release_manifest(repo_root: Path, *, now_utc: datetime | None = None) 
     llm = yaml.safe_load((repo_root / "config" / "llm.yaml").read_text(encoding="utf-8")) or {}
     now = (now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
     return ReleaseManifest(
+        release_tag=assert_release_tag(repo_root) if require_tag else release_tag_or_empty(repo_root),
         git_sha=git_output(repo_root, "rev-parse", "HEAD"),
         config_sha256=combined_sha256(config_paths),
         dependency_lock_sha256=sha256_file(lock),
@@ -93,7 +97,9 @@ def build_release_manifest(repo_root: Path, *, now_utc: datetime | None = None) 
     )
 
 
-def write_release_manifest(repo_root: Path, output_path: Path, *, now_utc: datetime | None = None) -> ReleaseManifest:
-    manifest = build_release_manifest(repo_root, now_utc=now_utc)
+def write_release_manifest(repo_root: Path, output_path: Path, *,
+                           now_utc: datetime | None = None,
+                           require_tag: bool = False) -> ReleaseManifest:
+    manifest = build_release_manifest(repo_root, now_utc=now_utc, require_tag=require_tag)
     output_path.write_text(json.dumps(manifest.as_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest

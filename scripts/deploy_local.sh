@@ -84,6 +84,16 @@ if [ "$REQUIRE_SYNC" = "1" ]; then
   fi
 fi
 
+# Release identity is an exact, sequential annotated Git tag; a commit SHA
+# and a timestamp are provenance only. Fail BEFORE staging or runtime mutation.
+RELEASE_TAG="$(PYTHONPATH="$SRC/src" "$TEST_PYTHON" -c \
+  'import sys; from pathlib import Path; from forex_ai.versioning import assert_release_tag; print(assert_release_tag(Path(sys.argv[1])))' "$SRC")"
+GIT_SHA="$(git -C "$SRC" rev-parse HEAD)"
+REMOTE_TAG_SHA="$(git -C "$SRC" ls-remote --tags origin "refs/tags/$RELEASE_TAG^{}" | awk 'NR==1 {print $1}')"
+if [ "$REMOTE_TAG_SHA" != "$GIT_SHA" ]; then
+  echo "Refusing deploy: annotated tag $RELEASE_TAG missing or different on origin" >&2
+  exit 14
+fi
 test -s "$SRC/requirements.lock" || { echo "Missing requirements.lock" >&2; exit 13; }
 
 # React V2 assets must correspond exactly to the reviewed source & npm lock.
@@ -126,10 +136,9 @@ MANIFEST_TMP="$(mktemp --suffix=.json)"
 cleanup() { rm -f "$PREFLIGHT_DB" "$MANIFEST_TMP"; }
 trap cleanup EXIT
 PYTHONPATH="$SRC/src" "$TEST_PYTHON" -c "from pathlib import Path; from forex_ai.journal.db import initialize; initialize(Path('$PREFLIGHT_DB'))"
-PYTHONPATH="$SRC/src" "$TEST_PYTHON" "$SRC/scripts/release_manifest.py" --repo "$SRC" --output "$MANIFEST_TMP" >/dev/null
+PYTHONPATH="$SRC/src" "$TEST_PYTHON" "$SRC/scripts/release_manifest.py" --repo "$SRC" --output "$MANIFEST_TMP" --require-tag >/dev/null
 
-GIT_SHA="$(git -C "$SRC" rev-parse HEAD)"
-RELEASE_ID="$(date -u +%Y%m%dT%H%M%SZ)-${GIT_SHA:0:12}"
+RELEASE_ID="${RELEASE_TAG}-$(date -u +%Y%m%dT%H%M%SZ)-${GIT_SHA:0:12}"
 RELEASES="$RUNTIME_ROOT/releases"
 BACKTEST_ROOT="${FOREX_AI_BACKTEST_ROOT:-$RUNTIME_ROOT/backtest}"
 STRATEGY_CONFIG="${FOREX_AI_STRATEGY_CONFIG:-$HOME_DIR/.config/forex-ai/strategy.yaml}"

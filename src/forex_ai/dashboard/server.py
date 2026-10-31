@@ -111,13 +111,25 @@ def _risk_summary() -> dict:
         return {}
 
 
-def _release_info() -> dict:
-    p = Path.home() / "apps" / "forex-ai" / "current" / "release_manifest.json"
+def _release_info(manifest_path: Path | None = None) -> dict:
+    p = manifest_path or (Path.home() / "apps" / "forex-ai" / "current" / "release_manifest.json")
     try:
         d = json.loads(p.read_text())
-        return {"version": p.parent.resolve().name, "fingerprint": str(d.get("release_fingerprint", ""))[:12]}
-    except Exception:
-        return {"version": "unknown", "fingerprint": ""}
+        tag = d.get("release_tag")
+        # A release directory timestamp or Git SHA is NEVER the product version.
+        import re
+        if not isinstance(tag, str) or not re.fullmatch(r"v0\.0\.[1-9][0-9]*", tag):
+            tag = "UNTAGGED"
+        return {
+            "version": tag,
+            "release_tag": tag if tag != "UNTAGGED" else None,
+            "git_sha": str(d.get("git_sha", ""))[:12],
+            "fingerprint": str(d.get("release_fingerprint", ""))[:12],
+            "deployed_at": d.get("release_timestamp_utc"),
+        }
+    except (OSError, TypeError, ValueError):
+        return {"version": "unknown", "release_tag": None,
+                "git_sha": "", "fingerprint": "", "deployed_at": None}
 
 
 def read_services() -> list[dict]:
