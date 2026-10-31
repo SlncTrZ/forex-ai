@@ -157,3 +157,112 @@ def test_orchestrator_really_vetoes_before_broker_risk(tmp_path):
     with session(db) as con:
         assert con.execute("SELECT count(*) FROM candidate_decisions").fetchone()[0] == 1
         assert con.execute("SELECT count(*) FROM risk_decisions_v1").fetchone()[0] == 0
+
+
+def test_regime_policy_v2_discards_legacy_confirmed_cache(tmp_path):
+    import hashlib
+    from forex_ai.advisory.regime_router import POLICY_VERSION
+    from forex_ai.journal.db import log_audit_event
+    db = tmp_path / "regime.db"
+    initialize(db)
+    market = market_with_trend()
+    features = quant_features(market)
+    provider = Model("UPTREND")
+    # A matching current-version cache with missing probability must also be rejected.
+    key = hashlib.sha256(
+        f"{POLICY_VERSION}:{market.symbol}:{features.fingerprint}:{provider.fingerprint}".encode()
+    ).hexdigest()
+    log_audit_event(db, event_type="D3_REGIME_DECISION",
+                    source="production_v1_scanner", symbol=market.symbol,
+                    entity_id=key, payload={
+                        "symbol": market.symbol, "regime": "UPTREND",
+                        "model_regime": "UPTREND", "quant_regime": "UPTREND",
+                        "confidence": .9, "reason_code": "REGIME_CONFIRMED",
+                        "closed_h1_utc": features.closed_h1_utc,
+                        "feature_fingerprint": features.fingerprint,
+                        "model_fingerprint": provider.fingerprint,
+                        "policy_version": POLICY_VERSION,
+                        "latency_ms": 300,
+                    })
+    r = resolve_regime(market, db_path=db, provider=provider)
+    assert r.regime == "UPTREND" and r.choice_probability == .94
+    assert provider.calls == 1
+
+
+def test_btc_demo_low_confidence_is_advisory_only_and_not_confirmed():
+    from forex_ai.advisory.regime_router import btc_demo_advisory_regime
+    from dataclasses import replace
+    low = RegimeDecision("BTCUSDm", "UNCERTAIN", "UPTREND", "UPTREND", .31,
+                         "REGIME_LOW_CONFIDENCE", "2026-10-31T08:00:00+00:00",
+                         "f"*64, "m"*16, 350, choice_probability=.59, atr_h1=100.)
+    effective = btc_demo_advisory_regime(
+        low, broker_demo_verified=True, symbol="BTCUSDm",
+        strategy_id="btc_squeeze_breakout_m15")
+    assert low.regime == "UNCERTAIN"  # Historical D3 observation is unchanged.
+    assert effective.regime == "UPTREND"
+    assert effective.reason_code == "REGIME_BTC_DEMO_ADVISORY"
+    assert effective.confidence == .31 and effective.choice_probability == .59
+    assert route_candidate(effective, strategy_id="btc_squeeze_breakout_m15", side="BUY") is None
+    assert route_candidate(effective, strategy_id="btc_squeeze_breakout_m15", side="SELL") == "REGIME_DIRECTION_VETO"
+    assert btc_demo_advisory_regime(low, broker_demo_verified=False, symbol="BTCUSDm",
+        strategy_id="btc_squeeze_breakout_m15") is low
+    assert btc_demo_advisory_regime(low, broker_demo_verified=True, symbol="XAUUSDm",
+        strategy_id="btc_squeeze_breakout_m15") is low
+    assert btc_demo_advisory_regime(low, broker_demo_verified=True, symbol="BTCUSDm",
+        strategy_id="supertrend_volume_m5") is low
+    assert btc_demo_advisory_regime(replace(low, model_regime="DOWNTREND"),
+        broker_demo_verified=True, symbol="BTCUSDm",
+        strategy_id="btc_squeeze_breakout_m15") is not effective
+    for broken in (
+        replace(low, reason_code="REGIME_D3_UNAVAILABLE"),
+        replace(low, reason_code="REGIME_INVALID_RESPONSE"),
+        replace(low, reason_code="REGIME_MODEL_QUANT_CONFLICT"),
+        replace(low, confidence=None),
+        replace(low, choice_probability=None),
+        replace(low, closed_h1_utc=None),
+    ):
+        assert btc_demo_advisory_regime(broken, broker_demo_verified=True,
+            symbol="BTCUSDm", strategy_id="btc_squeeze_breakout_m15") is broken
+
+
+def test_btc_demo_advisory_reaches_risk_engine_with_no_real_bypass(tmp_path):
+    from forex_ai.advisory.regime_router import btc_demo_advisory_regime
+    from forex_ai.strategy.v1.contracts import DecisionEvidence, build_candidate, StrategyResult
+    from decimal import Decimal
+    db = tmp_path / "btc.db"
+    initialize(db)
+    cfg = StrategyConfig(StrategyVersion("btc_squeeze_breakout_m15", "1"), {})
+    market = MarketSnapshot("BTCUSDm", NOW, int(NOW.timestamp() * 1000),
+                            1.0999, 1.1, {})
+    low = RegimeDecision("BTCUSDm", "UNCERTAIN", "UPTREND", "UPTREND", .31,
+                         "REGIME_LOW_CONFIDENCE", NOW.isoformat(),
+                         "f"*64, "m"*16, 350, choice_probability=.59, atr_h1=.01)
+    def btc_buy(snapshot, config, now):
+        evidence = DecisionEvidence(("BTC_SQUEEZE_BREAKOUT_CONFIRMED",), {})
+        candidate = build_candidate(
+            snapshot=snapshot, config=config, side="BUY",
+            entry=snapshot.ask, stop_loss=snapshot.ask-.01, take_profit=snapshot.ask+.02,
+            generated_at_utc=now, expires_at_utc=now+timedelta(minutes=10),
+            evidence=evidence,
+        )
+        return StrategyResult(candidate, None, evidence)
+    engine = DecisionOrchestrator(
+        db_path=db, risk_profile=_profile(),
+        strategies=(StrategyBinding(btc_buy, cfg),))
+    args = dict(
+        account=_account(),
+        contract=_contract().model_copy(update={"symbol": "BTCUSDm"}),
+        tick=_tick().model_copy(update={"symbol": "BTCUSDm"}),
+        safety=_safety(),
+        risk_context=RiskContext(daily_reference_equity=Decimal("10000"),
+                                 weekly_reference_equity=Decimal("10000")),
+        calc_profit=_calc_profit, calc_margin=_calc_margin, now_utc=NOW)
+    unapproved = engine.scan(market, regime_decision=low, **args)
+    assert unapproved[0].risk_result is None
+    assert unapproved[0].blocked_reasons == ("REGIME_UNCERTAIN_VETO",)
+    projected = btc_demo_advisory_regime(low, broker_demo_verified=True,
+        symbol=market.symbol, strategy_id="btc_squeeze_breakout_m15")
+    allowed = engine.scan(market, regime_decision=projected, **args)
+    assert allowed[0].risk_result is not None
+    assert allowed[0].risk_result.approved
+    assert low.regime == "UNCERTAIN"

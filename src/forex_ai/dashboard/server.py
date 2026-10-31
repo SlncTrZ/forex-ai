@@ -204,12 +204,13 @@ def read_events(params: dict) -> dict:
 
 
 def read_regimes() -> dict:
-    """Sanitized read-only D3 regime telemetry from the same audit journal."""
+    """Audit-backed per-symbol observations; never broker execution permission."""
     latest: dict[str, dict] = {}
     with _db() as con:
         rows = con.execute(
             "SELECT timestamp_utc,symbol,payload_json FROM audit_events "
-            "WHERE event_type='D3_REGIME_DECISION' ORDER BY id DESC LIMIT 160"
+            "WHERE event_type IN ('MARKET_INTELLIGENCE_OBSERVATION','D3_REGIME_DECISION') "
+            "ORDER BY id DESC LIMIT 320"
         ).fetchall()
     for row in rows:
         symbol = str(row["symbol"] or "")
@@ -223,12 +224,14 @@ def read_regimes() -> dict:
             if regime not in ("UPTREND", "DOWNTREND", "SIDEWAY", "UNCERTAIN"):
                 continue
             fields = ("regime", "quant_regime", "model_regime", "confidence",
-                      "reason_code", "closed_h1_utc", "model_fingerprint",
-                      "feature_fingerprint", "latency_ms", "policy_version")
+                      "choice_probability", "reason_code", "closed_h1_utc",
+                      "model_fingerprint", "feature_fingerprint", "latency_ms",
+                      "policy_version", "market_state", "tick_age_seconds", "cache_hit")
             record = {name: payload.get(name) for name in fields}
             record["symbol"] = symbol
             record["observed_at"] = str(row["timestamp_utc"])
-            # A returned prior decision is history, never proof of current state.
+            record["confirmed_for_trading"] = False  # monitoring never grants order access
+            record["market_state"] = record["market_state"] or "UNKNOWN"
             try:
                 closed = datetime.fromisoformat(str(record["closed_h1_utc"])).astimezone(UTC)
                 record["age_seconds"] = max(0, int((datetime.now(UTC) - closed).total_seconds()))

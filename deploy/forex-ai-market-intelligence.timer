@@ -1,0 +1,11 @@
+[Unit]
+Description=Forex-AI independent closed-H1 Market Intelligence (every 5 min)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=forex-ai-market-intelligence.service
+
+[Install]
+WantedBy=timers.target

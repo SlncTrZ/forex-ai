@@ -109,8 +109,12 @@ export function LiveCockpit(){
  const tickLive=tickAge!=null&&tickAge<15;
  const marketClosed=selected==="XAUUSDm"&&!tickLive&&new Date(clock).getUTCDay()===6;
  const marketLabel=tickLive?"LIVE":marketClosed?"OFF SESSION":tickAge!=null?"STALE":"NO TICKS";
- const regime=regimes.find(v=>v.symbol===selected&&v.age_seconds!=null&&v.age_seconds<10800&&v.reason_code==="REGIME_CONFIRMED");
- const conf=regime?.confidence??null;
+ const latest=regimes.find(v=>v.symbol===selected);
+ const regime=latest&&Number.isFinite(Date.parse(latest.observed_at))&&clock-Date.parse(latest.observed_at)<600000?latest:null;
+ const h1Fresh=regime?.age_seconds!=null&&regime.age_seconds<10800&&regime.market_state!=="OFF_SESSION"&&regime.market_state!=="STALE_TICK";
+ const confirmed=h1Fresh&&regime?.reason_code==="REGIME_CONFIRMED";
+ const conf=h1Fresh?regime?.confidence??null:null;
+ const probability=h1Fresh?regime?.choice_probability??null:null;
  // Regime 0-5 quantizes the actual D3 confidence, NOT five invented confirmations.
  const regimeLevel=conf==null?null:Math.min(5,Math.max(0,Math.round(conf*5)));
  const signal=useMemo(()=>{
@@ -173,10 +177,11 @@ export function LiveCockpit(){
    </section>
    <section className="lc-panel lc-dynamics">
     <div className="lc-panel-title"><span>02 / QUANT + D3 DYNAMICS</span><span>READ ONLY</span></div>
-    <div className="lc-regime-head"><div><small>CONFIRMED REGIME</small><strong>{regime?.regime||"UNAVAILABLE"}</strong></div><div><small>D3</small><strong>{regime?regime.model_regime:"NO FRESH AUDIT"}</strong></div></div>
+    <div className="lc-regime-head"><div><small>QUANT H1 · OBSERVED</small><strong>{regime?.quant_regime||"UNAVAILABLE"}</strong></div><div><small>D3 · {confirmed?"CONFIRMED":"UNCONFIRMED"}</small><strong>{regime?.model_regime||regime?.reason_code||"NO FRESH AUDIT"}</strong></div></div>
     <div className="lc-gauges">
-     <Gauge name="REGIME LEVEL" value={regimeLevel} max={5} subtitle="0–5 · QUANTIZED D3 CONFIDENCE"/>
-     <Gauge name="CONFIDENCE" value={conf} subtitle="0.00–1.00 · LAST CLOSED H1"/>
+     <Gauge name="REGIME LEVEL" value={regimeLevel} max={5} subtitle="0–5 · D3 CONFIDENCE DISPLAY ONLY"/>
+     <Gauge name="CONFIDENCE" value={conf} subtitle="D3 CONFIDENCE · NOT P(WIN)"/>
+      <Gauge name="CHOICE PROB." value={probability} subtitle="SELECTED CLASS · NOT P(WIN)"/>
      <Gauge name="BULL / BEAR" value={signal.bull} min={-1} max={1} subtitle="−1…+1 · VERIFIED TICK DIRECTION"/>
      <Gauge name="MOMENTUM" value={signal.momentum} subtitle="0–1 · TICK DIRECTIONAL EFFICIENCY"/>
      <Gauge name="VOLATILITY" value={signal.volatility} subtitle="0–1 · RANGE / 10× SPREAD"/>

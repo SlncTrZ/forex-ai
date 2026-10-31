@@ -21,7 +21,7 @@ from forex_ai.strategy.v1.contracts import MarketSnapshot, fingerprint
 
 UTC = timezone.utc
 REGIMES = ("UPTREND", "DOWNTREND", "SIDEWAY")
-POLICY_VERSION = "regime-h1-v1"
+POLICY_VERSION = "regime-h1-v2"
 MIN_H1_BARS = 220
 REGIME_CONFIDENCE_FLOOR = 0.75
 
@@ -58,6 +58,7 @@ class RegimeDecision:
     latency_ms: int
     policy_version: str = POLICY_VERSION
     atr_h1: float | None = None
+    choice_probability: float | None = None
 
     def to_audit(self) -> dict[str, Any]:
         return asdict(self)
@@ -119,8 +120,8 @@ def quant_features(market: MarketSnapshot) -> RegimeFeatures | None:
     return RegimeFeatures(**evidence, fingerprint=fingerprint({"version": POLICY_VERSION, **evidence}))
 
 
-def _model_choice(document: object) -> tuple[str, float]:
-    """Fail closed unless D3 supplies a coherent structured 3-way choice."""
+def _model_choice_detail(document: object) -> tuple[str, float, float]:
+    """Validate D3 confidence separately from selected-choice probability."""
     if not isinstance(document, dict):
         raise GateUnavailable("REGIME_INVALID_RESPONSE")
     candidates = [document]
@@ -148,10 +149,49 @@ def _model_choice(document: object) -> tuple[str, float]:
         if abs(sum(probabilities)-1) > 0.05:
             raise GateUnavailable("REGIME_PROBABILITY_MISMATCH")
         chosen = probs[choice]
-        if chosen + 1e-6 < max(probabilities) or abs(chosen-confidence) > 0.20:
+        if chosen + 1e-6 < max(probabilities):
             raise GateUnavailable("REGIME_CHOICE_CONFLICT")
-        return choice, float(min(chosen, confidence))
+        return choice, float(confidence), float(chosen)
     raise GateUnavailable("REGIME_CHOICE_MISSING")
+
+
+def _model_choice(document: object) -> tuple[str, float]:
+    """Compatibility wrapper: confidence is not the selected class probability."""
+    choice, confidence, _ = _model_choice_detail(document)
+    return choice, confidence
+
+
+
+def btc_demo_advisory_regime(regime: RegimeDecision, *, broker_demo_verified: bool,
+                             strategy_id: str, symbol: str) -> RegimeDecision:
+    """Owner-approved DEMO BTC exception: weak D3 certainty is informational.
+
+    Keep original D3 audit and classifier unchanged. This projection is ONLY
+    for candidate admission and confluence. All broker/risk/pre-exec gates stay.
+    Never apply to REAL, unknown account mode, other symbols or strategies.
+    """
+    from dataclasses import replace
+
+    if not broker_demo_verified or symbol.upper() not in ("BTCUSD", "BTCUSDM", "BTCUSDC"):
+        return regime
+    if strategy_id != "btc_squeeze_breakout_m15" or regime.symbol != symbol:
+        return regime
+    if regime.reason_code not in ("REGIME_LOW_CONFIDENCE", "REGIME_LOW_CHOICE_PROBABILITY"):
+        return regime
+    if (regime.quant_regime not in REGIMES or
+            regime.model_regime != regime.quant_regime or
+            not regime.closed_h1_utc or not regime.feature_fingerprint):
+        return regime
+    confidence, probability = regime.confidence, regime.choice_probability
+    if (type(confidence) not in (int, float) or
+            type(probability) not in (int, float) or
+            not math.isfinite(confidence) or not math.isfinite(probability) or
+            not 0 <= confidence <= 1 or not 0 <= probability <= 1):
+        return regime
+    # Mark exception explicitly, never counterfeit a REGIME_CONFIRMED event.
+    return replace(regime, regime=regime.quant_regime,
+                   reason_code="REGIME_BTC_DEMO_ADVISORY")
+
 
 
 def route_candidate(regime: RegimeDecision, *, strategy_id: str, side: str,
@@ -212,22 +252,30 @@ def _decision(features: RegimeFeatures | None, symbol: str, provider: D3Decision
                 },
             }},
         )
-        model_regime, confidence = _model_choice(result)
+        model_regime, confidence, probability = _model_choice_detail(result)
         elapsed = int((time.monotonic() - start) * 1000)
         if confidence < REGIME_CONFIDENCE_FLOOR:
             reason = "REGIME_LOW_CONFIDENCE"
+        elif probability < REGIME_CONFIDENCE_FLOOR:
+            reason = "REGIME_LOW_CHOICE_PROBABILITY"
         elif model_regime != features.quant_regime:
             reason = "REGIME_MODEL_QUANT_CONFLICT"
         else:
             return RegimeDecision(**{**base, "regime": model_regime, "model_regime": model_regime,
-                                     "confidence": confidence, "latency_ms": elapsed},
+                                     "confidence": confidence, "choice_probability": probability, "latency_ms": elapsed},
                                   reason_code="REGIME_CONFIRMED")
         return RegimeDecision(**{**base, "model_regime": model_regime,
-                                 "confidence": confidence, "latency_ms": elapsed},
+                                 "confidence": confidence, "choice_probability": probability, "latency_ms": elapsed},
                               reason_code=reason)
-    except (GateUnavailable, ValueError, TypeError):
+    except GateUnavailable as exc:
+        reason = str(exc)
+        if not reason.startswith("REGIME_") or not reason.replace("_", "").isalnum():
+            reason = "REGIME_D3_UNAVAILABLE"
         return RegimeDecision(**{**base, "latency_ms": int((time.monotonic() - start) * 1000)},
-                              reason_code="REGIME_D3_UNAVAILABLE")
+                              reason_code=reason)
+    except (ValueError, TypeError):
+        return RegimeDecision(**{**base, "latency_ms": int((time.monotonic() - start) * 1000)},
+                              reason_code="REGIME_INVALID_RESPONSE")
 
 
 def resolve_regime(market: MarketSnapshot, *, db_path, provider: D3DecisionSafetyGate | None) -> RegimeDecision:
@@ -240,14 +288,29 @@ def resolve_regime(market: MarketSnapshot, *, db_path, provider: D3DecisionSafet
     key = hashlib.sha256(f"{POLICY_VERSION}:{market.symbol}:{fp}:{model_fp}".encode()).hexdigest()
     with session(db_path) as con:
         row = con.execute(
-            "SELECT payload_json FROM audit_events WHERE event_type='D3_REGIME_DECISION' "
+            "SELECT timestamp_utc,payload_json FROM audit_events WHERE event_type='D3_REGIME_DECISION' "
             "AND entity_id=? ORDER BY id DESC LIMIT 1", (key,),
         ).fetchone()
     if row:
         try:
             data = json.loads(row["payload_json"])
-            return RegimeDecision(**{k: data[k] for k in RegimeDecision.__dataclass_fields__
-                                     if k in data})
+            age = (datetime.now(UTC) - datetime.fromisoformat(row["timestamp_utc"]).astimezone(UTC)).total_seconds()
+            valid = (data.get("policy_version") == POLICY_VERSION
+                     and data.get("symbol") == market.symbol
+                     and data.get("model_fingerprint") == model_fp
+                     and data.get("feature_fingerprint") == fp)
+            if data.get("reason_code") == "REGIME_CONFIRMED":
+                valid = (valid and data.get("regime") == data.get("model_regime")
+                         == data.get("quant_regime") and
+                         type(data.get("confidence")) in (int, float) and
+                         type(data.get("choice_probability")) in (int, float) and
+                         math.isfinite(data["confidence"]) and
+                         math.isfinite(data["choice_probability"]) and
+                         REGIME_CONFIDENCE_FLOOR <= data["confidence"] <= 1 and
+                         REGIME_CONFIDENCE_FLOOR <= data["choice_probability"] <= 1)
+            if valid and (data.get("reason_code") == "REGIME_CONFIRMED" or 0 <= age < 600):
+                return RegimeDecision(**{k: data[k] for k in RegimeDecision.__dataclass_fields__
+                                         if k in data})
         except (ValueError, TypeError, KeyError):
             pass
     decision = _decision(features, market.symbol, provider)

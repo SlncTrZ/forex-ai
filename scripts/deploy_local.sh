@@ -51,6 +51,16 @@ rollback() {
   fi
   audit_release "RELEASE_START" "$PREVIOUS"
   audit_release "RELEASE_ROLLBACK" "$PREVIOUS"
+  # Older releases have no Market Intelligence entrypoint. Never leave a
+  # timer invoking a missing binary after rolling back to v0.0.5/v0.0.4.
+  if [ ! -f "$PREVIOUS/scripts/observe_market_intelligence.py" ]; then
+    local user_runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if [ -S "$user_runtime_dir/bus" ]; then
+      XDG_RUNTIME_DIR="$user_runtime_dir" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$user_runtime_dir/bus" \
+        systemctl --user disable --now forex-ai-market-intelligence.timer >/dev/null 2>&1 || true
+    fi
+  fi
   printf 'rolled_back_to=%s\n' "$PREVIOUS"
   exit 0
 }
@@ -260,7 +270,14 @@ USER_UNIT_DIR="$HOME_DIR/.config/systemd/user"
 mkdir -p "$USER_UNIT_DIR"
 cp "$RELEASE_DIR/deploy/forex-ai-dashboard.service" "$USER_UNIT_DIR/forex-ai-dashboard.service"
 chmod 0644 "$USER_UNIT_DIR/forex-ai-dashboard.service"
+# Monitoring must be installed on every release, including DEMO. It reads MT5
+# and writes observations only; it is not permission to execute trades.
+for unit in forex-ai-market-intelligence.service forex-ai-market-intelligence.timer; do
+  cp "$RELEASE_DIR/deploy/$unit" "$USER_UNIT_DIR/$unit"
+  chmod 0644 "$USER_UNIT_DIR/$unit"
+done
 systemctl --user daemon-reload
+systemctl --user enable --now forex-ai-market-intelligence.timer
 systemctl --user enable --now forex-ai-dashboard.service
 systemctl --user restart forex-ai-dashboard.service
 # Service activation is asynchronous. Probe the real socket with a bounded gate,

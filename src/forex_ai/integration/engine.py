@@ -76,6 +76,21 @@ def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[Stra
     return tuple(bindings)
 
 
+def strategy_eligible_for_symbol(strategy_id: str, symbol: str) -> bool:
+    """Safe default: BTC orders only from BTC strategy; never cross-run FX logic."""
+    name = symbol.upper()
+    # Exact allowlist matches the existing risk.yaml broker symbol aliases.
+    if name in {"BTCUSD", "BTCUSDM", "BTCUSDC"}:
+        return strategy_id == "btc_squeeze_breakout_m15"
+    if name in {
+        "XAUUSD", "XAUUSDM", "XAUUSDC",
+        "EURUSD", "EURUSDM", "EURUSDC",
+        "USDJPY", "USDJPYM", "USDJPYC",
+    }:
+        return strategy_id != "btc_squeeze_breakout_m15"
+    return False
+
+
 class DecisionOrchestrator:
     """Joins Strategy V1 -> optional Advisory -> deterministic RiskEngine.
 
@@ -119,6 +134,8 @@ class DecisionOrchestrator:
         claimed_in_scan = False
 
         for binding in self.strategies:
+            if not strategy_eligible_for_symbol(binding.config.version.strategy_id, market.symbol):
+                continue
             strategy_result = binding.evaluate(market, binding.config, now)
             candidate = strategy_result.candidate
             if candidate is None:

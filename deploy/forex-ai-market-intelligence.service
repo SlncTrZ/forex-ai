@@ -1,0 +1,12 @@
+[Unit]
+Description=Forex-AI read-only BTC/XAU Market Intelligence H1 observer
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+Environment=FOREX_AI_MODE=OBSERVE
+EnvironmentFile=-%h/.config/forex-ai/execution.env
+ExecStartPre=/bin/sh -lc '/usr/bin/docker inspect --format={{.State.Running}} forex-mt5 | /usr/bin/grep -qx true'
+ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/observe_market_intelligence.py
+NoNewPrivileges=yes
+UMask=0077

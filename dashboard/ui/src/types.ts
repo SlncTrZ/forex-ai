@@ -18,7 +18,8 @@ export interface StatusPayload {
 }
 export interface RegimeDecision {
  symbol:string;regime:"UPTREND"|"DOWNTREND"|"SIDEWAY"|"UNCERTAIN";
- quant_regime:string;model_regime:string|null;confidence:number|null;
+ quant_regime:string;model_regime:string|null;confidence:number|null;choice_probability?:number|null;
+ market_state?:string;tick_age_seconds?:number|null;cache_hit?:boolean;confirmed_for_trading?:boolean;
  reason_code:string;closed_h1_utc:string|null;feature_fingerprint:string;
  model_fingerprint:string;latency_ms:number;age_seconds:number|null;
  observed_at:string;policy_version:string;
