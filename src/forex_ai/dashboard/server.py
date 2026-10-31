@@ -51,7 +51,7 @@ def _safe_payload(payload: str) -> str:
     try:
         data = json.loads(payload)
         if isinstance(data, dict):
-            safe = {k: v for k, v in data.items() if k in ("reason", "reasons", "status", "state", "health_state", "action", "error", "outcome_class")}
+            safe = {k: v for k, v in data.items() if k in ("reason", "reasons", "status", "state", "health_state", "action", "error", "outcome_class", "decision", "reason_code", "latency_ms", "model_fingerprint")}
             return json.dumps(safe, ensure_ascii=False)[:220]
     except (ValueError, TypeError):
         pass

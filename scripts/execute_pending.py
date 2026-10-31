@@ -17,6 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from forex_ai.config import load_execution_enabled, load_fixed_lot, load_risk_profile, load_runtime_config
+from forex_ai.advisory.ollama_safety_gate import GateUnavailable, OllamaSafetyGate
 from forex_ai.execution.account_mode import MT5AccountTradeMode, detect_account_trade_mode, require_account_trade_mode
 from forex_ai.execution.live_canary import assess_live_canary_readiness
 from forex_ai.execution.demo_campaign import assess_demo_campaign_readiness
@@ -143,10 +144,40 @@ def main() -> int:
         if contract is None:
             raise RuntimeError("RISK_SYMBOL_CONTRACT_MISSING")
 
+        # Ollama must be configured before any new-entry attempt can pass.
+        # Do not silently fall back to broker-only execution.
+        try:
+            ai_safety = OllamaSafetyGate.from_environment()
+        except GateUnavailable:
+            ai_safety = None
+        def run_ai_gate(intent_to_check, broker_request):
+            if ai_safety is None:
+                raise GateUnavailable("AI_GATE_NOT_CONFIGURED")
+            observed = {row.symbol: row for row in broker.ticks}
+            quoted = observed.get(intent_to_check.symbol)
+            if quoted is None:
+                raise GateUnavailable("AI_GATE_BROKER_TICK_MISSING")
+            point = D(str(contract.point))
+            spread_points = ((D(str(quoted.ask)) - D(str(quoted.bid))) / point) if point > 0 else D("0")
+            order_entry = D(str(intent_to_check.entry))
+            stop = D(str(intent_to_check.stop_loss))
+            target = D(str(intent_to_check.take_profit))
+            return ai_safety(intent_to_check, broker_request, context={
+                "strategy_id": candidate.strategy_id,
+                "account_trade_mode": expected_mode.name,
+                "tick_age_ms": max(0, int(datetime.now(UTC).timestamp() * 1000) - int(quoted.time_msc)),
+                "bid": quoted.bid, "ask": quoted.ask,
+                "spread_points": round(float(spread_points), 2),
+                "stop_distance_points": round(float(abs(order_entry - stop) / point), 2) if point > 0 else 0,
+                "target_distance_points": round(float(abs(target - order_entry) / point), 2) if point > 0 else 0,
+            })
+
         service = GuardedExecutionService(
             db_path=cfg.db_path,
             execution_enabled=execution_enabled,
             identity_guard=identity_guard,
+            safety_gate=run_ai_gate if ai_safety is not None else None,
+            require_safety_gate=True,
         )
         intent = service.create_intent(risk_result, now_utc=datetime.now(UTC))
         prefer_limit = candidate.strategy_id in {"smc_pro_fvg_v2"}

@@ -5,9 +5,12 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
 
+from forex_ai.advisory.ollama_safety_gate import GateUnavailable, SafetyVerdict
+
 from forex_ai.execution.controller import ExecutionController, SendOutcome
 from forex_ai.execution.reconcile import ReconcileResult, reconcile_intent
 from forex_ai.execution.state import ExecutionState, OrderIntent
+from forex_ai.journal.db import log_audit_event
 from forex_ai.journal.integration_repository import (
     SQLiteIntentRepository,
     load_trading_control,
@@ -34,10 +37,14 @@ class GuardedExecutionService:
         db_path: Path,
         execution_enabled: bool,
         identity_guard: Callable[[], None] | None = None,
+        safety_gate: Callable[[OrderIntent, dict[str, Any]], SafetyVerdict] | None = None,
+        require_safety_gate: bool = False,
     ):
         self.db_path = db_path
         self.execution_enabled = execution_enabled
         self.identity_guard = identity_guard
+        self.safety_gate = safety_gate
+        self.require_safety_gate = require_safety_gate
         self.repository = SQLiteIntentRepository(db_path)
         self.controller = ExecutionController(self.repository)
 
@@ -121,6 +128,36 @@ class GuardedExecutionService:
         current = self.repository.get(intent_id)
         if current is None:
             raise KeyError(intent_id)
+        if self.require_safety_gate:
+            # Required once per genuine new-entry attempt. No AI can enlarge
+            # order volume or bypass the subsequent fresh deterministic checks.
+            if self.safety_gate is None:
+                self._audit_safety_gate(current, "UNAVAILABLE", "AI_GATE_NOT_CONFIGURED")
+                return self._reject_before_send(current, "AI_SAFETY_GATE_UNAVAILABLE")
+            try:
+                verdict = self.safety_gate(current, request)
+                if not isinstance(verdict, SafetyVerdict):
+                    raise GateUnavailable("AI_GATE_INVALID_VERDICT")
+            except Exception:
+                # Provider failure, timeout or malformed JSON: reject before
+                # *any* broker order_send; no implicit BOT_ONLY fallback.
+                self._audit_safety_gate(current, "UNAVAILABLE", "AI_GATE_PROVIDER_UNAVAILABLE")
+                return self._reject_before_send(current, "AI_SAFETY_GATE_UNAVAILABLE")
+            self._audit_safety_gate(
+                current, "ALLOW" if verdict.allowed else "BLOCK", verdict.reason_code,
+                model_fingerprint=verdict.model_fingerprint,
+                latency_ms=verdict.latency_ms,
+                request_digest=verdict.request_digest,
+            )
+            if not verdict.allowed:
+                return self._reject_before_send(current, "AI_SAFETY_GATE_BLOCK:" + verdict.reason_code)
+            # Inference consumed wall time. Expired ARM/candidate risk must
+            # not be rescued by send_once's original timestamp.
+            now = datetime.now(timezone.utc)
+            try:
+                self._assert_entry_allowed(now, ignore_intent_id=intent_id)
+            except Exception:
+                return self._reject_before_send(current, "AI_SAFETY_GATE_CONTROL_EXPIRED")
         # Risk approval is a short-lived lease. Refresh broker/account/safety/risk
         # immediately before the final broker-side order_check and send.
         try:
@@ -156,7 +193,10 @@ class GuardedExecutionService:
         )
         if not final_passed:
             return self._reject_before_send(current, "FINAL_PREFLIGHT_REJECTED")
-        self._assert_entry_allowed(now, ignore_intent_id=intent_id)
+        self._assert_entry_allowed(
+            datetime.now(timezone.utc) if self.require_safety_gate else now,
+            ignore_intent_id=intent_id,
+        )
 
         def audited_send(payload: dict[str, Any]) -> dict[str, Any] | None:
             try:
@@ -207,6 +247,27 @@ class GuardedExecutionService:
             return outcome
 
         return self.controller.send_once(intent_id, request, audited_send, audited_classify)
+
+    def _audit_safety_gate(
+        self, intent: OrderIntent, decision: str, reason_code: str, *,
+        model_fingerprint: str = "", latency_ms: int = 0,
+        request_digest: str = "",
+    ) -> None:
+        # Audit must persist before an ALLOW can reach the send path.
+        # Only fixed metadata, never broker credentials or raw LLM output.
+        log_audit_event(
+            self.db_path,
+            event_type="AI_SAFETY_GATE_DECISION",
+            source="ollama_safety_gate",
+            symbol=intent.symbol,
+            entity_id=intent.intent_id,
+            payload={
+                "candidate_id": intent.candidate_id,
+                "decision": decision, "reason_code": reason_code,
+                "model_fingerprint": model_fingerprint,
+                "latency_ms": latency_ms, "request_digest": request_digest,
+            },
+        )
 
     @staticmethod
     def _fresh_risk_mismatch(intent: OrderIntent, result: BrokerRiskResult, *, now_utc: datetime) -> str | None:
