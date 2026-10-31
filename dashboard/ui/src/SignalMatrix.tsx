@@ -61,17 +61,40 @@ export function SignalMatrix(){
  return <section className="lc-panel lc-matrix-panel">
   <div className="lc-panel-title"><span>03 / INDICATOR SIGNAL MATRIX</span><span>8 × {cols.length} · SHADOW {shadow?.threshold??75}/100</span></div>
   <div className="lc-matrix-scroll">
-   <div className="lc-matrix-table" role="table" aria-label="Strategy indicator diagnostic matrix" style={{"--indicator-count":cols.length} as CSSProperties}>
-    <div className="lc-matrix-head" role="row">
-     {cols.map(c=><span key={c.id} role="columnheader" title={c.description}>{c.label==="STRUCT"?"STR":c.label}</span>)}
+   <div className="lc-matrix-clusters">
+    <div className="lc-cluster">
+     <div className="lc-cluster-label">QUANT DYNAMICS</div>
+     <div className="lc-matrix-table" role="table" aria-label="Quant indicator diagnostic matrix" style={{"--indicator-count":4} as CSSProperties}>
+      <div className="lc-matrix-head" role="row">
+       {cols.slice(0,4).map(c=><span key={c.id} role="columnheader" title={c.description}>{c.label==="STRUCT"?"STR":c.label}</span>)}
+      </div>
+      {rows.map(row=><div className={row.enabled?"lc-matrix-row enabled":"lc-matrix-row"} role="row" key={row.id} title={`${row.label} · SHADOW: ${row.research?.best_score??"—"}/100`}>
+       {row.cells.slice(0,4).map((cell,i)=><button key={cell.indicator||i} type="button" role="cell"
+        className={`lc-matrix-cell ${cell.state.toLowerCase()} ${cell.met?"lit":""} ${cell.core?"core":""}`}
+        title={`${row.label} · ${cell.indicator}: ${cell.state}\n${cell.rule}\n${cell.value??"NO DATA"} · ${cell.closed_utc||"NO CLOSED BAR"}`}
+        aria-label={`${row.label} ${cell.indicator}: ${cell.state}`}
+        onClick={()=>{setSelected({strategy:row.label,cell});setPickedRow(row.id)}} />)}
+      </div>)}
+     </div>
     </div>
-    {rows.map(row=><div className={row.enabled?"lc-matrix-row enabled":"lc-matrix-row"} role="row" key={row.id} title={`${row.label} · SHADOW: ${row.research?.best_score??"—"}/100`}>
-     {row.cells.map((cell,i)=><button key={cell.indicator||i} type="button" role="cell"
-      className={`lc-matrix-cell ${cell.state.toLowerCase()} ${cell.met?"lit":""} ${cell.core?"core":""}`}
-      title={`${row.label} · ${cell.indicator}: ${cell.state}\n${cell.rule}\n${cell.value??"NO DATA"} · ${cell.closed_utc||"NO CLOSED BAR"}`}
-      aria-label={`${row.label} ${cell.indicator}: ${cell.state}`}
-      onClick={()=>{setSelected({strategy:row.label,cell});setPickedRow(row.id)}} />)}
-    </div>)}
+
+    <div className="lc-cluster-sep" />
+
+    <div className="lc-cluster">
+     <div className="lc-cluster-label">PRICE ACTION</div>
+     <div className="lc-matrix-table" role="table" aria-label="Price action indicator diagnostic matrix" style={{"--indicator-count":cols.length-4} as CSSProperties}>
+      <div className="lc-matrix-head" role="row">
+       {cols.slice(4).map(c=><span key={c.id} role="columnheader" title={c.description}>{c.label==="STRUCT"?"STR":c.label}</span>)}
+      </div>
+      {rows.map(row=><div className={row.enabled?"lc-matrix-row enabled":"lc-matrix-row"} role="row" key={row.id} title={`${row.label} · SHADOW: ${row.research?.best_score??"—"}/100`}>
+       {row.cells.slice(4).map((cell,i)=><button key={cell.indicator||i} type="button" role="cell"
+        className={`lc-matrix-cell ${cell.state.toLowerCase()} ${cell.met?"lit":""} ${cell.core?"core":""}`}
+        title={`${row.label} · ${cell.indicator}: ${cell.state}\n${cell.rule}\n${cell.value??"NO DATA"} · ${cell.closed_utc||"NO CLOSED BAR"}`}
+        aria-label={`${row.label} ${cell.indicator}: ${cell.state}`}
+        onClick={()=>{setSelected({strategy:row.label,cell});setPickedRow(row.id)}} />)}
+      </div>)}
+     </div>
+    </div>
    </div>
   </div>
   <div className="lc-shadow-inspector" role="status" aria-label="Shadow-only score breakdown">

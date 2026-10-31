@@ -13,6 +13,12 @@ from typing import Any, Mapping
 
 from forex_ai.integration.adapters import timeframe_snapshot
 from forex_ai.journal.db import log_audit_event, session
+from forex_ai.market.candles import (
+    is_bearish_engulfing,
+    is_bearish_pinbar,
+    is_bullish_engulfing,
+    is_bullish_pinbar,
+)
 from forex_ai.market.indicators import (
     atr, bollinger_squeeze, dmi_adx, ema, rsi, supertrend,
 )
@@ -120,16 +126,26 @@ def _metrics(bars: tuple, tf: str, now: datetime) -> dict[str, dict]:
                             closed_utc=closed_utc)
     ceiling = max(x.high for x in bars[-21:-1])
     floor = min(x.low for x in bars[-21:-1])
+    sweep_bull = last.low < floor and last.close > floor and last.close > last.open
+    sweep_bear = last.high > ceiling and last.close < ceiling and last.close < last.open
+    break_bull = last.close > ceiling
+    break_bear = last.close < floor
     out["STRUCT"] = _classify(last.close,
-                              positive=last.close > ceiling,
-                              negative=last.close < floor,
-                              rule="Close beyond previous 20-bar high/low", closed_utc=closed_utc)
+                              positive=break_bull or sweep_bull,
+                              negative=break_bear or sweep_bear,
+                              rule="PA: Structure Break / Sweep 20-bar", closed_utc=closed_utc)
     a = atr(bars, 14)
     body_ratio = abs(last.close - last.open) / a if a > 0 else None
+    pin_bull = is_bullish_pinbar(last, a) if a > 0 else False
+    pin_bear = is_bearish_pinbar(last, a) if a > 0 else False
+    eng_bull = is_bullish_engulfing(bars[-2], last, a) if a > 0 and len(bars) >= 2 else False
+    eng_bear = is_bearish_engulfing(bars[-2], last, a) if a > 0 and len(bars) >= 2 else False
+    is_bull_trg = (body_ratio is not None and body_ratio >= .5 and last.close > last.open) or pin_bull or eng_bull
+    is_bear_trg = (body_ratio is not None and body_ratio >= .5 and last.close < last.open) or pin_bear or eng_bear
     out["TRG"] = _classify(body_ratio,
-                           positive=body_ratio is not None and body_ratio >= .5 and last.close > last.open,
-                           negative=body_ratio is not None and body_ratio >= .5 and last.close < last.open,
-                           rule="Body ≥ 0.5 × ATR14 + candle direction", closed_utc=closed_utc)
+                           positive=is_bull_trg,
+                           negative=is_bear_trg,
+                           rule="PA: Pinbar / Engulfing / Impulse Body ≥ 0.5 ATR", closed_utc=closed_utc)
     return out
 
 

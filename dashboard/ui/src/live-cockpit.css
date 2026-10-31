@@ -357,23 +357,52 @@
 }
 .lc-dynamics .lc-score-line b { font-size: 11px; color: #f8fafc; }
 
-/* 03 INDICATOR SIGNAL MATRIX — ULTRA COMPACT OPTIC GLASS MATRIX */
+/* 03 INDICATOR SIGNAL MATRIX — DUAL MINI-MATRIX (QUANT + PRICE ACTION) */
 .lc-matrix-panel {
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
 }
 .lc-matrix-scroll {
   overflow: auto;
   min-height: 0;
   flex: 1;
-  padding: 6px 10px;
+  padding: 8px 12px;
   display: flex;
   justify-content: center;
+  align-items: center;
+}
+.lc-matrix-clusters {
+  display: flex;
   align-items: flex-start;
+  gap: 12px;
+  justify-content: center;
+}
+.lc-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lc-cluster-label {
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: var(--neon-cyan);
+  text-align: center;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(0, 242, 254, 0.2);
+}
+.lc-cluster:last-child .lc-cluster-label {
+  color: var(--neon-emerald);
+  border-bottom-color: rgba(16, 185, 129, 0.2);
+}
+.lc-cluster-sep {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.08);
+  margin-top: 13px;
 }
 .lc-matrix-table {
   display: flex;
@@ -384,7 +413,7 @@
 }
 .lc-matrix-head, .lc-matrix-row {
   display: grid;
-  grid-template-columns: repeat(var(--indicator-count, 8), 16px);
+  grid-template-columns: repeat(var(--indicator-count, 4), 16px);
   gap: 4px;
   align-items: center;
   justify-content: center;
