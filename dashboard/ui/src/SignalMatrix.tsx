@@ -61,7 +61,7 @@ export function SignalMatrix(){
  return <section className="lc-panel lc-matrix-panel">
   <div className="lc-panel-title"><span>03 / INDICATOR SIGNAL MATRIX</span><span>8 × {cols.length} · SHADOW {shadow?.threshold??75}/100</span></div>
   <div className="lc-matrix-scroll">
-   <div className="lc-matrix-table" role="table" aria-label="Strategy indicator diagnostic matrix" style={{"--indicator-count":cols.length,minWidth:Math.max(480,168+cols.length*47)} as CSSProperties}>
+   <div className="lc-matrix-table" role="table" aria-label="Strategy indicator diagnostic matrix" style={{"--indicator-count":cols.length} as CSSProperties}>
     <div className="lc-matrix-head" role="row">
      <span role="columnheader">STRATEGY</span>
      {cols.map(c=><span key={c.id} role="columnheader" title={c.description}>{c.label}</span>)}
