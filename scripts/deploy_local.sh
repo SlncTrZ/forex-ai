@@ -184,7 +184,7 @@ if actual != expected:
 digests = {}
 for name in expected:
     data = (directory / name).read_bytes()
-    revision = re.search(rb"Revision: (20\\d{2}-\\d{2}-\\d{2})", data[:1024])
+    revision = re.search(rb"Revision: (20\d{2}-\d{2}-\d{2})", data[:1024])
     if not data or b"PRIVATE CONTROL DOCUMENT" not in data[:1024] or not revision:
         raise SystemExit(f"Refusing deploy: private control revision missing: {name}")
     try:
