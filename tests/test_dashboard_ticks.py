@@ -83,6 +83,7 @@ def test_health_transitions_and_collector_runs_without_broker_write(monkeypatch)
     assert "read" in writes
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="Unix domain sockets required")
 def test_stream_sends_valid_sse_headers_snapshot_and_live_ticks(tmp_path,monkeypatch):
     hub=TickHub()
     monkeypatch.setattr(server,"TICK_HUB",hub)
@@ -114,6 +115,7 @@ def test_stream_sends_valid_sse_headers_snapshot_and_live_ticks(tmp_path,monkeyp
         bg.join(3)
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="Unix domain sockets required")
 def test_reconnect_after_collector_restart_resets_stale_cursor(tmp_path,monkeypatch):
     hub=TickHub()
     monkeypatch.setattr(server,"TICK_HUB",hub)

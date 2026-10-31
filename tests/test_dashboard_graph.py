@@ -93,6 +93,7 @@ def _request(sock:Path,url:str)->tuple[int,dict]:
     return int(data.split(b" ")[1]),json.loads(data.split(b"\r\n\r\n",1)[1])
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="Unix domain sockets required")
 def test_graph_route_honors_cap_and_reads_immutable_db(tmp_path,monkeypatch):
     db=make_db(tmp_path/"graph.db")
     monkeypatch.setattr(server,"load_runtime_config",lambda:SimpleNamespace(db_path=db))

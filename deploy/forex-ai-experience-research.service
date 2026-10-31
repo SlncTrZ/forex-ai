@@ -1,0 +1,11 @@
+[Unit]
+Description=Forex-AI bounded read-only historical experience research
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=FOREX_AI_MODE=OBSERVE
+Environment=FOREX_AI_EXECUTION_ENABLED=0
+ExecStart=%h/.venvs/forex-ai-runtime/bin/python %h/apps/forex-ai/current/scripts/observe_experience_memory.py
+NoNewPrivileges=yes
+UMask=0077

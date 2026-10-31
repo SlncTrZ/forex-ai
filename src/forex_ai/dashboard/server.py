@@ -483,7 +483,10 @@ def read_orders() -> dict:
     return {"orders": [dict(r) for r in rows], "positions": [dict(r) for r in pos]}
 
 
-class ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+_UnixServerBase = getattr(socketserver, "UnixStreamServer", socketserver.TCPServer)
+
+
+class ThreadingUnixServer(socketserver.ThreadingMixIn, _UnixServerBase):
     daemon_threads = True
     request_queue_size = 32
     allow_reuse_address = False
@@ -620,6 +623,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, read_signal_matrix())
             if path.path == "/api/shadow-scores":
                 return self._json(200, read_shadow_scores())
+            if path.path == "/api/experience":
+                from forex_ai.research.experience_memory import read_experience
+                query = parse_qs(path.query)
+                candidate_id = query.get("candidate_id", [None])[0]
+                if (not isinstance(candidate_id, str) or
+                        not 1 <= len(candidate_id) <= 128 or
+                        len(query.get("candidate_id", [])) != 1 or
+                        set(query) != {"candidate_id"}):
+                    return self._json(400, {"error": "INVALID_EXPERIENCE_QUERY"})
+                try:
+                    return self._json(200, read_experience(
+                        load_runtime_config().db_path, candidate_id))
+                except ValueError:
+                    return self._json(400, {"error": "INVALID_EXPERIENCE_INPUT"})
             if path.path == "/api/preflight":
                 result = arm_preflight()
                 return self._json(200, {"account_type": result.account_type, "ready": result.ready, "reasons":list(result.reasons)})

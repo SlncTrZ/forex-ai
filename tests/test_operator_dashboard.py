@@ -158,6 +158,8 @@ def _http(path,method="GET",headers=None,body=b"",socket_path=None):
 
 @pytest.fixture
 def site(tmp_path):
+    if not hasattr(socket, "AF_UNIX"):
+        pytest.skip("Unix domain sockets required")
     path=tmp_path/"dashboard.sock"
     s=server.ThreadingUnixServer(str(path),server.Handler)
     os.chmod(path,0o600)

@@ -1,0 +1,11 @@
+[Unit]
+Description=Forex-AI read-only historical candidate experience evaluation (every 30 minutes)
+
+[Timer]
+OnBootSec=4min
+OnUnitActiveSec=30min
+AccuracySec=60s
+Unit=forex-ai-experience-research.service
+
+[Install]
+WantedBy=timers.target
