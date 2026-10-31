@@ -1,5 +1,5 @@
 /* Forex-AI Command Center — Mei_decs Optic Glassmorphism Theme */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+/* No external font import: Dashboard CSP allows self-hosted styles only. */
 
 :root {
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -559,4 +559,100 @@
 .lc-footer > span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+
+/* UI CONTRACT REPAIR: retain Mei_decs optics; restore structure and controls. */
+.lc-root{min-width:0}
+.lc-right-stack{grid-template-rows:minmax(125px,0.30fr) minmax(0,0.70fr)}
+.lc-dynamics .lc-gauges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 9px}
+.lc-dynamics .lc-regime-head{gap:10px;min-width:0}
+.lc-dynamics .lc-regime-head>div{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lc-gauge{display:flex;flex-direction:column;min-width:0;gap:2px}
+.lc-gauge-top{display:flex;align-items:center;justify-content:space-between;gap:5px}
+.lc-gauge-top strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lc-track{height:5px;min-height:5px;width:100%;position:relative;background:#1a2930;overflow:hidden;border-radius:3px}
+.lc-track>i{position:absolute;top:0;bottom:0;display:block;background:linear-gradient(90deg,var(--neon-emerald),var(--neon-cyan));box-shadow:0 0 8px rgba(0,242,254,.45)}
+.lc-track.bipolar>.lc-track-mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#c6d1da;z-index:2}
+.lc-matrix-scroll{align-items:flex-start;justify-content:center}
+.lc-matrix-clusters{width:max-content;max-width:none;flex:none;gap:9px}
+.lc-cluster{flex:none}
+.lc-cluster-quant .lc-matrix-head,.lc-cluster-quant .lc-matrix-row{grid-template-columns:minmax(115px,128px) repeat(var(--indicator-count,4),16px)}
+.lc-cluster-action .lc-matrix-head,.lc-cluster-action .lc-matrix-row{grid-template-columns:22px repeat(var(--indicator-count,4),16px)}
+.lc-cluster-quant .lc-matrix-head span:first-child{width:auto;text-align:left;justify-self:start;white-space:nowrap;font-size:7px}
+.lc-cluster-action .lc-matrix-head span:first-child{width:auto;text-align:center}
+.lc-matrix-row{min-height:22px}
+.lc-matrix-strategy{min-width:0;display:flex;flex-direction:column;justify-content:center;overflow:hidden;padding-right:4px;gap:1px}
+.lc-matrix-strategy small{display:block;color:#8ea7b4;font-size:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lc-shadow-row{display:flex;align-items:center;justify-content:space-between;gap:3px;width:100%;min-width:0;min-height:12px;border:0;background:transparent;padding:0;text-align:left}
+.lc-shadow-row b{min-width:0;flex:1;font-size:8px;font-weight:700;color:#d2e6ed;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lc-shadow-row strong{font-size:9px;font-variant-numeric:tabular-nums;color:#99b0b8;flex:none}
+.lc-shadow-row strong.lc-shadow-high{color:var(--neon-emerald);text-shadow:0 0 9px rgba(16,185,129,.45)}
+.lc-shadow-row:hover b,.lc-shadow-row:focus-visible b{color:var(--neon-cyan)}
+.lc-matrix-number{font-size:8px;color:#8ea7b4;text-align:center;font-variant-numeric:tabular-nums}
+.lc-shadow-inspector{display:flex;flex-direction:column;gap:3px;min-height:42px;flex:none;border-top:1px solid var(--glass-border);padding:5px 9px;background:rgba(0,0,0,.24)}
+.lc-shadow-info{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;color:#b9ced5;font-size:8px}
+.lc-shadow-info strong{font-size:8px;color:var(--neon-cyan);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lc-shadow-info>span{font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lc-shadow-components{display:flex;gap:4px;white-space:nowrap;overflow-x:auto;scrollbar-width:thin;color:#bdcbd1;font-size:8px;padding:1px 0}
+.lc-shadow-components>span{flex:none;padding:2px 4px;background:rgba(255,255,255,.035);border:1px solid var(--glass-border)}
+.lc-shadow-components b{font-size:7px;color:#e2f3fb}
+.lc-matrix-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;flex:none;min-height:23px;padding:3px 9px;border-top:1px solid var(--glass-border);color:#a3bac3;font-size:8px}
+.lc-matrix-footer>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lc-matrix-footer>span:last-child{flex:none;color:#6f8894}
+
+/* Owner-control dialogs must overlay the viewport, never become inline grid children. */
+.lc-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:rgba(2,4,9,.84);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
+.lc-dialog,.lc-detail{position:relative;min-width:0;width:min(460px,100%);max-height:calc(100dvh - 32px);overflow:auto;border:1px solid rgba(0,242,254,.43);background:linear-gradient(150deg,#121b25,#06090f);color:#e8f4f7;border-radius:8px;box-shadow:0 22px 90px rgba(0,0,0,.9);padding:18px}
+.lc-dialog>.lc-panel-title{margin:-18px -18px 16px}
+.lc-dialog h2{font-size:19px;letter-spacing:1.2px;margin:0 0 12px;color:#e9fbfd}
+.lc-dialog p{color:#b8cbd5;font-size:11px;line-height:1.6;margin:10px 0}
+.lc-dialog input{width:100%;padding:11px;background:#08121c;color:#e8fcff;border:1px solid rgba(0,242,254,.4);border-radius:4px;outline-offset:3px}
+.lc-dialog>button{margin-top:14px;padding:10px 14px;border:1px solid var(--neon-cyan);color:#061015;background:var(--neon-cyan);font-weight:800;border-radius:3px}
+.lc-dialog button:disabled{opacity:.35}
+.lc-detail{width:min(1050px,100%);padding:0}
+.lc-detail .lc-panel-title{position:sticky;top:0;background:#111d28;z-index:1}
+.lc-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}
+.lc-detail-grid>div{min-width:0}
+.lc-detail-grid pre{overflow:auto;white-space:pre-wrap;word-break:break-word;max-height:50dvh;font-size:10px;color:#a5cbd4}
+.lc-detail-grid h3{font-size:10px;color:var(--neon-cyan)}
+
+/* Breakpoints: avoid side columns escaping a clipped 100dvh grid. */
+@media(max-width:1100px){
+ .lc-root{height:auto;min-height:100dvh;overflow:visible;grid-template-rows:auto auto auto auto auto}
+ .lc-main{grid-template-columns:minmax(0,1fr);gap:8px}
+ .lc-stage{min-height:125px}
+ .lc-right-stack{display:flex;flex-direction:column;gap:8px}
+ .lc-dynamics{min-height:142px}
+ .lc-matrix-panel{min-height:345px}
+ .lc-matrix-scroll{overflow:auto;justify-content:center}
+ .lc-bottom{min-height:115px}
+}
+@media(max-width:700px){
+ .lc-root{padding:7px 9px 12px;gap:8px;grid-template-rows:none;display:flex;flex-direction:column;min-height:100dvh;height:auto;overflow:visible}
+ .lc-header{min-height:52px;flex-wrap:wrap}
+ .lc-logo strong{font-size:13px}
+ .lc-logo em{font-size:9px}
+ .lc-header-right{gap:5px;flex-wrap:wrap}
+ .lc-chip{font-size:8px;padding:3px 4px}
+ .lc-finance{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+ .lc-fin-card{min-height:90px;padding:8px}
+ .lc-fin-card strong{font-size:16px}
+ .lc-ticker-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .lc-ticker{padding:3px}
+ .lc-ticker b,.lc-ticker strong{font-size:8px}
+ .lc-stage{min-height:100px}
+ .lc-dynamics{min-height:150px}
+ .lc-dynamics .lc-gauges{gap:6px}
+ .lc-matrix-panel{min-height:355px}
+ .lc-matrix-scroll{justify-content:flex-start;overflow:auto}
+ .lc-matrix-clusters{gap:8px}
+ .lc-matrix-footer>span:last-child{display:none}
+ .lc-bottom{grid-template-columns:minmax(0,1fr);min-height:205px;gap:7px}
+ .lc-health,.lc-controls{min-height:95px}
+ .lc-control-row{flex-wrap:wrap}
+ .lc-control-row button{min-width:80px}
+ .lc-footer{white-space:normal;min-height:25px}
+ .lc-footer span{white-space:normal;overflow-wrap:anywhere}
+ .lc-detail-grid{grid-template-columns:1fr}
 }

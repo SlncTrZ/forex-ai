@@ -81,3 +81,24 @@ test("P2 is an audit-backed research score, not an owner control or live order",
  assert.doesNotMatch(matrix,/api\/control/);
  assert.doesNotMatch(matrix,/order_send/);
 });
+
+test("Mei_decs styling preserves modal overlay, Shadow research and responsive layout",()=>{
+ const cockpit=fs.readFileSync(path.join(root,"src/LiveCockpit.tsx"),"utf8");
+ const matrix=fs.readFileSync(path.join(root,"src/SignalMatrix.tsx"),"utf8");
+ const css=fs.readFileSync(path.join(root,"src/live-cockpit.css"),"utf8");
+ assert.match(cockpit,/className="lc-overlay"/);
+ assert.match(cockpit,/className="lc-dialog"/);
+ assert.match(css,/\.lc-overlay\{position:fixed;inset:0;z-index:1000/);
+ assert.match(css,/\.lc-dialog,\.lc-detail\{position:relative/);
+ assert.match(css,/\.lc-shadow-inspector\{display:flex/);
+ assert.match(css,/\.lc-matrix-footer\{display:flex/);
+ assert.match(css,/\.lc-shadow-row\{display:flex/);
+ assert.match(css,/@media\(max-width:1100px\)/);
+ assert.match(css,/@media\(max-width:700px\)/);
+ assert.match(matrix,/lc-matrix-strategy/);
+ assert.match(matrix,/lc-matrix-number/);
+ assert.match(matrix,/quantCols/);
+ assert.match(matrix,/actionCols/);
+ assert.match(matrix,/setPickedRow/);
+ assert.match(css,/\.lc-track>i\{position:absolute/);
+});
