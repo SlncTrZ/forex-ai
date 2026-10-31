@@ -116,23 +116,11 @@ fi
 cd "$SRC"
 "$TEST_PYTHON" -m pytest "$SRC/tests" -q
 LIVE_APPROVAL="$SRC/config/live-prospective-approval.json"
-if [ -f "$LIVE_APPROVAL" ]; then
-  FOREX_AI_CONFIG_DIR="$SRC/config" PYTHONPATH="$SRC/src" "$TEST_PYTHON" - "$LIVE_APPROVAL" <<'PY'
-import sys
-from pathlib import Path
-from forex_ai.execution.auto_week import AutoWeekApproval
-from forex_ai.strategy.config import bundled_strategy_snapshot
-approval = AutoWeekApproval.load(Path(sys.argv[1]))
-snapshot = bundled_strategy_snapshot()
-if not approval.strategy_approval.approved:
-    raise SystemExit("live prospective approval is not approved")
-if approval.strategy_approval.strategy_config_fingerprint != snapshot.production_fingerprint:
-    raise SystemExit(
-        "live prospective approval fingerprint mismatch: "
-        f"approval={approval.strategy_approval.strategy_config_fingerprint} active={snapshot.production_fingerprint}"
-    )
-PY
-fi
+# Verify the live MT5 trade_mode and account binding at release time.
+# DEMO must not be blocked by an unrelated REAL strategy fingerprint, while
+# REAL/CONTEST/UNKNOWN cannot bypass the original approval gate.
+FOREX_AI_CONFIG_DIR="$HOME_DIR/.config/forex-ai" PYTHONPATH="$SRC/src" \
+    "$TEST_PYTHON" "$SRC/scripts/release_account_preflight.py" --approval "$LIVE_APPROVAL"
 PREFLIGHT_DB="$(mktemp --suffix=.db)"
 MANIFEST_TMP="$(mktemp --suffix=.json)"
 cleanup() { rm -f "$PREFLIGHT_DB" "$MANIFEST_TMP"; }
@@ -179,7 +167,8 @@ rsync -a --delete \
 # _private is intentionally Git-ignored; validate the 5 internal authorities
 # and fingerprint them separately so a deployed release remains auditable.
 "$TEST_PYTHON" - "$STAGING/_private" "$STAGING/private_control_manifest.json" <<'PY'
-import hashlib, json, sys
+import hashlib, json, re, sys
+from datetime import date
 from pathlib import Path
 directory, output = map(Path, sys.argv[1:])
 expected = [
@@ -195,8 +184,15 @@ if actual != expected:
 digests = {}
 for name in expected:
     data = (directory / name).read_bytes()
-    if not data or b"rev 2026-10-30" not in data:
-        raise SystemExit(f"Refusing deploy: private control is empty/stale: {name}")
+    revision = re.search(rb"Revision: (20\\d{2}-\\d{2}-\\d{2})", data[:1024])
+    if not data or b"PRIVATE CONTROL DOCUMENT" not in data[:1024] or not revision:
+        raise SystemExit(f"Refusing deploy: private control revision missing: {name}")
+    try:
+        revision_date = date.fromisoformat(revision.group(1).decode("ascii"))
+    except ValueError:
+        raise SystemExit(f"Refusing deploy: invalid control revision: {name}") from None
+    if revision_date < date(2026, 10, 31):
+        raise SystemExit(f"Refusing deploy: stale private control: {name}")
     digests[name] = hashlib.sha256(data).hexdigest()
 output.write_text(json.dumps({"schema": "forex-ai-private-controls-v1", "sha256": digests}, indent=2) + "\n")
 PY

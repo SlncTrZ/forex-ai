@@ -9,6 +9,7 @@ from time import perf_counter
 
 from forex_ai.advisory.ollama_safety_gate import D3DecisionSafetyGate, GateUnavailable
 from forex_ai.advisory.regime_router import resolve_regime
+from forex_ai.advisory.confluence_scoring import assess_confluence
 from forex_ai.config import load_risk_profile, load_runtime_config
 from forex_ai.integration.engine import DecisionOrchestrator, production_strategy_bindings
 from forex_ai.journal.db import initialize, log_audit_event, session
@@ -103,6 +104,9 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
         deterministic_gate_ok=entry_window_open,
         deterministic_gate_reason="WEEKEND_ENTRY_CUTOFF",
         regime_decision=regime,
+        confluence_for=lambda result, decision: assess_confluence(
+            result, decision, db_path=cfg.db_path, provider=d3,
+        ),
     )
 
     latest_closed_m15 = market.timeframes["M15"].closed_bars[-1].time_utc
@@ -140,6 +144,9 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
             "risk_approved": decision.risk_result.approved if decision.risk_result is not None else False,
             "regime": regime.regime,
             "regime_reason": regime.reason_code,
+            "confluence_score": decision.confluence.score if decision.confluence else None,
+            "confluence_reason": decision.confluence.reason_code if decision.confluence else None,
+            "confluence_risk_multiplier": decision.confluence.risk_multiplier if decision.confluence else None,
             "regime_feature_fingerprint": regime.feature_fingerprint,
             "regime_model_fingerprint": regime.model_fingerprint,
             "risk_reason_codes": list(decision.risk_result.reason_codes) if decision.risk_result is not None else list(decision.blocked_reasons),
@@ -168,6 +175,7 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
             "risk_reason_codes": payload["risk_reason_codes"],
             "regime": regime.regime,
             "regime_reason": regime.reason_code,
+            "confluence_score": decision.confluence.score if decision.confluence else None,
         })
 
     latency_ms = int((perf_counter() - started) * 1000)

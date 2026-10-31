@@ -24,4 +24,16 @@ export interface RegimeDecision {
  observed_at:string;policy_version:string;
 }
 export interface RegimeResponse {source:"forex_ai_regime_audit";generated_at:string;regimes:RegimeDecision[]}
+export interface ConfluenceDecision {
+ candidate_id:string;strategy_id:string;symbol:string;regime:string;
+ score:number;alignment_points:number;value_points:number;
+ momentum_points:number;trigger_points:number;risk_multiplier:string;
+ verdict:"FULL"|"REDUCE"|"VETO";reason_code:string;
+ model_fingerprint:string;input_fingerprint:string;latency_ms:number;
+ observed_at:string;policy_version:string;
+}
+export interface ConfluenceResponse {
+ source:"forex_ai_confluence_audit";generated_at:string;
+ decisions:ConfluenceDecision[];
+}
 export interface OperatorEvent {time:string;level:string;component:string;event:string;details:string}

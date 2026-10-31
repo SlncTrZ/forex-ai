@@ -57,6 +57,7 @@ class RegimeDecision:
     model_fingerprint: str
     latency_ms: int
     policy_version: str = POLICY_VERSION
+    atr_h1: float | None = None
 
     def to_audit(self) -> dict[str, Any]:
         return asdict(self)
@@ -181,7 +182,7 @@ def _decision(features: RegimeFeatures | None, symbol: str, provider: D3Decision
     base = dict(symbol=symbol, regime="UNCERTAIN", quant_regime=features.quant_regime,
                 model_regime=None, confidence=None, closed_h1_utc=features.closed_h1_utc,
                 feature_fingerprint=features.fingerprint, model_fingerprint=model_fp,
-                latency_ms=0)
+                latency_ms=0, atr_h1=features.atr_h1)
     if features.quant_regime == "UNCERTAIN":
         return RegimeDecision(**base, reason_code="REGIME_QUANT_UNCERTAIN")
     if provider is None:

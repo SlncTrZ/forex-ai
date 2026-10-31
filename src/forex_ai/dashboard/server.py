@@ -189,6 +189,42 @@ def read_regimes() -> dict:
             "regimes": list(latest.values())}
 
 
+def read_confluence() -> dict:
+    """Read-only bounded D3 candidate score decisions; no raw model input."""
+    fields = (
+        "candidate_id", "strategy_id", "symbol", "regime", "score",
+        "alignment_points", "value_points", "momentum_points", "trigger_points",
+        "risk_multiplier", "verdict", "reason_code", "model_fingerprint",
+        "input_fingerprint", "latency_ms", "policy_version",
+    )
+    decisions = []
+    with _db() as con:
+        rows = con.execute(
+            "SELECT timestamp_utc,payload_json FROM audit_events "
+            "WHERE event_type='D3_CONFLUENCE_DECISION' ORDER BY id DESC LIMIT 40"
+        ).fetchall()
+    for row in rows:
+        try:
+            data = json.loads(row["payload_json"])
+            if not isinstance(data, dict):
+                continue
+            if data.get("verdict") not in ("FULL", "REDUCE", "VETO"):
+                continue
+            score = data.get("score")
+            if type(score) is not int or not 0 <= score <= 100:
+                continue
+            item = {k: data.get(k) for k in fields}
+            item["observed_at"] = str(row["timestamp_utc"])
+            decisions.append(item)
+        except (ValueError, TypeError):
+            continue
+    return {
+        "source": "forex_ai_confluence_audit",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "decisions": decisions,
+    }
+
+
 def read_orders() -> dict:
     with _db() as con:
         rows = con.execute("""SELECT symbol,side,volume,state,created_at_utc,updated_at_utc,last_reason
@@ -330,6 +366,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, read_orders())
             if path.path == "/api/regimes":
                 return self._json(200, read_regimes())
+            if path.path == "/api/confluence":
+                return self._json(200, read_confluence())
             if path.path == "/api/preflight":
                 result = arm_preflight()
                 return self._json(200, {"account_type": result.account_type, "ready": result.ready, "reasons":list(result.reasons)})

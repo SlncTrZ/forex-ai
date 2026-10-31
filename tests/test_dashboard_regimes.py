@@ -43,3 +43,32 @@ def test_regime_view_is_latest_per_symbol_and_sanitized(tmp_path, monkeypatch):
     assert "token" not in xau and "password" not in xau
     assert "NEVER_OUTPUT_THIS" not in str(data)
     assert isinstance(xau["age_seconds"], int)
+
+
+
+def test_confluence_dashboard_is_audit_only(tmp_path, monkeypatch):
+    db = tmp_path / "audit.db"
+    initialize(db)
+    monkeypatch.setattr(server, "load_runtime_config", lambda: SimpleNamespace(db_path=db))
+    assert server.read_confluence()["decisions"] == []
+    log_audit_event(db, event_type="D3_CONFLUENCE_DECISION",
+                    source="production_v1_scanner", symbol="XAUUSDm", payload={
+                        "candidate_id": "candidate-fingerprint",
+                        "strategy_id": "supertrend_volume_m5",
+                        "symbol": "XAUUSDm", "regime": "UPTREND",
+                        "score": 76, "alignment_points": 30, "value_points": 16,
+                        "momentum_points": 18, "trigger_points": 12,
+                        "risk_multiplier": "0.5", "verdict": "REDUCE",
+                        "reason_code": "CONFLUENCE_REDUCED", "model_fingerprint": "fp",
+                        "input_fingerprint": "hash", "latency_ms": 550,
+                        "policy_version": "confluence-v1",
+                        "password": "SHOULD_NEVER_RENDER",
+                        "api_key": "NOT_A_REAL_KEY",
+                    })
+    output = server.read_confluence()
+    assert output["source"] == "forex_ai_confluence_audit"
+    assert len(output["decisions"]) == 1
+    row = output["decisions"][0]
+    assert row["score"] == 76 and row["risk_multiplier"] == "0.5"
+    assert "password" not in row and "api_key" not in row
+    assert "SHOULD_NEVER_RENDER" not in str(output)

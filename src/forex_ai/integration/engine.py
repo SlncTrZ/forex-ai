@@ -8,6 +8,7 @@ from typing import Callable
 
 from forex_ai.advisory.models import Advisory, AdvisoryAction
 from forex_ai.advisory.regime_router import RegimeDecision, route_candidate
+from forex_ai.advisory.confluence_scoring import ConfluenceDecision
 from forex_ai.mt5.contracts import AccountSnapshot, SafetySnapshot, SymbolContract, TickSnapshot
 from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine, BrokerRiskResult, MarginCalculator, PendingExposure, ProfitCalculator, RiskContext
 from forex_ai.risk.profile import RiskProfile
@@ -42,6 +43,7 @@ class IntegratedDecision:
     advisory: Advisory | None
     risk_result: BrokerRiskResult | None
     blocked_reasons: tuple[str, ...] = ()
+    confluence: ConfluenceDecision | None = None
 
     @property
     def executable(self) -> bool:
@@ -108,6 +110,7 @@ class DecisionOrchestrator:
         deterministic_gate_ok: bool = True,
         deterministic_gate_reason: str = "DETERMINISTIC_GATE_BLOCKED",
         regime_decision: RegimeDecision | None = None,
+        confluence_for: Callable[[StrategyResult, RegimeDecision], ConfluenceDecision] | None = None,
     ) -> tuple[IntegratedDecision, ...]:
         now = now_utc.astimezone(timezone.utc)
         persist_safety_snapshot(self.db_path, safety)
@@ -149,9 +152,25 @@ class DecisionOrchestrator:
                     decisions.append(IntegratedDecision(strategy_result, advisory, None, ("ADVISORY_VETO",)))
                     continue
 
+            confluence = None
+            if confluence_for is not None:
+                if regime_decision is None:
+                    raise ValueError("confluence requires regime")
+                confluence = confluence_for(strategy_result, regime_decision)
+                if confluence.candidate_id != candidate.candidate_id:
+                    raise ValueError("confluence candidate mismatch")
+                if not confluence.allowed:
+                    decisions.append(IntegratedDecision(
+                        strategy_result, advisory, None,
+                        (confluence.reason_code,), confluence,
+                    ))
+                    continue
+
             multiplier = Decimal("1")
             if advisory is not None and advisory.action is AdvisoryAction.REDUCE_RISK:
                 multiplier = Decimal(str(advisory.risk_multiplier))
+            if confluence is not None:
+                multiplier = min(multiplier, confluence.multiplier)
             effective_profile = self._effective_profile(multiplier)
             risk_result = BrokerAwareRiskEngine(effective_profile).evaluate(
                 candidate_input(candidate, now_utc=now, contract=contract),
@@ -172,7 +191,7 @@ class DecisionOrchestrator:
                     reason_codes=tuple(dict.fromkeys((*risk_result.reason_codes, "PORTFOLIO_SLOT_CLAIMED"))),
                 )
             persist_risk_result(self.db_path, risk_result, created_at_utc=now)
-            decisions.append(IntegratedDecision(strategy_result, advisory, risk_result, risk_result.reason_codes))
+            decisions.append(IntegratedDecision(strategy_result, advisory, risk_result, risk_result.reason_codes, confluence))
             if risk_result.approved:
                 rolling_context = replace(
                     rolling_context,

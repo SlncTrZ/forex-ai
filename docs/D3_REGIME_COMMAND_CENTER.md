@@ -16,7 +16,10 @@ MT5 broker bars (M5/M15/H1/H4)
   -> Quant/D3 agreement and confidence >= 0.75
   -> regime decision persisted to audit once per unique H1 feature fingerprint
   -> shared Strategy Router vetoes incompatible candidates BEFORE broker risk
-  -> unchanged BrokerAwareRiskEngine + pending execution service
+  -> evidence-capped D3 Confluence Score (30/25/25/20; 0..100)
+       score >=80 FULL (original risk cap); 65..79 REDUCE (x0.5); <65 VETO
+  -> BrokerAwareRiskEngine with original or reduced maximum risk budget
+  -> pending execution service
   -> existing independent D3 pre-execution + live broker validation
   -> MT5 order_check / order_send (guarded, once)
 ```
@@ -62,11 +65,35 @@ closed-time, feature/model fingerprints, reason_code, policy_version,
 inference latency. No credentials, full API responses, account login IDs
 or arbitrary model prompts are stored.
 
+## Confluence scoring (experimental policy; active candidate gate)
+`src/forex_ai/advisory/confluence_scoring.py` sends one authenticated D3
+request with three structured ordinal `score` questions: value area,
+momentum and trigger quality. The fourth bucket (Regime alignment, 30
+points) is verified by the existing deterministic Regime Router.
+
+`score` (ordinal 0..2) is validated against provider probability
+distribution; it is not a calibrated win probability. The measured
+strategy evidence limits the maximum awarded points:
+- Value area: source-backed Supertrend/Sweep/FVG/Keylevel reference, with
+  H1 ATR distance where available. No verified reference means 0 points.
+- Momentum: verified volume ratio. No evidence means 0 points.
+- Trigger: exact allowlisted confirmation code from the strategy.
+- D3 cannot elevate absent evidence, create a candidate, change the risk
+  profile or override broker stops.
+
+Decision `D3_CONFLUENCE_DECISION` is cached/audited by candidate, verified
+evidence hash, model and policy fingerprint. D3 unavailable or malformed
+response → VETO. The thresholds are provisional until chronological
+walk-forward has demonstrated incremental value. `REDUCE` reduces the
+existing Risk Engine's per-trade budget; fixed-lot override remains bounded
+by the reduced broker-risk approval.
+
 ## Command Center
-`GET /api/regimes` is **read-only** and returns the latest observed audit
-decision per symbol with an age calculation. React Command Center renders
-real values only, flags stale H1 decisions and displays an explicit empty
-state before a first audit event. No second browser-to-broker order path.
+`GET /api/regimes` and `GET /api/confluence` are **read-only** audit
+views. React Command Center renders real values only, flags stale H1
+decisions and shows empty states before first audit events. Confluence
+cards include score breakdown, risk multiplier, action and reason.
+No second browser-to-broker order path.
 
 Existing HTTP dashboard is owner-only over SSH/Unix socket; this change
 does **not** add remote public login or expose a new TCP port.
@@ -79,10 +106,10 @@ does **not** add remote public login or expose a new TCP port.
 - An owner-reviewed immutable release, risk snapshot, service preflight and
   rollback test are required before active deployment on .227.
 
-**Not yet implemented in this phase:** D3 candidate-level Confluence Score
-(30/25/25/20), calibrated score thresholds, position-size reduction, a
-reproducible .152 walk-forward A/B evaluation, or a public Command Center.
+**Not yet validated/implemented:** statistically calibrated score thresholds,
+a reproducible .152 walk-forward A/B evaluation, or a public Command Center.
 No score-based permission to increase the existing risk limit is granted.
+All scoring thresholds are experimental and may reject many valid trades.
 
 ## Known evidence and next milestone
 The 2026 research reports under `_private/research/` contain conflicting
