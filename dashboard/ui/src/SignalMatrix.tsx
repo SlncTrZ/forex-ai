@@ -63,20 +63,12 @@ export function SignalMatrix(){
   <div className="lc-matrix-scroll">
    <div className="lc-matrix-table" role="table" aria-label="Strategy indicator diagnostic matrix" style={{"--indicator-count":cols.length} as CSSProperties}>
     <div className="lc-matrix-head" role="row">
-     <span role="columnheader">STRATEGY</span>
-     {cols.map(c=><span key={c.id} role="columnheader" title={c.description}>{c.label}</span>)}
+     {cols.map(c=><span key={c.id} role="columnheader" title={c.description}>{c.label==="STRUCT"?"STR":c.label}</span>)}
     </div>
-    {rows.map(row=><div className={row.enabled?"lc-matrix-row enabled":"lc-matrix-row"} role="row" key={row.id}>
-     <span className="lc-matrix-strategy" role="rowheader" title={row.id}>
-      <button type="button" className="lc-shadow-row" onClick={()=>setPickedRow(row.id)}
-       title={`Shadow-only: ${row.research?.verdict||"NO_AUDIT"}. No MT5 order permission.`}>
-       <b>{row.label}</b><strong className={row.research?.verdict==="SHADOW_THRESHOLD_MET"?"lc-shadow-high":""}>{row.research?.best_score==null?"—":row.research.best_score}</strong>
-      </button>
-      <small>{row.symbol.startsWith("BTC")?"BTC":"XAU"} · {row.tf} · {row.enabled?"ON":"OFF"} · {row.research?.best_direction||"—"}</small>
-     </span>
+    {rows.map(row=><div className={row.enabled?"lc-matrix-row enabled":"lc-matrix-row"} role="row" key={row.id} title={`${row.label} · SHADOW: ${row.research?.best_score??"—"}/100`}>
      {row.cells.map((cell,i)=><button key={cell.indicator||i} type="button" role="cell"
       className={`lc-matrix-cell ${cell.state.toLowerCase()} ${cell.met?"lit":""} ${cell.core?"core":""}`}
-      title={`${row.label} · ${cell.indicator} · ${cell.state}\n${cell.rule}\n${cell.value??"NO DATA"} · ${cell.closed_utc||"NO CLOSED BAR"}`}
+      title={`${row.label} · ${cell.indicator}: ${cell.state}\n${cell.rule}\n${cell.value??"NO DATA"} · ${cell.closed_utc||"NO CLOSED BAR"}`}
       aria-label={`${row.label} ${cell.indicator}: ${cell.state}`}
       onClick={()=>{setSelected({strategy:row.label,cell});setPickedRow(row.id)}} />)}
     </div>)}
