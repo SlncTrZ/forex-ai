@@ -51,3 +51,19 @@ test("client renders verified graph and reuses owner-gated endpoints",()=>{
  assert.match(file,/X-Forex-AI-Action/);
  assert.match(file,/Before\/after baseline is not yet instrumented/);
 });
+
+test("P1 separates stream card, reserved visual stage and audit-backed matrix",()=>{
+ const source=fs.readFileSync(path.join(root,"src/LiveCockpit.tsx"),"utf8");
+ const matrix=fs.readFileSync(path.join(root,"src/SignalMatrix.tsx"),"utf8");
+ const css=fs.readFileSync(path.join(root,"src/live-cockpit.css"),"utf8");
+ assert.doesNotMatch(source,/label="EQUITY · MT5"/);
+ assert.match(source,/label="REALIZED PnL"/);
+ assert.match(source,/MARKET STREAM/);
+ assert.match(source,/01 \/ VISUAL STAGE/);
+ assert.match(source,/02 \/ QUANT \+ D3 DYNAMICS/);
+ assert.match(matrix,/03 \/ INDICATOR SIGNAL MATRIX/);
+ assert.match(matrix,/api\/signal-matrix/);
+ assert.match(matrix,/Awaiting|Waiting for closed-candle evidence/);
+ assert.match(css,/--indicator-count/);
+ assert.match(source,/05 \/ OWNER CONTROLS/);
+});

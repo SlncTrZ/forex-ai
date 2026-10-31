@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {Activity,AlertTriangle,BarChart3,GitBranch,LockKeyhole,RefreshCw,ShieldCheck,ShieldOff,X,Zap} from "lucide-react";
 import type {Quote,StatusPayload,RegimeDecision,ConfluenceDecision} from "./types";
+import {SignalMatrix} from "./SignalMatrix";
 
 type LiveStatus=StatusPayload & {
  account:StatusPayload["account"] & {financial_state?:string;financial_source?:string;financial_reason?:string};
@@ -32,7 +33,7 @@ function PriceChart({history,symbol}:{history:Quote[];symbol:string}){
    {!points&&<span className="lc-empty-chart">NO RECENT VERIFIED TICKS</span>}
  </div>
 }
-function Gauge({name,value,min=0,max=1,subtitle}:{name:string;value:number|null;min?:number;max?:number;subtitle:string}){
+function Gauge({name,value,min=0,max=1,subtitle}:{name:string;value:number|null;min?:number;max?:number;subtitle?:string}){
  const frac=value==null?0:limit((value-min)/(max-min));
  const formatted=value==null?"—":name==="REGIME LEVEL"?String(Math.round(value))+"/5":value.toFixed(2);
  return <div className="lc-gauge">
@@ -40,7 +41,7 @@ function Gauge({name,value,min=0,max=1,subtitle}:{name:string;value:number|null;
    <div className={min<0?"lc-track bipolar":"lc-track"}><div className="lc-track-mid"/>
      {value!=null&&<i style={min<0?{left:`${Math.min(frac,.5)*100}%`,width:`${Math.abs(frac-.5)*100}%`}:{left:0,width:`${frac*100}%`}}/>}
    </div>
-   <small>{subtitle}</small>
+   {subtitle&&<small>{subtitle}</small>}
  </div>
 }
 function Card({label,value,subtitle,negative}:{label:string;value:string;subtitle:string;negative?:boolean}){
@@ -151,46 +152,44 @@ export function LiveCockpit(){
    </div>
   </header>
   <section className="lc-finance">
-   <Card label="BALANCE · MT5" value={cash(acct?.balance)} subtitle={financeOk?"BROKER VERIFIED":"BROKER DATA UNAVAILABLE"}/>
-   <Card label="EQUITY · MT5" value={cash(acct?.equity)} subtitle={financeOk?"LIVE BROKER SNAPSHOT":"STALE — VALUE HIDDEN"}/>
-   <Card label="FLOATING PnL" value={cash(floating)} subtitle="OPEN BROKER EXPOSURE" negative={floating!=null&&floating<0}/>
-   <Card label="REALIZED PnL" value={cash(realized)} subtitle="UTC TODAY · TRADE DEALS" negative={realized!=null&&realized<0}/>
-  </section>
-  <main className="lc-main">
-   <section className="lc-panel lc-market">
-    <div className="lc-panel-title"><span>01 / BROKER MARKET STREAM</span><span>{stream==="CONNECTED"?"● CONNECTED":"● "+stream}</span></div>
-    <nav className="lc-symbol-tabs">
-     {watchSymbols.map(s=>{const q=watch[s]?.quote;const age=q?Math.max(0,(clock-q.broker_time_ms)/1000):null;
-      const live=age!=null&&age<15;const off=s.startsWith("XAU")&&new Date(clock).getUTCDay()===6&&!live;
-      return <button key={s} onClick={()=>setSelected(s)} className={selected===s?"selected":""}>
-       <b>{s.replace("m","")}</b><span className={live?"lc-green":off?"lc-gold":"lc-red"}>{live?"● LIVE":off?"● OFF SESSION":"● STALE"}</span>
-      </button>})}
-    </nav>
-    <div className="lc-quote">
-     <div><small>{selected} · BID</small><strong>{quote?nfmt(quote.bid,selected.startsWith("BTC")?2:3):"—"}</strong></div>
-     <div><small>ASK</small><strong>{quote?nfmt(quote.ask,selected.startsWith("BTC")?2:3):"—"}</strong></div>
-     <div><small>SPREAD</small><strong>{quote?nfmt(quote.spread):"—"}</strong></div>
-     <div><small>MARKET</small><strong className={tickLive?"lc-green":"lc-gold"}>{marketLabel}</strong></div>
+    <Card label="BALANCE · MT5" value={cash(acct?.balance)} subtitle={financeOk?"BROKER VERIFIED":"BROKER DATA UNAVAILABLE"}/>
+    <Card label="REALIZED PnL" value={cash(realized)} subtitle="UTC TODAY · TRADE DEALS" negative={realized!=null&&realized<0}/>
+    <Card label="FLOATING PnL" value={cash(floating)} subtitle="OPEN BROKER EXPOSURE" negative={floating!=null&&floating<0}/>
+    <div className="lc-fin-card lc-stream-card">
+     <small>MARKET STREAM <em className={stream==="CONNECTED"?"lc-green":"lc-gold"}>● {stream}</em></small>
+     <div className="lc-ticker-list">
+      {watchSymbols.map(symbol=>{const q=watch[symbol]?.quote;const age=q?(clock-q.broker_time_ms)/1000:null;const live=age!=null&&age>=0&&age<15;
+       return <button key={symbol} type="button" onClick={()=>setSelected(symbol)} className={selected===symbol?"lc-ticker selected":"lc-ticker"}>
+        <b>{symbol.replace(/m$/,"")}</b><strong>{q?nfmt(q.bid,2):"—"}</strong><i className={live?"lc-dot live":"lc-dot"} aria-label={live?"live":"stale"}/>
+       </button>;
+      })}
+     </div>
     </div>
-    <PriceChart history={current.history} symbol={selected}/>
-    <div className="lc-market-foot"><span>{current.history.length} VERIFIED TICKS</span><span>LAST TICK {tickAge==null?"—":Math.round(tickAge)+"s AGO"}</span><span>MONITOR ONLY · BROKER DATA</span></div>
    </section>
-   <section className="lc-panel lc-dynamics">
-    <div className="lc-panel-title"><span>02 / QUANT + D3 DYNAMICS</span><span>READ ONLY</span></div>
-    <div className="lc-regime-head"><div><small>QUANT H1 · OBSERVED</small><strong>{regime?.quant_regime||"UNAVAILABLE"}</strong></div><div><small>D3 · {confirmed?"CONFIRMED":"UNCONFIRMED"}</small><strong>{regime?.model_regime||regime?.reason_code||"NO FRESH AUDIT"}</strong></div></div>
-    <div className="lc-gauges">
-     <Gauge name="REGIME LEVEL" value={regimeLevel} max={5} subtitle="0–5 · D3 CONFIDENCE DISPLAY ONLY"/>
-     <Gauge name="CONFIDENCE" value={conf} subtitle="D3 CONFIDENCE · NOT P(WIN)"/>
-      <Gauge name="CHOICE PROB." value={probability} subtitle="SELECTED CLASS · NOT P(WIN)"/>
-     <Gauge name="BULL / BEAR" value={signal.bull} min={-1} max={1} subtitle="−1…+1 · VERIFIED TICK DIRECTION"/>
-     <Gauge name="MOMENTUM" value={signal.momentum} subtitle="0–1 · TICK DIRECTIONAL EFFICIENCY"/>
-     <Gauge name="VOLATILITY" value={signal.volatility} subtitle="0–1 · RANGE / 10× SPREAD"/>
+   <main className="lc-main">
+    <section className="lc-panel lc-stage">
+     <div className="lc-panel-title"><span>01 / VISUAL STAGE</span><span>RESERVED</span></div>
+     <div className="lc-stage-blank" aria-label="Reserved for future visualization"/>
+    </section>
+    <div className="lc-right-stack">
+     <section className="lc-panel lc-dynamics">
+      <div className="lc-panel-title"><span>02 / QUANT + D3 DYNAMICS</span><span>{selected} · {marketLabel}</span></div>
+      <div className="lc-regime-head"><div><strong>Q · {regime?.quant_regime||"UNAVAILABLE"}</strong></div><div><strong>{confirmed?"D3 ✓":"D3"} · {regime?.model_regime||"UNAVAILABLE"}</strong></div></div>
+      <div className="lc-gauges">
+       <Gauge name="REGIME LEVEL" value={regimeLevel} max={5}/>
+       <Gauge name="CONFIDENCE" value={conf}/>
+       <Gauge name="CHOICE PROB." value={probability}/>
+       <Gauge name="BULL / BEAR" value={signal.bull} min={-1} max={1}/>
+       <Gauge name="MOMENTUM" value={signal.momentum}/>
+       <Gauge name="VOLATILITY" value={signal.volatility}/>
+      </div>
+      <div className="lc-score-line"><span>CONFLUENCE</span><b>{confluence.find(x=>x.symbol===selected)?.score??"—"} / 100</b><span>{confluence.find(x=>x.symbol===selected)?.verdict||"NO CANDIDATE"}</span></div>
+     </section>
+     <SignalMatrix/>
     </div>
-    <div className="lc-score-line"><span>LAST CONFLUENCE</span><b>{confluence.find(x=>x.symbol===selected)?.score??"—"} / 100</b><span>{confluence.find(x=>x.symbol===selected)?.verdict||"NO CANDIDATE"}</span></div>
-   </section>
-  </main>
-  <section className="lc-bottom">
-   <div className="lc-panel lc-health"><div className="lc-panel-title">03 / INFRASTRUCTURE HEALTH</div>
+   </main>
+   <section className="lc-bottom">
+   <div className="lc-panel lc-health"><div className="lc-panel-title">04 / INFRASTRUCTURE HEALTH</div>
     <div className="lc-health-items">
      <span className="lc-green">● MT5 {status?.account.bound?"BOUND":"UNVERIFIED"}</span>
      <span className={activeScanner?"lc-green":"lc-red"}>● SCANNER {scannerStatus==="failed"?"FAILED":scannerStatus==="active"?"RUNNING":scannerStatus==="inactive"?"IDLE":"UNKNOWN"}</span>
@@ -199,7 +198,7 @@ export function LiveCockpit(){
      <span>● ACCOUNT {status?.account.type||"—"}</span>
     </div>
    </div>
-   <div className="lc-panel lc-controls"><div className="lc-panel-title">04 / OWNER CONTROLS <span>{entryOk?"ARMED":"BLOCKED"}</span></div>
+   <div className="lc-panel lc-controls"><div className="lc-panel-title">05 / OWNER CONTROLS <span>{entryOk?"ARMED":"BLOCKED"}</span></div>
     <div className="lc-control-row">
      <button disabled={!status} onClick={()=>setAction("arm")}><ShieldCheck size={14}/> ARM</button>
      <button disabled={!status} onClick={()=>setAction("disarm")}><ShieldOff size={14}/> DISARM</button>

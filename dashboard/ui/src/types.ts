@@ -38,3 +38,22 @@ export interface ConfluenceResponse {
  decisions:ConfluenceDecision[];
 }
 export interface OperatorEvent {time:string;level:string;component:string;event:string;details:string}
+
+export type MatrixState="BULL"|"BEAR"|"NEUTRAL"|"UNKNOWN"|"STALE"|"NA";
+export interface MatrixCell {
+ indicator:string;state:MatrixState;met:boolean;value:number|null;core:boolean;
+ rule:string;closed_utc:string|null;
+}
+export interface MatrixStrategy {
+ strategy_id:string;label:string;timeframe:"M5"|"M15";
+ enabled:boolean;eligible:boolean;cells:MatrixCell[];
+}
+export interface SymbolMatrix {
+ symbol:string;market_state:string;observed_at:string;
+ age_seconds:number;diagnostic_only:true;rows:MatrixStrategy[];
+}
+export interface SignalMatrixResponse {
+ source:"forex_ai_signal_matrix_audit";generated_at:string;policy_version:string;
+ columns:{id:string;label:string;description:string}[];
+ matrices:SymbolMatrix[];
+}

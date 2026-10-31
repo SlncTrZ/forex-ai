@@ -10,6 +10,8 @@ from forex_ai.advisory.ollama_safety_gate import D3DecisionSafetyGate, GateUnava
 from forex_ai.config import load_runtime_config
 from forex_ai.journal.db import initialize
 from forex_ai.market.intelligence import observe_symbol, observe_unavailable
+from forex_ai.market.signal_matrix import build_matrix, observe_matrix
+from forex_ai.strategy.config import load_strategy_snapshot
 from forex_ai.mt5.client import MT5Client
 from forex_ai.mt5.symbols import resolve_symbol_strict
 
@@ -29,6 +31,12 @@ def main() -> int:
     except GateUnavailable:
         provider = None
     client = MT5Client(cfg)
+    # Signal telemetry is independent; a rejected strategy config cannot
+    # terminate the existing per-symbol H1 observer.
+    try:
+        strategy_snapshot = load_strategy_snapshot()
+    except (ValueError, OSError):
+        strategy_snapshot = None
     statuses: list[dict] = []
     try:
         try:
@@ -42,7 +50,8 @@ def main() -> int:
             return 1
         try:
             available = client.symbol_candidates(monitors)
-            h1 = client.constants()["H1"]
+            constants = client.constants()
+            h1 = constants["H1"]
         except Exception:
             for name in monitors:
                 observe_unavailable(name, reason="OBSERVATION_FAILED", db_path=cfg.db_path, now_utc=now)
@@ -65,6 +74,23 @@ def main() -> int:
                                         now_utc=datetime.now(UTC))
                 statuses.append({"symbol": actual, "reason_code": result["reason_code"],
                                  "market_state": result["market_state"]})
+                # Read-only diagnostic matrix. No candidate, execution or risk
+                # functionality imports this audit. Missing M5/M15 bars -> UNKNOWN.
+                if strategy_snapshot is not None:
+                    try:
+                        frames = {}
+                        if result["market_state"] == "ACTIVE":
+                            for tf in ("M5", "M15"):
+                                if tf in constants:
+                                    frames[tf] = client.bars(actual, constants[tf], 270) or []
+                        matrix = build_matrix(
+                            actual, bars_by_tf=frames, snapshot=strategy_snapshot,
+                            market_state=result["market_state"], now_utc=datetime.now(UTC),
+                        )
+                        observe_matrix(cfg.db_path, matrix)
+                    except Exception:
+                        # Never interrupt independent market observation.
+                        pass
             except Exception:
                 observe_unavailable(actual, reason="OBSERVATION_FAILED", db_path=cfg.db_path, now_utc=datetime.now(UTC))
                 statuses.append({"symbol": actual, "reason_code": "OBSERVATION_FAILED"})

@@ -244,6 +244,93 @@ def read_regimes() -> dict:
             "regimes": list(latest.values())}
 
 
+def read_signal_matrix() -> dict:
+    """Read the latest sanitized closed-candle matrix per symbol, never raw audit JSON."""
+    from forex_ai.market.signal_matrix import COLUMNS, ROWS, POLICY
+
+    known_cols = tuple(k for k, _ in COLUMNS)
+    known_rows = {r[0] for r in ROWS}
+    matrices = []
+    seen: set[str] = set()
+    now = datetime.now(UTC)
+    with _db() as con:
+        rows = con.execute(
+            "SELECT timestamp_utc,symbol,payload_json FROM audit_events "
+            "WHERE event_type='SIGNAL_MATRIX_OBSERVATION' ORDER BY id DESC LIMIT 48"
+        ).fetchall()
+    for row in rows:
+        symbol = str(row["symbol"] or "")
+        if symbol in seen or len(seen) >= 6 or not symbol or len(symbol) > 32:
+            continue
+        try:
+            raw = json.loads(row["payload_json"])
+            if not isinstance(raw, dict) or raw.get("policy_version") != POLICY or raw.get("symbol") != symbol:
+                continue
+            observed = datetime.fromisoformat(str(raw["observed_at"])).astimezone(UTC)
+            age = (now - observed).total_seconds()
+            if age < -60:
+                continue
+            columns = raw["columns"]
+            entries = raw["rows"]
+            if (not isinstance(columns, list) or
+                    [c.get("id") for c in columns if isinstance(c, dict)] != list(known_cols) or
+                    len(columns) != len(known_cols) or not isinstance(entries, list) or
+                    len(entries) != len(ROWS)):
+                continue
+            sanitized = []
+            seen_strategies = set()
+            stale = age > 960 or raw.get("market_state") != "ACTIVE"
+            for entry in entries:
+                key = entry["strategy_id"]
+                if key not in known_rows or key in seen_strategies:
+                    raise ValueError("INVALID_MATRIX_ROW")
+                seen_strategies.add(key)
+                cells = entry["cells"]
+                if not isinstance(cells, list) or len(cells) != len(known_cols):
+                    raise ValueError("INVALID_MATRIX_CELLS")
+                clean = []
+                for id_, cell in zip(known_cols, cells, strict=True):
+                    if not isinstance(cell, dict) or cell.get("indicator") != id_:
+                        raise ValueError("INVALID_MATRIX_INDICATOR")
+                    state = cell.get("state")
+                    if state not in ("BULL", "BEAR", "NEUTRAL", "UNKNOWN", "STALE", "NA"):
+                        raise ValueError("INVALID_MATRIX_STATE")
+                    value = cell.get("value")
+                    if value is not None and (type(value) not in (int, float) or
+                                              not __import__("math").isfinite(value)):
+                        raise ValueError("INVALID_MATRIX_VALUE")
+                    if stale and state != "NA":
+                        state = "STALE"
+                    clean.append({
+                        "indicator": id_, "state": state,
+                        "met": state in ("BULL", "BEAR"),
+                        "value": value if not stale else None,
+                        "core": bool(cell.get("core")),
+                        "rule": str(cell.get("rule") or "")[:128],
+                        "closed_utc": str(cell.get("closed_utc"))[:40] if cell.get("closed_utc") else None,
+                    })
+                sanitized.append({
+                    "strategy_id": key, "label": str(entry.get("label") or key)[:48],
+                    "timeframe": entry["timeframe"] if entry.get("timeframe") in ("M5", "M15") else "M5",
+                    "enabled": bool(entry.get("enabled")), "eligible": bool(entry.get("eligible")),
+                    "cells": clean,
+                })
+            matrices.append({
+                "symbol": symbol, "market_state": "STALE" if stale else "ACTIVE",
+                "observed_at": observed.isoformat(), "age_seconds": max(0, int(age)),
+                "diagnostic_only": True, "rows": sanitized,
+            })
+            seen.add(symbol)
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            continue
+    return {
+        "source": "forex_ai_signal_matrix_audit", "generated_at": now.isoformat(),
+        "policy_version": POLICY,
+        "columns": [{"id": k, "label": k, "description": desc} for k, desc in COLUMNS],
+        "matrices": matrices,
+    }
+
+
 def read_confluence() -> dict:
     """Read-only bounded D3 candidate score decisions; no raw model input."""
     fields = (
@@ -423,6 +510,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, read_regimes())
             if path.path == "/api/confluence":
                 return self._json(200, read_confluence())
+            if path.path == "/api/signal-matrix":
+                return self._json(200, read_signal_matrix())
             if path.path == "/api/preflight":
                 result = arm_preflight()
                 return self._json(200, {"account_type": result.account_type, "ready": result.ready, "reasons":list(result.reasons)})
