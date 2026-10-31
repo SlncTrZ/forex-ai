@@ -57,3 +57,23 @@ export interface SignalMatrixResponse {
  columns:{id:string;label:string;description:string}[];
  matrices:SymbolMatrix[];
 }
+
+export interface ShadowComponent {id:string;points:number;available:number;max:number}
+export interface ShadowScenario {
+ direction:"BUY"|"SELL";score:number;available_points:number;
+ setup_complete:boolean;components:ShadowComponent[];
+}
+export interface ShadowRow {
+ strategy_id:string;enabled:boolean;eligible:boolean;
+ verdict:"STALE"|"NOT_APPLICABLE"|"DISABLED"|"INSUFFICIENT_EVIDENCE"|"NO_COMPLETE_SETUP"|"SHADOW_THRESHOLD_MET"|"BELOW_THRESHOLD";
+ best_direction:"BUY"|"SELL"|null;best_score:number|null;scenarios:ShadowScenario[];
+}
+export interface ShadowSymbol {
+ symbol:string;market_state:string;observed_at:string;age_seconds:number;
+ diagnostic_only:true;rows:ShadowRow[];
+}
+export interface ShadowScoreResponse {
+ source:"forex_ai_shadow_score_audit";generated_at:string;policy_version:string;
+ threshold:number;weights:Record<string,number>;diagnostic_only:true;
+ scores:ShadowSymbol[];
+}

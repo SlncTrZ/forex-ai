@@ -11,6 +11,7 @@ from forex_ai.config import load_runtime_config
 from forex_ai.journal.db import initialize
 from forex_ai.market.intelligence import observe_symbol, observe_unavailable
 from forex_ai.market.signal_matrix import build_matrix, observe_matrix
+from forex_ai.market.shadow_scoring import score_matrix, observe_score
 from forex_ai.strategy.config import load_strategy_snapshot
 from forex_ai.mt5.client import MT5Client
 from forex_ai.mt5.symbols import resolve_symbol_strict
@@ -88,6 +89,11 @@ def main() -> int:
                             market_state=result["market_state"], now_utc=datetime.now(UTC),
                         )
                         observe_matrix(cfg.db_path, matrix)
+                        # Independent, deterministic shadow-only score. Never used by
+                        # scan_candidates / execute_pending / GuardedExecutionService.
+                        observe_score(cfg.db_path, score_matrix(
+                            matrix, regime=result, now_utc=datetime.now(UTC),
+                        ))
                     except Exception:
                         # Never interrupt independent market observation.
                         pass

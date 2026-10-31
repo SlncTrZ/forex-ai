@@ -98,3 +98,25 @@
  .lc-matrix-table{min-width:490px}
  .lc-matrix-footer>span:last-child{display:none}
 }
+
+
+/* P2: scored research is visually separated from entry permission. */
+.lc-shadow-row{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;min-width:0;background:transparent;border:0;padding:0;text-align:left}
+.lc-shadow-row b{min-width:0;flex:1;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;font-size:10px;color:#d6f4e5}
+.lc-shadow-row strong{flex:none;font-size:12px;letter-spacing:.3px;font-variant-numeric:tabular-nums;color:#b1bba9}
+.lc-shadow-row strong.lc-shadow-high{color:#6ee8b0;text-shadow:0 0 9px #68e1a548}
+.lc-shadow-row:hover b,.lc-shadow-row:focus-visible b{color:#9bf7c9}
+.lc-shadow-inspector{flex:none;min-height:57px;display:grid;gap:4px;padding:5px 10px;border-top:1px solid #295244;background:#0b1d1b}
+.lc-shadow-info{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:10px;min-width:0}
+.lc-shadow-info>strong{font-size:9px;letter-spacing:.4px;color:#96ecc0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lc-shadow-info>span{color:#c9efdd;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:9px}
+.lc-shadow-components{display:flex;align-items:center;gap:7px;min-width:0;overflow-x:auto;white-space:nowrap;scrollbar-width:thin;font-size:9px;color:#89ae9f}
+.lc-shadow-components>span{display:inline-block;flex:none;border:1px solid #234336;padding:3px 5px;background:#102720}
+.lc-shadow-components b{font-size:8px;color:#d1e9d9}
+@media(max-width:700px){
+ .lc-shadow-inspector{padding:3px 5px;min-height:48px}
+ .lc-shadow-info{font-size:8px;gap:3px}
+ .lc-shadow-info>strong,.lc-shadow-info>span{font-size:8px}
+ .lc-shadow-components{gap:3px}
+ .lc-shadow-components>span{font-size:8px;padding:2px 3px}
+}

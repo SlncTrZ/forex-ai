@@ -331,6 +331,112 @@ def read_signal_matrix() -> dict:
     }
 
 
+def read_shadow_scores() -> dict:
+    """Bounded and sanitized research-only scores from immutable audit events."""
+    import math
+    from forex_ai.market.shadow_scoring import EVENT, POLICY, THRESHOLD, WEIGHTS
+    from forex_ai.market.signal_matrix import ROWS
+
+    now = datetime.now(UTC)
+    known_ids = {r[0] for r in ROWS}
+    response = []
+    seen: set[str] = set()
+    with _db() as con:
+        raw_rows = con.execute(
+            "SELECT timestamp_utc,symbol,payload_json FROM audit_events "
+            "WHERE event_type=? ORDER BY id DESC LIMIT 48", (EVENT,),
+        ).fetchall()
+    for item in raw_rows:
+        symbol = str(item["symbol"] or "")
+        if not symbol or len(symbol) > 32 or symbol in seen or len(seen) >= 6:
+            continue
+        try:
+            raw = json.loads(item["payload_json"])
+            if not isinstance(raw, dict) or raw.get("symbol") != symbol or raw.get("policy_version") != POLICY:
+                continue
+            when = datetime.fromisoformat(str(raw["observed_at"])).astimezone(UTC)
+            age = (now - when).total_seconds()
+            if age < -60:
+                continue
+            stale = age > 960 or raw.get("market_state") != "ACTIVE"
+            rows = raw["results"]
+            if not isinstance(rows, list) or len(rows) != len(ROWS):
+                continue
+            cleaned = []
+            ids = set()
+            for row in rows:
+                strategy = row["strategy_id"]
+                if strategy not in known_ids or strategy in ids or row.get("symbol") != symbol:
+                    raise ValueError("INVALID_SHADOW_ROW")
+                ids.add(strategy)
+                scenarios = row["scenarios"]
+                if not isinstance(scenarios, list) or len(scenarios) not in (0, 2):
+                    raise ValueError("INVALID_SHADOW_SCENARIOS")
+                safe_scenarios = []
+                if not stale:
+                    for scenario in scenarios:
+                        direction = scenario.get("direction")
+                        if direction not in ("BUY", "SELL") or any(
+                                x.get("direction") == direction for x in safe_scenarios):
+                            raise ValueError("INVALID_SHADOW_DIRECTION")
+                        parts = scenario.get("components")
+                        if not isinstance(parts, list) or len(parts) != len(WEIGHTS):
+                            raise ValueError("INVALID_SHADOW_COMPONENTS")
+                        clean_parts = []
+                        for name, part in zip(WEIGHTS, parts, strict=True):
+                            pts, available, maximum = (
+                                part.get("points"), part.get("available"), part.get("max"))
+                            if (part.get("id") != name or maximum != WEIGHTS[name] or
+                                    type(pts) is not int or type(available) is not int or
+                                    not 0 <= pts <= available <= maximum):
+                                raise ValueError("INVALID_SHADOW_POINTS")
+                            clean_parts.append({"id": name, "points": pts,
+                                                "available": available, "max": maximum})
+                        score = sum(p["points"] for p in clean_parts)
+                        if scenario.get("score") != score or type(scenario.get("score")) is not int:
+                            raise ValueError("INVALID_SHADOW_SCORE")
+                        safe_scenarios.append({
+                            "direction": direction, "score": score,
+                            "available_points": sum(p["available"] for p in clean_parts),
+                            "setup_complete": scenario.get("setup_complete") is True,
+                            "components": clean_parts,
+                        })
+                verdict = row.get("verdict")
+                if verdict not in ("STALE", "NOT_APPLICABLE", "DISABLED",
+                                   "INSUFFICIENT_EVIDENCE", "NO_COMPLETE_SETUP",
+                                   "SHADOW_THRESHOLD_MET", "BELOW_THRESHOLD"):
+                    raise ValueError("INVALID_SHADOW_VERDICT")
+                best = row.get("best_score")
+                if best is not None and (type(best) is not int or not 0 <= best <= 100):
+                    raise ValueError("INVALID_SHADOW_SCORE")
+                if safe_scenarios and best != max(s["score"] for s in safe_scenarios):
+                    raise ValueError("INVALID_SHADOW_BEST")
+                if not scenarios and best is not None:
+                    raise ValueError("INVALID_SHADOW_DISABLED")
+                if not stale and verdict == "SHADOW_THRESHOLD_MET" and (
+                        best is None or best < THRESHOLD or
+                        not any(s["setup_complete"] and s["score"] == best for s in safe_scenarios)):
+                    raise ValueError("INVALID_SHADOW_THRESHOLD")
+                cleaned.append({
+                    "strategy_id": strategy, "enabled": row.get("enabled") is True,
+                    "eligible": row.get("eligible") is True,
+                    "verdict": "STALE" if stale and verdict != "NOT_APPLICABLE" else verdict,
+                    "best_direction": None if stale else row.get("best_direction") if row.get("best_direction") in ("BUY", "SELL") else None,
+                    "best_score": None if stale else best,
+                    "scenarios": safe_scenarios,
+                })
+            response.append({"symbol": symbol, "market_state": "STALE" if stale else "ACTIVE",
+                             "observed_at": when.isoformat(), "age_seconds": max(0, int(age)),
+                             "rows": cleaned, "diagnostic_only": True})
+            seen.add(symbol)
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            continue
+    return {"source": "forex_ai_shadow_score_audit",
+            "generated_at": now.isoformat(), "policy_version": POLICY,
+            "threshold": THRESHOLD, "weights": dict(WEIGHTS),
+            "diagnostic_only": True, "scores": response}
+
+
 def read_confluence() -> dict:
     """Read-only bounded D3 candidate score decisions; no raw model input."""
     fields = (
@@ -512,6 +618,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, read_confluence())
             if path.path == "/api/signal-matrix":
                 return self._json(200, read_signal_matrix())
+            if path.path == "/api/shadow-scores":
+                return self._json(200, read_shadow_scores())
             if path.path == "/api/preflight":
                 result = arm_preflight()
                 return self._json(200, {"account_type": result.account_type, "ready": result.ready, "reasons":list(result.reasons)})

@@ -67,3 +67,17 @@ test("P1 separates stream card, reserved visual stage and audit-backed matrix",(
  assert.match(css,/--indicator-count/);
  assert.match(source,/05 \/ OWNER CONTROLS/);
 });
+
+test("P2 is an audit-backed research score, not an owner control or live order",()=>{
+ const matrix=fs.readFileSync(path.join(root,"src/SignalMatrix.tsx"),"utf8");
+ const cockpit=fs.readFileSync(path.join(root,"src/LiveCockpit.tsx"),"utf8");
+ const css=fs.readFileSync(path.join(root,"src/live-cockpit.css"),"utf8");
+ assert.match(matrix,/api\/shadow-scores/);
+ assert.match(matrix,/SHADOW/);
+ assert.match(matrix,/NO FRESH SCORING EVIDENCE/);
+ assert.match(matrix,/components/);
+ assert.match(css,/lc-shadow-inspector/);
+ assert.match(cockpit,/X-Forex-AI-Action/);
+ assert.doesNotMatch(matrix,/api\/control/);
+ assert.doesNotMatch(matrix,/order_send/);
+});
