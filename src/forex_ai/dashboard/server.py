@@ -18,6 +18,7 @@ from forex_ai.config import load_execution_enabled, load_risk_profile, load_runt
 from forex_ai.dashboard.control import ControlDenied, arm_preflight, change_control
 from forex_ai.dashboard.graph import read_execution_graph
 from forex_ai.dashboard.ticks import TickCollector, TickHub
+from forex_ai.dashboard.live_account import LiveAccountCache
 from forex_ai.execution.account_mode import detect_account_trade_mode
 from forex_ai.journal.integration_repository import load_trading_control
 from forex_ai.risk.account_guard import account_matches
@@ -30,12 +31,14 @@ SOCKET = Path(os.getenv("FOREX_AI_DASHBOARD_SOCKET", f"/run/user/{getattr(os, 'g
 HOSTS = {"127.0.0.1:8765", "localhost:8765"}
 SERVICES = (
     "forex-ai-observe.service", "forex-ai-candidate-scan.timer",
+    "forex-ai-candidate-scan.service",
     "forex-ai-execute-pending.timer", "forex-ai-execution-reconcile.timer",
     "forex-ai-ops-health.timer", "forex-ai-db-backup.timer",
     "forex-ai-auto-live-week.timer",
 )
 SENSITIVE = re.compile(r"(passw|token|secret|credential|api.?key|login|server|auth|private)", re.I)
 TICK_HUB = TickHub()
+LIVE_ACCOUNT = LiveAccountCache()
 STREAM_SLOTS = __import__('threading').BoundedSemaphore(8)
 
 
@@ -84,20 +87,57 @@ def read_status() -> dict:
         except Exception:
             type_name = "UNKNOWN"
         details = {k: account[k] for k in ("balance","equity","margin","free_margin","currency")}
+    live = LIVE_ACCOUNT.snapshot()
+    # Never present the last journaled $0 as a current brokerage balance:
+    # only the latest valid, freshly bound MT5 account is financial truth.
+    if live.get("state") == "LIVE":
+        type_name, bound = live["mode"], bool(live["bound"])
+        age = live["age_seconds"]
+        details = {k: live[k] for k in ("balance", "equity", "margin", "free_margin", "currency")}
+    else:
+        details = None
+    services = read_services()
+    scan_failed = any(s["unit"] == "forex-ai-candidate-scan.service"
+                      and s["status"] == "failed" for s in services)
+    recent_degraded = False
+    with _db() as con:
+        recent = con.execute(
+            "SELECT timestamp_utc,health_state FROM runtime_heartbeats "
+            "ORDER BY id DESC LIMIT 48"
+        ).fetchall()
+        cutoff = (now-timedelta(minutes=2)).isoformat()
+        recent_degraded = any(
+            r["health_state"] == "DEGRADED" and str(r["timestamp_utc"]) > cutoff
+            for r in recent
+        )
+    # Infrastructure/process health and broker-market session health are not
+    # the same. A normally closed XAU session does not stop the Command Center.
+    fully_healthy = bool(health.healthy and not scan_failed
+                         and live.get("state") == "LIVE")
     enabled = load_execution_enabled()
     return {
-        "observed_at": now.isoformat(), "infrastructure": "RUNNING" if health.healthy else "DEGRADED",
-        "account": {"type": type_name, "bound": bound, "age_seconds": age, "financials": details},
+        "observed_at": now.isoformat(), "infrastructure": "RUNNING" if fully_healthy else "DEGRADED",
+        "account": {"type": type_name, "bound": bound, "age_seconds": age,
+                    "financials": details, "financial_source": live.get("source"),
+                    "financial_state": live.get("state"), "financial_reason": live.get("reason")},
         "control": {"armed": control.armed, "kill_switch": control.kill_switch, "maintenance": control.maintenance_mode,
                     "expiry": control.arm_expires_at_utc.isoformat() if control.arm_expires_at_utc else None,
                     "reason": control.reason, "entries_allowed_by_control": control.allows_new_entries(now_utc=now),
                     "execution_enabled": enabled},
-        "health": {"healthy": health.healthy, "reasons": list(health.reasons), "heartbeat_state": health.latest_heartbeat_state,
+        "health": {"healthy": fully_healthy,
+                   "reasons": list(health.reasons)
+                              + (["CANDIDATE_SCANNER_FAILED"] if scan_failed else [])
+                              + (["BROKER_EQUITY_STALE"] if live.get("state") != "LIVE" else []),
+                   "market_reasons": ["BROKER_MARKET_SYNC_DEGRADED"] if recent_degraded else [],
+                   "heartbeat_state": health.latest_heartbeat_state,
                    "heartbeat_age_seconds": health.latest_heartbeat_age_seconds, "db_integrity": health.db_integrity,
                    "free_gb": round(health.free_bytes / (1024**3), 2), "unresolved_intents": health.unresolved_execution_intents},
-        "metrics": {"uncertain_orders": int(stats["n"]), "external_positions": int(position_count), "audit_24h": int(last_events)},
+        "metrics": {"uncertain_orders": int(stats["n"]), "external_positions": int(position_count),
+                    "audit_24h": int(last_events),
+                    "floating_pnl": live.get("floating_pnl") if live.get("state") == "LIVE" else None,
+                    "realized_pnl_utc_day": live.get("realized_pnl_utc_day") if live.get("state") == "LIVE" else None},
         "heartbeat": dict(latest) if latest else None,
-        "risk": _risk_summary(), "services": read_services(),
+        "risk": _risk_summary(), "services": services,
         "release": _release_info(), "ticks": TICK_HUB.snapshot(),
     }
 
@@ -440,9 +480,11 @@ def serve(path: Path = SOCKET) -> None:
     os.chmod(path, 0o600)
     collector = TickCollector(TICK_HUB)
     collector.start()
+    LIVE_ACCOUNT.start()
     try:
         server.serve_forever(poll_interval=0.3)
     finally:
+        LIVE_ACCOUNT.stop()
         collector.stop()
         server.server_close()
         path.unlink(missing_ok=True)

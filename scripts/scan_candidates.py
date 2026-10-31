@@ -90,7 +90,7 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
     except GateUnavailable:
         d3 = None
     regime = resolve_regime(market, db_path=cfg.db_path, provider=d3)
-    entry_window_open = new_entries_allowed(now)
+    entry_window_open = new_entries_allowed(now, actual)
     decisions = orchestrator.scan(
         market,
         account=broker.account,

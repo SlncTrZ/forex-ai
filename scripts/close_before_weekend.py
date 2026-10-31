@@ -122,6 +122,9 @@ def main() -> int:
         skipped: list[dict[str, object]] = []
 
         for intent in intents:
+            if str(intent.symbol).upper().startswith("BTC"):
+                skipped.append({"intent_id": intent.intent_id, "reason": "BTC_24_7_EXEMPT"})
+                continue
             ticket = intent.broker_position_ticket
             position = positions_by_ticket.get(ticket)
             if position is None:

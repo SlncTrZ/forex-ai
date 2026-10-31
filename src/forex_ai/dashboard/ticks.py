@@ -44,8 +44,11 @@ def read_tick_history(client: MT5Client, symbol: str, start_ms: int, end_ms: int
 
 def _resolve_symbols(client: MT5Client, cfg: RuntimeConfig) -> tuple[str, ...]:
     """Prefer actual recent observer-resolved broker symbols, not guessed suffixes."""
+    # Monitoring symbols are NOT automatically trading symbols. Preserve
+    # the configured execution set, and watch BTC independently at weekends.
+    monitored = tuple(dict.fromkeys((*cfg.symbols, "BTCUSD")))
     choices = {
-        str(row["name"]) for row in client.symbol_candidates(cfg.symbols)
+        str(row["name"]) for row in client.symbol_candidates(monitored)
         if row.get("name")
     }
     observed: list[str] = []
@@ -59,15 +62,23 @@ def _resolve_symbols(client: MT5Client, cfg: RuntimeConfig) -> tuple[str, ...]:
         except sqlite3.Error:
             pass
     resolved: list[str] = []
-    for base in cfg.symbols:
-        matches = [s for s in observed if s in choices and (s.upper() == base.upper() or s.upper().startswith(base.upper()))]
-        if matches:
-            resolved.append(matches[0])
-        elif base in choices:
-            resolved.append(base)
-        else:
-            # Avoid ambiguity between DEMO/REAL suffixes: wait for observer mapping.
-            raise RuntimeError("BROKER_SYMBOL_UNRESOLVED:" + base)
+    for base in monitored:
+        matches = [s for s in observed if s in choices
+                   and (s.upper() == base.upper() or s.upper().startswith(base.upper()))]
+        candidates = matches or [s for s in choices if s.upper() == base.upper()
+                                  or s.upper().startswith(base.upper())]
+        if candidates:
+            # Prefer broker's usual base+m contract over similarly-prefixed
+            # BTCUSDT contracts when no observer snapshot exists.
+            winner = sorted(candidates, key=lambda s: (
+                0 if s.upper() == (base+"m").upper() else
+                1 if s.upper() == base.upper() else 2,
+                len(s), s,
+            ))[0]
+            resolved.append(winner)
+        elif base in cfg.symbols:
+            raise RuntimeError("BROKER_TRADING_SYMBOL_UNRESOLVED:" + base)
+        # Optional read-only BTC monitor must never disable XAU collection.
     return tuple(dict.fromkeys(resolved))
 
 

@@ -14,7 +14,7 @@ export interface StatusPayload {
  health:{healthy:boolean;heartbeat_age_seconds:number|null;db_integrity:string;unresolved_intents:number;reasons:string[]};
  metrics:{uncertain_orders:number;external_positions:number;audit_24h:number};
  ticks:{stream_state:string;last_poll_ms:number|null;last_received_ms:number|null;overflows:number;quotes:Quote[];symbols:string[]};
- services:{name:string;status:string}[];release:{version:string}
+ services:{name:string;unit:string;status:string}[];release:{version:string}
 }
 export interface RegimeDecision {
  symbol:string;regime:"UPTREND"|"DOWNTREND"|"SIDEWAY"|"UNCERTAIN";

@@ -2,6 +2,13 @@ from datetime import datetime, timezone
 
 from forex_ai.runtime.market_schedule import new_entries_allowed, weekend_force_close_due
 
+
+def test_btc_weekend_uses_broker_freshness_not_fx_calendar():
+    from datetime import datetime, timezone
+    saturday = datetime(2026, 10, 31, 8, 0, tzinfo=timezone.utc)
+    assert new_entries_allowed(saturday, "BTCUSDm")
+    assert not new_entries_allowed(saturday, "XAUUSDm")
+
 UTC = timezone.utc
 
 

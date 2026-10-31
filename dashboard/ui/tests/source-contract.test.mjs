@@ -30,6 +30,20 @@ test("build fingerprint exactly binds package lock and React source",()=>{
  assert.equal(manifest.file_count,names.length);
  assert.equal(manifest.source_sha256,hash.digest("hex"));
 });
+test("live cockpit uses MT5 account PnL and keeps owner controls",()=>{
+ const source=fs.readFileSync(path.join(root,"src/LiveCockpit.tsx"),"utf8");
+ assert.match(source,/api\/status/);
+ assert.match(source,/api\/stream\/ticks/);
+ assert.match(source,/api\/control\//);
+ assert.match(source,/X-Forex-AI-Action/);
+ assert.match(source,/realized_pnl_utc_day/);
+ assert.match(source,/BTCUSDm/);
+ assert.match(source,/REGIME LEVEL/);
+ assert.match(source,/CONFIDENCE/);
+ assert.match(source,/BULL \/ BEAR/);
+ const css=fs.readFileSync(path.join(root,"src/live-cockpit.css"),"utf8");
+ assert.match(css,/100dvh/);
+});
 test("client renders verified graph and reuses owner-gated endpoints",()=>{
  const file=fs.readFileSync(path.join(root,"src/ui.tsx"),"utf8");
  assert.match(file,/api\/graph\?limit=110/);

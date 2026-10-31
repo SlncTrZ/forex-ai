@@ -333,8 +333,17 @@ def _compile(raw: Mapping[str, Any], *, source_path: Path, loaded_from_last_good
     if unknown:
         raise ValueError(f"unsupported strategy ids: {unknown}")
     missing = tuple(strategy_id for strategy_id in ALL_STRATEGY_IDS if strategy_id not in raw_strategies)
-    if missing:
+    # Compatibility for older PRIVATE strategy profiles: BTC was introduced
+    # later. Missing BTC is explicitly disabled, never implicitly enabled.
+    # Every other omitted strategy remains a hard configuration failure.
+    if missing and missing != ("btc_squeeze_breakout_m15",):
         raise ValueError(f"missing strategy ids: {missing}")
+    if missing:
+        defaults = _read_yaml(_bundled_path())["strategies"]["btc_squeeze_breakout_m15"]
+        raw_strategies = dict(raw_strategies)
+        raw_strategies["btc_squeeze_breakout_m15"] = {
+            **defaults, "enabled": False,
+        }
 
     compiled: dict[str, StrategySpec] = {}
     canonical: dict[str, Any] = {"schema_version": schema_version, "strategies": {}}

@@ -18,7 +18,12 @@ def _new_york(now_utc: datetime) -> datetime:
     return now_utc.astimezone(NEW_YORK)
 
 
-def new_entries_allowed(now_utc: datetime) -> bool:
+def new_entries_allowed(now_utc: datetime, symbol: str = "XAUUSD") -> bool:
+    # Crypto can trade over the FX weekend: this only removes the FX calendar
+    # veto; broker trade_allowed/tick freshness and every risk guard remain.
+    if symbol.upper().startswith("BTC"):
+        _new_york(now_utc)  # reject naive timestamps
+        return True
     local = _new_york(now_utc)
     weekday = local.weekday()
     clock = local.time().replace(tzinfo=None)
