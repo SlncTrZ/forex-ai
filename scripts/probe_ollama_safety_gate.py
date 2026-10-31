@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -12,13 +14,37 @@ from pathlib import Path
 root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root / "src"))
 
-from forex_ai.advisory.ollama_safety_gate import GateUnavailable, OllamaSafetyGate
+from forex_ai.advisory.ollama_safety_gate import GateUnavailable, D3DecisionSafetyGate
 from forex_ai.execution.state import ExecutionState, OrderIntent
+
+
+def _load_private_execution_env() -> None:
+    """Read existing owner-private config; never print or copy secrets."""
+    file = Path.home() / ".config/forex-ai/execution.env"
+    if not file.is_file():
+        return
+    if stat.S_IMODE(file.stat().st_mode) & 0o077:
+        raise GateUnavailable("D3_PRIVATE_ENV_PERMISSIONS")
+    names = {
+        "DECISION_MODEL_URL", "DECISION_MODEL_API_KEY", "OLLAMA_KEY",
+        "FOREX_AI_SAFETY_GATE_MODEL", "FOREX_AI_SAFETY_GATE_TIMEOUT_SECONDS",
+    }
+    for raw in file.read_text().splitlines():
+        line = raw.strip()
+        if line.startswith("export "):
+            line = line[7:]
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key in names and key not in os.environ:
+            os.environ[key] = value.strip().strip('"').strip("'")
 
 
 def main() -> int:
     try:
-        model = OllamaSafetyGate.from_environment()
+        _load_private_execution_env()
+        model = D3DecisionSafetyGate.from_environment()
         now = datetime.now(timezone.utc)
         # Synthetic example: never a production candidate, never sent to MT5.
         intent = OrderIntent(
@@ -33,7 +59,7 @@ def main() -> int:
             "price": 1.1, "sl": 1.09, "tp": 1.12,
         }, context={"strategy_id": "SYNTHETIC_PROBE", "account_trade_mode": "DEMO"})
         print(json.dumps({
-            "status": "MODEL_STRUCTURED_OUTPUT_VALID",
+            "status": "D3_DECISION_PROTOCOL_VALID",
             "allowed": verdict.allowed,
             "reason_code": verdict.reason_code,
             "latency_ms": verdict.latency_ms,

@@ -17,7 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from forex_ai.config import load_execution_enabled, load_fixed_lot, load_risk_profile, load_runtime_config
-from forex_ai.advisory.ollama_safety_gate import GateUnavailable, OllamaSafetyGate
+from forex_ai.advisory.ollama_safety_gate import GateUnavailable, D3DecisionSafetyGate
 from forex_ai.execution.account_mode import MT5AccountTradeMode, detect_account_trade_mode, require_account_trade_mode
 from forex_ai.execution.live_canary import assess_live_canary_readiness
 from forex_ai.execution.demo_campaign import assess_demo_campaign_readiness
@@ -147,7 +147,7 @@ def main() -> int:
         # Ollama must be configured before any new-entry attempt can pass.
         # Do not silently fall back to broker-only execution.
         try:
-            ai_safety = OllamaSafetyGate.from_environment()
+            ai_safety = D3DecisionSafetyGate.from_environment()
         except GateUnavailable:
             ai_safety = None
         def run_ai_gate(intent_to_check, broker_request):

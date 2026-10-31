@@ -1,69 +1,64 @@
-# Ollama AI Safety Gate / Pre-Execution Filter
+# Decision Model D3 — active AI Safety Gate / Pre-Execution Filter
 
-**Role: ACTIVE execution filter, not shadow mode.** This gate runs immediately
-before fresh broker/risk revalidation and MT5's final `order_check` in
-`GuardedExecutionService.send_once()` on the real
-`scripts/execute_pending.py` entry path.
+## Purpose
+This is **real-path enforcement**, not shadow testing. Every candidate selected
+for a new MT5 entry must pass the D3 decision API, then fresh deterministic
+account/risk/order checks in `GuardedExecutionService.send_once()`.
+
+No Python, network or model component in this integration can bypass the
+existing Kill Switch, ARM expiry, account binding, margin/risk control or
+broker-side `order_check`. Existing position management is unaffected.
+
+## Existing protected private configuration
+The systemd unit `forex-ai-execute-pending.service` imports:
+`~/.config/forex-ai/execution.env`.
+
+- `DECISION_MODEL_URL`: full HTTPS decision endpoint; the code validates
+  the expected path and never logs it.
+- `DECISION_MODEL_API_KEY`: primary Bearer credential.
+- `OLLAMA_KEY`: backward-compatible fallback when the primary key is absent.
+- `FOREX_AI_SAFETY_GATE_MODEL`: optional model override (default `d3:4b`).
+- `FOREX_AI_SAFETY_GATE_TIMEOUT_SECONDS`: optional timeout (default 8s).
+
+Do not copy keys to the repository or audit journal. The private env file
+must remain owner-read-only (mode 0600). The system uses HTTPS and refuses
+redirects. No raw response, token or Authorization header is logged.
 
 ## Decision contract
+The provider sends a minimal and sanitized order/market snapshot as the
+`state` with two zero-generation questions:
 
-- The model receives a minimal allowlisted candidate/order and market snapshot:
-  strategy, symbol, BUY/SELL side, volume, entry, stop, target, tick age,
-  spread in points, and account trade **mode** (not login, server or keys).
-- Model output MUST match the Ollama JSON Schema response:
-  `intent_id`, `request_digest`, `decision: ALLOW|BLOCK`, and
-  `reason_code` (uppercase machine-readable).
-- `ALLOW` **does not place a trade**; fresh account binding, ARM expiry, Kill
-  Switch, Broker-Aware Risk Gate and final MT5 `order_check` are required
-  after inference. The model has no tool capable of placing orders.
-- `BLOCK`, unavailable model, timeout, invalid/mismatched response, missing
-  configuration or audit failure **never** falls back to sending a new order.
-  Only new entries are filtered; broker position management and emergency
-  protection paths are not subject to this callback.
-- Every ALLOW/BLOCK/UNAVAILABLE records `AI_SAFETY_GATE_DECISION` with
-  intent/candidate IDs, reason code, model config fingerprint and latency.
-  Raw responses and credentials are never stored in audit events.
-- The required gate **cannot reduce order size** silently; only ALLOW/BLOCK
-  are supported. The separate Risk Engine alone controls permitted volume.
-- Historical advisory `BOT_ONLY_FALLBACK` rules do not apply to this
-  mandatory pre-execution gate.
+- `action` is a `choice` between `execute` and `reject`
+- `safety_score` is a `score` across Danger/Caution/Safe
 
-## Server activation (before production deployment)
+The observed API returned `answers.action` with a `choice`,
+`probabilities`, and `confidence`. For an ALLOW, both confidence and
+P(execute) must be ≥0.8. A malformed response, missing fields or
+inconsistent probabilities is unavailable and **blocks new entries**.
+Remote errors/timeouts fail closed. All decisions are audited with reason,
+latency and model/config fingerprint.
 
-Configure the systemd user's private execution environment
-`~/.config/forex-ai/execution.env`:
+**Model results are not guarantees:** In a direct authenticated test, D3
+allowed a synthetic BUY with stop-loss above entry. Consequently, the
+local `_deterministic_block()` checks positive finite prices/volume, the
+BUY/SELL stop/target ordering, and order-request consistency BEFORE the
+remote model call. This rule vetoes even if the model would say execute.
+Fresh risk and live broker checks still run after ALLOW.
 
-```dotenv
-FOREX_AI_SAFETY_GATE_URL=http://<private-IP>:11434
-FOREX_AI_SAFETY_GATE_MODEL=<exact-model-tag>
-FOREX_AI_SAFETY_GATE_TIMEOUT_SECONDS=8
-```
+The input explicitly labels unavailable news/SMC/volume/trend features;
+the model must not invent evidence. Full feature ingestion may be added
+in a separate step with verified provenance.
 
-Replace placeholders with the verified internal IP and exact tag returned by
-`ollama list`. Do **not** add secrets to Git, documentation or chat. Plain
-HTTP is limited to private, non-loopback IPs; a trusted HTTPS hostname is also
-supported. Avoid exposing Ollama to the public Internet.
+## Testing and rollout
+Use `scripts/probe_ollama_safety_gate.py` only with a private environment
+loaded into the process. The script uses synthetic data and never calls
+MT5. Validate `tests/test_ollama_safety_gate.py` and the full regression
+suite, then release in a clean, rollback-capable deployment.
 
-Verify Ollama connectivity/model/API on the intended executing host first,
-using the model list and an isolated structured-output request. A model that
-does not support valid JSON Schema output must be rejected. The chosen model
-is kept resident for up to ten minutes per call (`keep_alive`). Timeout defaults
-to 8 seconds with a 2-second connect cap.
+The known `tests/test_auto_week.py` approval-symbol fixture mismatch in
+the parent source must be fixed/reconciled separately; it is not an excuse
+to rewrite live approval boundaries or silently skip production gates.
 
-**Production deployment is blocked until this server, exact model tag,
-connectivity, inference latency, existing service health, and rollback
-plan are verified.** The code branch is intentionally not installed on the
-current executing host until then, to avoid unexpectedly blocking active
-trading due to an unconfigured remote model.
-
-## Ownership & safety
-
-- Live execution remains in `scripts/execute_pending.py`; no new trading
-  control, ARM or account binding bypass is introduced.
-- No per-tick model calls: one evaluation for a prepared order intent.
-- AI output cannot authorize expired risk leases; fresh risk/ARM checks occur
-  after inference.
-- If Ollama stops responding, pending **new** orders are rejected with an
-  audit entry. The observer/reconciler/dashboard and already-open positions
-  continue independently.
-- Operator may monitor decisions through the existing audit journal.
+Production is **not** switched just by this code change. A deploy must pass
+the full prescribed release process, including current approval documents
+and private build assets.
