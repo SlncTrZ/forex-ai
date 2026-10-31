@@ -1,8 +1,9 @@
 """Strategy V2 Package — Advanced Production Strategies.
-Wing: code | Topic: strategy_v2 | Updated: 2026-10-30 20:45
+Wing: code | Topic: strategy_v2 | Updated: 2026-10-31 11:30
 """
 
 from forex_ai.strategy.v2 import (
+    btc_squeeze_breakout_m15,
     ema_ribbon_rsi_m5,
     ichimoku_mtf,
     keylevel_breakout,
@@ -32,6 +33,7 @@ def resolve_symbol_min_stop(symbol: str, configured_val: float = 0.0) -> float:
 
 
 __all__ = [
+    "btc_squeeze_breakout_m15",
     "ema_ribbon_rsi_m5",
     "ichimoku_mtf",
     "keylevel_breakout",

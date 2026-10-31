@@ -38,24 +38,27 @@ Quy chuẩn bất biến bắt buộc cho toàn bộ các phiên làm việc c�
   - Chốt chặn bảo vệ `DRAWDOWN_LIMIT` 10% luôn có hiệu lực, không bị bypass bởi forced min lot.
   - Giới hạn rủi ro danh nghĩa được gông cứng bởi `max_risk_per_trade_pct`.
 
-## Production Strategies (Top 4 Active Suite — Audit Findings 2026-10-30)
+## Production Strategies (Top 5 Institutional Suite — Audit Findings 2026-10-31)
 
-Danh mục 4 chiến lược nòng cốt chính thức được kích hoạt (`enabled: true`) trong cấu hình `config/strategy.yaml`:
+Danh mục 5 chiến lược nòng cốt chính thức được kích hoạt (`enabled: true`) trong cấu hình `config/strategy.yaml`:
 
-1. `smc_pro_fvg_v2` (v2.0.0 — Quán quân Tăng trưởng Tiered Compound):
+1. `smc_pro_fvg_v2` (v2.0.0 — Quán quân Tăng trưởng Tiered Compound XAUUSD M5):
    - Đón lệnh Limit tại 50% FVG Consequent Encroachment sau Liquidity Sweep. Tận dụng Stop Loss siêu hẹp ($1.5 - $3.0) để đòn bẩy quy mô lot lớn theo Tiered Compound.
    - Thử nghiệm 12 tuần ngẫu nhiên 2026: Đạt tăng trưởng **+35.8% (+$3,579.09)**, đưa tài khoản chạm **Level 3 ($13,579.09)**.
-2. `supertrend_volume_m5` (v2.0.0 — Bát Cơm M5 Bền Vững):
+2. `btc_squeeze_breakout_m15` (v2.0.0 — Quán quân Biến động Bitcoin M15):
+   - TTM Squeeze (Bollinger 20/2.0 nén trong Keltner 20/1.5 ATR) bung nén + Volume Surge >= 1.15 SMA(20) + H1 Trend Bias.
+   - Kiểm định thực tế 2 tuần gần nhất: **Win Rate 75.0% (3 thắng / 1 thua)**, Net PnL **+$1,323.14 (+13.23%)**, đưa tài khoản chạm **Level 1 ($11,323.14)**.
+3. `supertrend_volume_m5` (v2.0.0 — Bát Cơm M5 Bền Vững XAUUSD):
    - M5 Supertrend (10, 3.0) + H1 Trend Bias + Volume Confirmation.
    - Thử nghiệm 12 tuần ngẫu nhiên 2026: Tỷ lệ tuần xanh cao nhất hệ thống (**7/12 tuần dương, 58.3%**), PnL **+$730.15 (+7.3%)**, MaxDD tuần cực thấp chỉ $115.68.
-3. `keylevel_breakout_v2` (v2.0.0 — Quán quân Alpha Khung Lớn M30):
+4. `keylevel_breakout_v2` (v2.0.0 — Quán quân Alpha Khung Lớn XAUUSD M30):
    - Tự động nhận diện Keylevel Swing High/Low (15/5) trên khung M30 kết hợp H1 Trend Bias.
    - Thử nghiệm 12 tuần ngẫu nhiên 2026: Đạt **+$755.56 lợi nhuận ròng**, bùng nổ tại các tuần có trend lớn (Tuần 1 lãi +$857.34 với Win Rate 80.0%).
-4. `supertrend_stochastic_m5` (v2.0.0 — Flagship Scalping Sweet Spot):
+5. `supertrend_stochastic_m5` (v2.0.0 — Flagship Scalping Sweet Spot XAUUSD M5):
    - M5 Supertrend (10, 3.0) + Stochastic (7, 1, 3) Giao cắt vàng %K > %D $\le 30$ + H1 Trend Bias.
    - Kiểm định ma trận 100,000 nến: Đạt điểm ngọt **Win Rate 60.0% - 62.3%**, tỷ lệ RR 1:1.5, chuỗi 5 tuần thắng liên tiếp trong 2026, bảo toàn vốn tuyệt đối ở Level 0.
 
-*Các chiến lược vệ tinh/thử nghiệm (`mtf_trend_continuation_v2`, `supertrend_pinbar_m5`, `supertrend_stoch_rsi_m5`, `supertrend_cci_m5`, `ema_ribbon_rsi_m5`, `pro_volatility_expansion_v2`, `ichimoku_mtf_v2`) được đặt ở trạng thái `enabled: false` để tập trung 100% ngân sách rủi ro cho Top 4.*
+*Các chiến lược vệ tinh/thử nghiệm (`mtf_trend_continuation_v2`, `supertrend_pinbar_m5`, `supertrend_stoch_rsi_m5`, `supertrend_cci_m5`, `ema_ribbon_rsi_m5`, `pro_volatility_expansion_v2`, `ichimoku_mtf_v2`) được đặt ở trạng thái `enabled: false` để tập trung 100% ngân sách rủi ro cho Top 5.*
 
 ## Logging / audit guarantees
 

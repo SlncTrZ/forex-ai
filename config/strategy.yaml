@@ -81,6 +81,24 @@ strategies:
       session_end_hour: 15.5
       expiry_minutes: 60
 
+  btc_squeeze_breakout_m15:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M15
+      bb_period: 20
+      bb_mult: 2.0
+      kc_mult: 1.5
+      min_volume_ratio: 1.15
+      sl_atr_multiplier: 1.5
+      min_stop_distance: 150.0
+      max_sl_distance: 2000.0
+      target_r: 1.8
+      require_h1_trend: true
+      session_start_hour: 6.5
+      session_end_hour: 16.5
+      expiry_minutes: 120
+
   supertrend_volume_m5:
     enabled: true
     version: "2.0.0"

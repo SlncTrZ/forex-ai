@@ -13,6 +13,7 @@ from forex_ai.risk.profile import RiskProfile
 from forex_ai.strategy.v1.contracts import MarketSnapshot, StrategyConfig, StrategyResult
 from forex_ai.config import load_fixed_lot
 from forex_ai.strategy.config import StrategyConfigSnapshot, bundled_strategy_snapshot
+from forex_ai.strategy.v2.btc_squeeze_breakout_m15 import evaluate as evaluate_btc_squeeze
 from forex_ai.strategy.v2.ichimoku_mtf import evaluate as evaluate_ichimoku
 from forex_ai.strategy.v2.keylevel_breakout import evaluate as evaluate_keylevel
 from forex_ai.strategy.v2.mtf_trend_continuation import evaluate as evaluate_mtf_trend
@@ -59,6 +60,8 @@ def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[Stra
         bindings.append(StrategyBinding(evaluate_keylevel, snapshot.config_for("keylevel_breakout_v2")))
     if snapshot.enabled("smc_pro_fvg_v2"):
         bindings.append(StrategyBinding(evaluate_smc, snapshot.config_for("smc_pro_fvg_v2")))
+    if snapshot.enabled("btc_squeeze_breakout_m15"):
+        bindings.append(StrategyBinding(evaluate_btc_squeeze, snapshot.config_for("btc_squeeze_breakout_m15")))
     if snapshot.enabled("mtf_trend_continuation_v2"):
         bindings.append(StrategyBinding(evaluate_mtf_trend, snapshot.config_for("mtf_trend_continuation_v2")))
     if snapshot.enabled("pro_volatility_expansion_v2"):

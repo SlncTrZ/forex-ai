@@ -15,7 +15,12 @@ from forex_ai.strategy.v1.contracts import (
     StrategyVersion,
     TimeframeSnapshot,
 )
-from forex_ai.strategy.v2 import pro_volatility_expansion_v2, supertrend_stochastic_m5, supertrend_volume_m5
+from forex_ai.strategy.v2 import (
+    btc_squeeze_breakout_m15,
+    pro_volatility_expansion_v2,
+    supertrend_stochastic_m5,
+    supertrend_volume_m5,
+)
 
 UTC = timezone.utc
 
@@ -298,4 +303,66 @@ def test_supertrend_stochastic_m5_confirms_sell():
     assert res.candidate.take_profit < res.candidate.reference_entry
     assert "SUPERTREND_STOCHASTIC_CONFIRMED" in res.evidence.reason_codes
     assert res.evidence.values["trigger"] in {"STOCH_CROSS_UP_80", "STOCH_TOUCH_80"}
+
+
+def test_btc_squeeze_breakout_m15_confirms_buy():
+    cfg = StrategyConfig(
+        StrategyVersion("btc_squeeze_breakout_m15", "2.0.0"),
+        {
+            "decision_timeframe": "M15",
+            "bb_period": 10,
+            "bb_mult": 1.5,
+            "kc_mult": 2.0,
+            "min_volume_ratio": 1.0,
+            "sl_atr_multiplier": 1.5,
+            "target_r": 1.8,
+            "require_h1_trend": False,
+            "session_start_hour": 0.0,
+            "session_end_hour": 24.0,
+        },
+    )
+    now = datetime(2026, 10, 31, 14, 0, tzinfo=UTC)
+    # 40 nến dao động hẹp quanh 75000 để tạo Squeeze On (BB < KC)
+    bars = []
+    base_t = now - timedelta(minutes=15 * 45)
+    for i in range(40):
+        t = base_t + timedelta(minutes=15 * i)
+        bars.append(
+            Candle(
+                time_utc=t,
+                open=75000.0,
+                high=75050.0,
+                low=74950.0,
+                close=75000.0 + (0.5 if i % 2 == 0 else -0.5),
+                volume=100.0,
+            )
+        )
+    # Nến 41 bùng nổ mạnh tăng vọt lên 75500 để bung Squeeze (BB expands > KC)
+    bars.append(
+        Candle(
+            time_utc=now - timedelta(minutes=15),
+            open=75000.0,
+            high=75500.0,
+            low=74990.0,
+            close=75450.0,
+            volume=300.0,
+        )
+    )
+
+    snap = MarketSnapshot(
+        symbol="BTCUSDm",
+        captured_at_utc=now,
+        market_time_msc=int(now.timestamp() * 1000),
+        bid=75440.0,
+        ask=75448.0,
+        timeframes={"M15": TimeframeSnapshot("M15", tuple(bars))},
+    )
+
+    res = btc_squeeze_breakout_m15.evaluate(snap, cfg, now)
+    assert res.candidate is not None
+    assert res.candidate.side == "BUY"
+    assert res.candidate.stop_loss < res.candidate.reference_entry
+    assert res.candidate.take_profit > res.candidate.reference_entry
+    assert "BTC_SQUEEZE_BREAKOUT_CONFIRMED" in res.evidence.reason_codes
+
 

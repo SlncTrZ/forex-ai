@@ -28,6 +28,7 @@ PRODUCTION_STRATEGY_IDS = (
     "supertrend_stoch_rsi_m5",
     "supertrend_cci_m5",
     "ema_ribbon_rsi_m5",
+    "btc_squeeze_breakout_m15",
     "smc_pro_fvg_v2",
     "mtf_trend_continuation_v2",
     "pro_volatility_expansion_v2",
@@ -173,6 +174,22 @@ class KeylevelBreakoutParameters(_StrictModel):
     expiry_minutes: int = Field(default=120, gt=0)
 
 
+class BTCSqueezeBreakoutParameters(_StrictModel):
+    decision_timeframe: str = "M15"
+    bb_period: int = Field(default=20, ge=5)
+    bb_mult: float = Field(default=2.0, gt=0.0)
+    kc_mult: float = Field(default=1.5, gt=0.0)
+    min_volume_ratio: float = Field(default=1.15, ge=0.0)
+    sl_atr_multiplier: float = Field(default=1.5, gt=0.0)
+    min_stop_distance: float = Field(default=150.0, ge=0.0)
+    max_sl_distance: float = Field(default=2000.0, gt=0.0)
+    target_r: float = Field(default=1.8, gt=0.0)
+    require_h1_trend: bool = Field(default=True)
+    session_start_hour: float = Field(default=6.5, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=16.5, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=120, gt=0)
+
+
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "pro_volatility_expansion_v2": ProVolatilityParameters,
     "supertrend_volume_m5": SupertrendVolumeParameters,
@@ -181,6 +198,7 @@ PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "supertrend_stoch_rsi_m5": SupertrendStochRSIParameters,
     "supertrend_cci_m5": SupertrendCCIParameters,
     "ema_ribbon_rsi_m5": EMARibbonRSIParameters,
+    "btc_squeeze_breakout_m15": BTCSqueezeBreakoutParameters,
     "smc_pro_fvg_v2": SMCProParameters,
     "ichimoku_mtf_v2": IchimokuMTFParameters,
     "mtf_trend_continuation_v2": MTFTrendContinuationParameters,
@@ -450,6 +468,7 @@ def required_closed_bars(snapshot: StrategyConfigSnapshot, *, production_only: b
             "supertrend_stoch_rsi_m5",
             "supertrend_cci_m5",
             "ema_ribbon_rsi_m5",
+            "btc_squeeze_breakout_m15",
             "mtf_trend_continuation_v2",
             "smc_pro_fvg_v2",
         }:
