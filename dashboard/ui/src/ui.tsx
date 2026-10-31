@@ -6,7 +6,7 @@ import { CanvasRenderer } from "echarts/renderers";
 echarts.use([LineChart, PieChart, BarChart, GridComponent, TooltipComponent, CanvasRenderer]);
 import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Blocks, Check, ChevronDown, CircleHelp, Command, Cpu, GitBranch, Layers3, LockKeyhole, Maximize2, Network, Radio, RefreshCw, Search, ShieldCheck, ShieldOff, Terminal, Wifi, X, Zap } from "lucide-react";
 import { GraphCanvas } from "./GraphCanvas";
-import type { GraphNode, GraphResponse, OperatorEvent, Quote, StatusPayload } from "./types";
+import type { GraphNode, GraphResponse, OperatorEvent, Quote, StatusPayload, RegimeResponse } from "./types";
 
 const COLORS=["#7effca","#41a7a0","#b7f883","#e1b666","#ed6875","#6d91bf","#a78bdc","#337966"];
 const fmt=(n:number|null|undefined)=>n==null?"—":new Intl.NumberFormat("en-US",{maximumFractionDigits:1}).format(n);
@@ -61,6 +61,7 @@ function useLiveData(){
  const [graph,setGraph]=useState<GraphResponse|null>(null);
  const [orders,setOrders]=useState<{orders:{state:string;symbol:string;side:string;volume:string;updated_at_utc:string}[]} | null>(null);
  const [events,setEvents]=useState<OperatorEvent[]>([]);
+ const [regimes,setRegimes]=useState<RegimeResponse|null>(null);
  const [quote,setQuote]=useState<Quote|null>(null);
  const [mid,setMid]=useState<number[]>([]);
  const [feedState,setFeedState]=useState("CONNECTING");
@@ -81,11 +82,14 @@ function useLiveData(){
    fetchJson<StatusPayload>("/api/status"),
    fetchJson<{orders:{state:string;symbol:string;side:string;volume:string;updated_at_utc:string}[]}>("/api/orders"),
    fetchJson<{events:OperatorEvent[]}>("/api/events?source=system&limit=15"),
+   fetchJson<RegimeResponse>("/api/regimes"),
   ]);
   if(results[0].status==="fulfilled"){setStatus(results[0].value);setError("");}
   else setError("RUNTIME TELEMETRY UNAVAILABLE");
   if(results[1].status==="fulfilled")setOrders(results[1].value);
   if(results[2].status==="fulfilled")setEvents(results[2].value.events);
+  if(results[3].status==="fulfilled"&&results[3].value.source==="forex_ai_regime_audit")setRegimes(results[3].value);
+  else setRegimes(null);
  },[]);
  useEffect(()=>{void refresh();void updateGraph();
   const a=setInterval(()=>void refresh(),12000),b=setInterval(()=>void updateGraph(),18000),
@@ -111,7 +115,7 @@ function useLiveData(){
  },[]);
  const triggerRefresh=()=>setRefreshVersion(v=>v+1);
  void ageTick;
- return {status,graph,orders,events,quote,mid,feedState,streamConnected,error,refresh:triggerRefresh};
+ return {status,graph,orders,events,regimes,quote,mid,feedState,streamConnected,error,refresh:triggerRefresh};
 }
 type Action="arm"|"disarm"|"kill";
 function ControlModal({action,close,updated}:{action:Action|null;close:()=>void;updated:()=>void}){
@@ -146,7 +150,7 @@ function ControlModal({action,close,updated}:{action:Action|null;close:()=>void;
  </div></div>;
 }
 export function CommandCenter(){
- const {status,graph,orders,events,quote,mid,feedState,streamConnected,error,refresh}=useLiveData();
+ const {status,graph,orders,events,regimes,quote,mid,feedState,streamConnected,error,refresh}=useLiveData();
  const [selected,setSelected]=useState<GraphNode|null>(null);
  const [filter,setFilter]=useState<string>("ALL");
  const [action,setAction]=useState<Action|null>(null);
@@ -265,6 +269,18 @@ export function CommandCenter(){
        <div className="chart-note">SORTED BY HISTORICAL SIGNAL FREQUENCY · NOT PROFITABILITY</div>
      </Panel>
    </div>
+   <Panel title="10 / D3 MARKET REGIME" right={<span className="tiny-label">CLOSED H1 · AUDIT-VERIFIED · READ-ONLY</span>} className="regime-panel">
+    <div className="regime-grid">
+     {(regimes?.regimes||[]).map(item=><div className="regime-item" key={item.symbol}>
+      <div className="regime-top"><b>{item.symbol}</b><span className={item.age_seconds!=null&&item.age_seconds>10800?"text-coral":"text-mint"}>{item.age_seconds==null?"UNKNOWN AGE":item.age_seconds>10800?"STALE":"H1 VERIFIED"}</span></div>
+      <strong className={item.regime==="UPTREND"?"text-mint":item.regime==="DOWNTREND"?"text-coral":""}>{item.regime}</strong>
+      <div className="regime-meta">QUANT {item.quant_regime} · D3 {item.model_regime||"—"} · CONF {item.confidence==null?"—":Math.round(item.confidence*100)+"%"}</div>
+      <div className="regime-meta">{item.reason_code} · {item.latency_ms}ms · {time(item.closed_h1_utc||undefined)} UTC</div>
+      <div className="regime-meta" title={item.feature_fingerprint}>MODEL {item.model_fingerprint?.slice(0,12)} · FEATURE {item.feature_fingerprint?.slice(0,12)}</div>
+     </div>)}
+     {!regimes?.regimes.length&&<div className="no-records">NO D3 REGIME AUDIT YET — NOT A VERIFIED MARKET CLASSIFICATION</div>}
+    </div>
+   </Panel>
    <footer className="footer-line"><span>FOREX-AI // CYBERPUNK COMMAND CENTER V2</span><span>JOURNAL-VERIFIED // PRIVATE UNIX SOCKET // NO MOCK PRODUCTION DATA</span><span>RELEASE {status?.release.version||"—"}</span></footer>
   </main>
   {error&&<div className="error-toast"><AlertTriangle size={15}/>{error}</div>}

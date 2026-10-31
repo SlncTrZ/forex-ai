@@ -216,6 +216,35 @@ class D3DecisionSafetyGate:
             raise GateUnavailable("D3_INVALID_TIMEOUT") from exc
         return cls(endpoint=endpoint, model=model, timeout_seconds=timeout)
 
+    def decide_questions(self, *, state: str, questions: dict) -> dict:
+        """Existing authenticated D3 transport for regime/score classification.
+
+        Does not send broker orders. Callers validate the exact answer schema.
+        No secrets, URLs or raw responses are logged.
+        """
+        try:
+            with httpx.Client(
+                timeout=httpx.Timeout(self.timeout_seconds, connect=min(2, self.timeout_seconds)),
+                follow_redirects=False, trust_env=False,
+            ) as client:
+                response = client.post(
+                    self.endpoint,
+                    json={"model": self.model, "state": state, "questions": questions},
+                    headers={"Authorization": "Bearer " + self._api_key,
+                             "Content-Type": "application/json"},
+                )
+                response.raise_for_status()
+                if len(response.content) > 65536:
+                    raise GateUnavailable("D3_RESPONSE_TOO_LARGE")
+                result = response.json()
+                if not isinstance(result, dict):
+                    raise GateUnavailable("D3_INVALID_RESPONSE")
+                return result
+        except GateUnavailable:
+            raise
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            raise GateUnavailable("D3_PROVIDER_UNAVAILABLE") from exc
+
     def __call__(self, intent: OrderIntent, request: dict,
                  *, context: dict | None = None) -> SafetyVerdict:
         state = _snapshot(intent, request, context)

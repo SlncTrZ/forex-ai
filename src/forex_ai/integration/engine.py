@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from forex_ai.advisory.models import Advisory, AdvisoryAction
+from forex_ai.advisory.regime_router import RegimeDecision, route_candidate
 from forex_ai.mt5.contracts import AccountSnapshot, SafetySnapshot, SymbolContract, TickSnapshot
 from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine, BrokerRiskResult, MarginCalculator, PendingExposure, ProfitCalculator, RiskContext
 from forex_ai.risk.profile import RiskProfile
@@ -106,6 +107,7 @@ class DecisionOrchestrator:
         advisory_for: Callable[[str], Advisory | None] | None = None,
         deterministic_gate_ok: bool = True,
         deterministic_gate_reason: str = "DETERMINISTIC_GATE_BLOCKED",
+        regime_decision: RegimeDecision | None = None,
     ) -> tuple[IntegratedDecision, ...]:
         now = now_utc.astimezone(timezone.utc)
         persist_safety_snapshot(self.db_path, safety)
@@ -124,6 +126,16 @@ class DecisionOrchestrator:
             if not deterministic_gate_ok:
                 decisions.append(IntegratedDecision(strategy_result, None, None, (deterministic_gate_reason,)))
                 continue
+
+            if regime_decision is not None:
+                veto = route_candidate(
+                    regime_decision, strategy_id=binding.config.version.strategy_id,
+                    side=candidate.side,
+                    evidence_codes=strategy_result.evidence.reason_codes,
+                )
+                if veto:
+                    decisions.append(IntegratedDecision(strategy_result, None, None, (veto,)))
+                    continue
 
             advisory = advisory_for(candidate.candidate_id) if advisory_for else None
             if advisory is not None:

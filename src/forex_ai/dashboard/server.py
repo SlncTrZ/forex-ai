@@ -151,6 +151,44 @@ def read_events(params: dict) -> dict:
     return {"events": events, "source": source}
 
 
+def read_regimes() -> dict:
+    """Sanitized read-only D3 regime telemetry from the same audit journal."""
+    latest: dict[str, dict] = {}
+    with _db() as con:
+        rows = con.execute(
+            "SELECT timestamp_utc,symbol,payload_json FROM audit_events "
+            "WHERE event_type='D3_REGIME_DECISION' ORDER BY id DESC LIMIT 160"
+        ).fetchall()
+    for row in rows:
+        symbol = str(row["symbol"] or "")
+        if not symbol or symbol in latest or len(symbol) > 32:
+            continue
+        try:
+            payload = json.loads(row["payload_json"])
+            if not isinstance(payload, dict):
+                continue
+            regime = payload.get("regime")
+            if regime not in ("UPTREND", "DOWNTREND", "SIDEWAY", "UNCERTAIN"):
+                continue
+            fields = ("regime", "quant_regime", "model_regime", "confidence",
+                      "reason_code", "closed_h1_utc", "model_fingerprint",
+                      "feature_fingerprint", "latency_ms", "policy_version")
+            record = {name: payload.get(name) for name in fields}
+            record["symbol"] = symbol
+            record["observed_at"] = str(row["timestamp_utc"])
+            # A returned prior decision is history, never proof of current state.
+            try:
+                closed = datetime.fromisoformat(str(record["closed_h1_utc"])).astimezone(UTC)
+                record["age_seconds"] = max(0, int((datetime.now(UTC) - closed).total_seconds()))
+            except (ValueError, TypeError):
+                record["age_seconds"] = None
+            latest[symbol] = record
+        except (ValueError, TypeError):
+            continue
+    return {"source": "forex_ai_regime_audit", "generated_at": datetime.now(UTC).isoformat(),
+            "regimes": list(latest.values())}
+
+
 def read_orders() -> dict:
     with _db() as con:
         rows = con.execute("""SELECT symbol,side,volume,state,created_at_utc,updated_at_utc,last_reason
@@ -290,6 +328,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, read_events(parse_qs(path.query)))
             if path.path == "/api/orders":
                 return self._json(200, read_orders())
+            if path.path == "/api/regimes":
+                return self._json(200, read_regimes())
             if path.path == "/api/preflight":
                 result = arm_preflight()
                 return self._json(200, {"account_type": result.account_type, "ready": result.ready, "reasons":list(result.reasons)})

@@ -139,6 +139,13 @@ button:focus-visible,input:focus-visible{outline:1px solid #8cf2c3;outline-offse
 .dispatch-state{justify-self:end;color:#84a993;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .no-records{color:#718e80;padding:14px 0;font-size:9px}
 .bottom-layout{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.regime-panel{padding-bottom:12px}
+.regime-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;padding:12px}
+.regime-item{padding:12px;border:1px solid #244638;background:#0b1b19;min-width:0}
+.regime-top{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#a8c7ba}
+.regime-top span{font-size:9px}
+.regime-item>strong{display:block;font-size:21px;letter-spacing:1px;margin:9px 0}
+.regime-meta{font-size:10px;color:#668e83;margin-top:5px;overflow-wrap:anywhere}
 .bottom-panel{min-height:225px}
 .donut-block{display:grid;grid-template-columns:minmax(130px,.75fr) minmax(110px,1fr);gap:7px;align-items:center;min-height:187px;padding:7px 14px}
 .donut-holder{position:relative}

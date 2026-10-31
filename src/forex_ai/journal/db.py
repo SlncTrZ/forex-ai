@@ -277,6 +277,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_events(epoch_ms);
 CREATE INDEX IF NOT EXISTS idx_audit_correlation ON audit_events(correlation_id, epoch_ms);
 CREATE INDEX IF NOT EXISTS idx_audit_symbol ON audit_events(symbol, epoch_ms);
+CREATE INDEX IF NOT EXISTS idx_audit_event_entity ON audit_events(event_type, entity_id);
 
 CREATE TABLE IF NOT EXISTS candidate_decisions (
     candidate_id TEXT PRIMARY KEY,

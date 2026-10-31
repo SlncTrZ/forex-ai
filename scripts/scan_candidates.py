@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from time import perf_counter
 
+from forex_ai.advisory.ollama_safety_gate import D3DecisionSafetyGate, GateUnavailable
+from forex_ai.advisory.regime_router import resolve_regime
 from forex_ai.config import load_risk_profile, load_runtime_config
 from forex_ai.integration.engine import DecisionOrchestrator, production_strategy_bindings
 from forex_ai.journal.db import initialize, log_audit_event, session
@@ -80,6 +82,13 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
             raise RuntimeError("order_calc_margin returned None")
         return D(str(value))
 
+    # Active strategy admission: exactly one cached D3 regime decision per
+    # symbol/H1 closed-bar fingerprint, before candidate risk assessment.
+    try:
+        d3 = D3DecisionSafetyGate.from_environment()
+    except GateUnavailable:
+        d3 = None
+    regime = resolve_regime(market, db_path=cfg.db_path, provider=d3)
     entry_window_open = new_entries_allowed(now)
     decisions = orchestrator.scan(
         market,
@@ -93,6 +102,7 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
         now_utc=now,
         deterministic_gate_ok=entry_window_open,
         deterministic_gate_reason="WEEKEND_ENTRY_CUTOFF",
+        regime_decision=regime,
     )
 
     latest_closed_m15 = market.timeframes["M15"].closed_bars[-1].time_utc
@@ -128,6 +138,10 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
             "market_captured_at_utc": market.captured_at_utc.isoformat(),
             "strategy_evaluated_at_utc": now.isoformat(),
             "risk_approved": decision.risk_result.approved if decision.risk_result is not None else False,
+            "regime": regime.regime,
+            "regime_reason": regime.reason_code,
+            "regime_feature_fingerprint": regime.feature_fingerprint,
+            "regime_model_fingerprint": regime.model_fingerprint,
             "risk_reason_codes": list(decision.risk_result.reason_codes) if decision.risk_result is not None else list(decision.blocked_reasons),
             "risk_profile_fingerprint": decision.risk_result.risk_profile_fingerprint if decision.risk_result is not None else None,
             "safety_snapshot_fingerprint": safety.fingerprint,
@@ -152,6 +166,8 @@ def _scan_symbol(*, client: MT5Client, cfg, outcome, base_symbol: str, orchestra
             "opportunity_key": candidate.opportunity_key if candidate is not None else None,
             "risk_approved": payload["risk_approved"],
             "risk_reason_codes": payload["risk_reason_codes"],
+            "regime": regime.regime,
+            "regime_reason": regime.reason_code,
         })
 
     latency_ms = int((perf_counter() - started) * 1000)
@@ -189,7 +205,8 @@ def main() -> int:
         client=client,
         symbols=cfg.symbols,
         db_path=cfg.db_path,
-        bars_count=max(80, required_raw_bars(strategy_snapshot, production_only=False)),
+        # H1 EMA200 warm-up for the shared regime gate (plus forming bar).
+        bars_count=max(261, required_raw_bars(strategy_snapshot, production_only=False)),
         load_history=False,
         market_context=market_context_snapshot,
     )

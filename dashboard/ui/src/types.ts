@@ -16,4 +16,12 @@ export interface StatusPayload {
  ticks:{stream_state:string;last_poll_ms:number|null;last_received_ms:number|null;overflows:number;quotes:Quote[];symbols:string[]};
  services:{name:string;status:string}[];release:{version:string}
 }
+export interface RegimeDecision {
+ symbol:string;regime:"UPTREND"|"DOWNTREND"|"SIDEWAY"|"UNCERTAIN";
+ quant_regime:string;model_regime:string|null;confidence:number|null;
+ reason_code:string;closed_h1_utc:string|null;feature_fingerprint:string;
+ model_fingerprint:string;latency_ms:number;age_seconds:number|null;
+ observed_at:string;policy_version:string;
+}
+export interface RegimeResponse {source:"forex_ai_regime_audit";generated_at:string;regimes:RegimeDecision[]}
 export interface OperatorEvent {time:string;level:string;component:string;event:string;details:string}
