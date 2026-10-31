@@ -62,7 +62,7 @@ def test_runner_routes_from_broker_not_runtime_mode(
         calls.append(("real", kwargs))
         return SimpleNamespace(ready=False, reasons=("STRATEGY_APPROVAL_MISSING",))
 
-    monkeypatch.setattr(runner, "assess_demo_campaign_readiness", demo_stub)
+    monkeypatch.setattr(runner, "assess_demo_readiness", demo_stub)
     monkeypatch.setattr(runner, "assess_live_canary_readiness", real_stub)
     monkeypatch.setattr(runner, "load_risk_profile", lambda: object())
     cfg = SimpleNamespace(mode=runtime_mode, db_path=tmp_path / "test.db", symbols=("XAUUSD",))

@@ -12,32 +12,28 @@ UTC = timezone.utc
 
 
 @dataclass(frozen=True)
-class DemoCampaignReadiness:
+class DemoReadiness:
     ready: bool
     reasons: tuple[str, ...]
-    campaign_id: str
     mode: str
     execution_enabled: bool
 
 
-def assess_demo_campaign_readiness(
+def assess_demo_readiness(
     *,
     db_path: Path,
     mode: str,
     execution_enabled: bool,
-    campaign_id: str,
     account_trade_mode: int | None,
     account_identity_bound: bool,
     now_utc: datetime | None = None,
-) -> DemoCampaignReadiness:
+) -> DemoReadiness:
     now = (now_utc or datetime.now(UTC)).astimezone(UTC)
     reasons: list[str] = []
     if mode != "DEMO":
         reasons.append("MODE_NOT_DEMO")
     if not execution_enabled:
         reasons.append("EXECUTION_DISABLED")
-    if not campaign_id.strip():
-        reasons.append("CAMPAIGN_ID_REQUIRED")
     if account_trade_mode is None:
         reasons.append("ACCOUNT_TRADE_MODE_UNAVAILABLE")
     elif int(account_trade_mode) != int(MT5AccountTradeMode.DEMO):
@@ -57,4 +53,4 @@ def assess_demo_campaign_readiness(
     if control.arm_expires_at_utc is None or control.arm_expires_at_utc <= now:
         reasons.append("ARM_EXPIRED")
     unique = tuple(dict.fromkeys(reasons))
-    return DemoCampaignReadiness(not unique, unique, campaign_id, mode, execution_enabled)
+    return DemoReadiness(not unique, unique, mode, execution_enabled)

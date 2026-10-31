@@ -73,10 +73,7 @@ def arm_preflight() -> ArmCheck:
     risk = load_risk_profile()
     if not risk.enabled or risk.kill_switch:
         reasons.append("RISK_PROFILE_BLOCKED")
-    if mode is MT5AccountTradeMode.DEMO:
-        if not os.getenv("FOREX_AI_DEMO_CAMPAIGN_ID", "").strip():
-            reasons.append("DEMO_CAMPAIGN_ID_REQUIRED")
-    elif mode is MT5AccountTradeMode.REAL:
+    if mode is MT5AccountTradeMode.REAL:
         if len(cfg.symbols) != 1:
             reasons.append("REAL_CANARY_REQUIRES_ONE_SYMBOL")
         if not auto_live_window(now):

@@ -20,7 +20,7 @@ from forex_ai.config import load_execution_enabled, load_fixed_lot, load_risk_pr
 from forex_ai.advisory.ollama_safety_gate import GateUnavailable, D3DecisionSafetyGate
 from forex_ai.execution.account_mode import MT5AccountTradeMode, detect_account_trade_mode, require_account_trade_mode
 from forex_ai.execution.live_canary import assess_live_canary_readiness
-from forex_ai.execution.demo_campaign import assess_demo_campaign_readiness
+from forex_ai.execution.demo_readiness import assess_demo_readiness
 from forex_ai.execution.mt5 import (
     MT5MarketRequestPolicy,
     MT5RetcodeClassifier,
@@ -57,11 +57,10 @@ def _readiness(cfg, *, account_trade_mode: MT5AccountTradeMode, account_identity
     """Use the MT5 account type; cfg.mode must not grant execution authority."""
     now = datetime.now(UTC)
     if account_trade_mode is MT5AccountTradeMode.DEMO:
-        return assess_demo_campaign_readiness(
+        return assess_demo_readiness(
             db_path=cfg.db_path,
             mode="DEMO",
             execution_enabled=execution_enabled,
-            campaign_id=os.getenv("FOREX_AI_DEMO_CAMPAIGN_ID", ""),
             account_trade_mode=int(account_trade_mode),
             account_identity_bound=account_identity_bound,
             now_utc=now,
