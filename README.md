@@ -194,6 +194,12 @@ even when no ticks arrive. MT5 trading execution and SQLite observer stay
 independent; the ticker never calls `order_send` and does not write ticks to
 SQLite. Operations / account summary still refresh every 12 seconds.
 
+## Command Center V2 (feature branch)
+
+The reviewed V2 frontend uses React, Vite, TypeScript, Tailwind, Sigma.js WebGL and modular ECharts, backed by read-only journal graph API `GET /api/graph?limit=110`. Source, build and local QA instructions: [dashboard/ui/README.md](dashboard/ui/README.md). Exact graph semantics, data lineage and rollout gates: [docs/COMMAND_CENTER_V2.md](docs/COMMAND_CENTER_V2.md).
+
+`dashboard/ui/dist` must be built and fingerprinted before a V2 production release; the deploy script rejects an absent or stale build and never sends Node dependencies to runtime.
+
 ## Operational Runbook & Deploy
 
 Production services are managed on host `.227` via systemd:

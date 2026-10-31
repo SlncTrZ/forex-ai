@@ -133,7 +133,8 @@ def test_reconnect_after_collector_restart_resets_stale_cursor(tmp_path,monkeypa
         received=b""
         for _ in range(5):
             received+=client.recv(16384)
-            if b"STREAM_RESTART" in received:break
+            # SSE frames can arrive in separate TCP/unix socket reads.
+            if b"STREAM_RESTART" in received and b"event: snapshot\ndata: " in received:break
         assert b"event: gap\ndata: " in received
         assert b"STREAM_RESTART" in received
         assert b"event: snapshot\ndata: " in received

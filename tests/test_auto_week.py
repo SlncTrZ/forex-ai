@@ -48,7 +48,7 @@ def test_live_approval_matches_frozen_strategy_and_risk_profile():
     reasons = validate_auto_week_approval(
         approval,
         strategy_config_fingerprint=snapshot.production_fingerprint,
-        symbols=("XAUUSD",),
+        symbols=approval.symbols,
         risk_profile=profile,
         account_trade_mode=int(MT5AccountTradeMode.REAL),
         account_identity_bound=True,

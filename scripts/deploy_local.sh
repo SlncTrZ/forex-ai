@@ -86,6 +86,32 @@ fi
 
 test -s "$SRC/requirements.lock" || { echo "Missing requirements.lock" >&2; exit 13; }
 
+# React V2 assets must correspond exactly to the reviewed source & npm lock.
+# Do not run npm or fetch dependencies during production activation.
+if [ -f "$SRC/dashboard/ui/package.json" ]; then
+  "$TEST_PYTHON" - "$SRC/dashboard/ui" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+stamp_path = root / "dist/build-integrity.json"
+if not (root / "dist/index.html").is_file() or not stamp_path.is_file():
+    raise SystemExit("V2 frontend assets missing; run npm ci && npm run build in dashboard/ui")
+stamp = json.loads(stamp_path.read_text())
+files = ["index.html", "package.json", "package-lock.json", "tsconfig.json",
+         "vite.config.ts", "tailwind.config.js", "postcss.config.js"]
+files += [p.relative_to(root).as_posix() for p in (root / "src").rglob("*") if p.is_file()]
+hash_value = hashlib.sha256()
+for name in sorted(files):
+    hash_value.update(name.encode())
+    hash_value.update(b"\0")
+    hash_value.update((root / name).read_bytes())
+    hash_value.update(b"\0")
+if stamp.get("source_sha256") != hash_value.hexdigest():
+    raise SystemExit("V2 frontend build is stale or untrusted; rebuild before deploy")
+print("V2 verified frontend source fingerprint", hash_value.hexdigest()[:12])
+PY
+fi
+
 # Tests include project-relative fixtures; execute from the source root.
 cd "$SRC"
 "$TEST_PYTHON" -m pytest "$SRC/tests" -q
@@ -142,6 +168,7 @@ mkdir -p "$STAGING"
 rsync -a --delete \
   --exclude '.git/' \
   --exclude '.venv/' \
+  --exclude 'node_modules/' \
   --exclude '__pycache__/' \
   --exclude '.pytest_cache/' \
   --exclude '*.db' \

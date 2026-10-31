@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import re
 import socket
@@ -15,6 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from forex_ai.config import load_execution_enabled, load_risk_profile, load_runtime_config
 from forex_ai.dashboard.control import ControlDenied, arm_preflight, change_control
+from forex_ai.dashboard.graph import read_execution_graph
 from forex_ai.dashboard.ticks import TickCollector, TickHub
 from forex_ai.execution.account_mode import detect_account_trade_mode
 from forex_ai.journal.integration_repository import load_trading_control
@@ -23,6 +25,7 @@ from forex_ai.runtime.ops import assess_runtime_health
 
 UTC = timezone.utc
 BASE = Path(__file__).resolve().parents[3] / "dashboard" / "assets"
+BUILT_UI = BASE.parent / "ui" / "dist"
 SOCKET = Path(os.getenv("FOREX_AI_DASHBOARD_SOCKET", f"/run/user/{getattr(os, 'getuid', lambda: 1000)()}/forex-ai-dashboard.sock"))
 HOSTS = {"127.0.0.1:8765", "localhost:8765"}
 SERVICES = (
@@ -245,6 +248,19 @@ class Handler(BaseHTTPRequestHandler):
         if not self._trusted_host():
             return self._json(403, {"error":"UNTRUSTED_HOST"})
         path = urlsplit(self.path)
+        # Prefer the compiled React UI; keep the existing standalone operator
+        # interface as an explicit fallback for releases without a frontend build.
+        if BUILT_UI.joinpath("index.html").is_file() and (
+            path.path == "/" or path.path == "/app" or
+            (path.path.startswith("/assets/") and path.path not in ("/assets/app.css", "/assets/app.js"))
+        ):
+            rel = "index.html" if path.path in ("/", "/app") else path.path.lstrip("/")
+            asset = (BUILT_UI / rel).resolve()
+            if not asset.is_relative_to(BUILT_UI.resolve()) or not asset.is_file():
+                return self._json(404, {"error":"STATIC_ASSET_NOT_FOUND"})
+            mime = mimetypes.guess_type(asset.name)[0] or "application/octet-stream"
+            return self._send(200, asset.read_bytes(), mime + "; charset=utf-8" if
+                              mime in ("text/html", "text/css", "application/javascript", "text/javascript") else mime)
         files = {"/":"index.html","/assets/app.css":"app.css","/assets/app.js":"app.js"}
         if path.path in files:
             name = files[path.path]
@@ -259,6 +275,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._stream_ticks()
             if path.path == "/api/ticks":
                 return self._json(200, TICK_HUB.snapshot())
+            if path.path == "/api/graph":
+                query = parse_qs(path.query)
+                try:
+                    n = int(query.get("limit", ["110"])[0])
+                    if n < 1 or n > 180:
+                        raise ValueError
+                except ValueError:
+                    return self._json(400, {"error": "GRAPH_LIMIT_OUT_OF_RANGE"})
+                return self._json(200, read_execution_graph(load_runtime_config().db_path, limit=n))
             if path.path == "/api/status":
                 return self._json(200, read_status())
             if path.path == "/api/events":
