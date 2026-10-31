@@ -36,8 +36,8 @@ PRODUCTION_STRATEGY_IDS = (
     "keylevel_breakout_v2",
 )
 V2_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS
-EXPLORATION_STRATEGY_IDS: tuple[str, ...] = ()
-ALL_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS
+EXPLORATION_STRATEGY_IDS: tuple[str, ...] = ("range_liquidity_trap_m5",)
+ALL_STRATEGY_IDS = PRODUCTION_STRATEGY_IDS + EXPLORATION_STRATEGY_IDS
 
 
 class _StrictModel(BaseModel):
@@ -190,6 +190,17 @@ class BTCSqueezeBreakoutParameters(_StrictModel):
     expiry_minutes: int = Field(default=120, gt=0)
 
 
+class RangeLiquidityTrapParameters(_StrictModel):
+    decision_timeframe: str = "M5"
+    range_lookback_bars: int = Field(default=20, ge=5, le=100)
+    target_r: float = Field(default=2.0, gt=0.0)
+    buffer_atr: float = Field(default=0.1, ge=0.0, le=1.0)
+    min_stop_distance: float = Field(default=5.0, ge=0.0)
+    session_start_hour: float = Field(default=6.5, ge=0.0, le=24.0)
+    session_end_hour: float = Field(default=16.5, ge=0.0, le=24.0)
+    expiry_minutes: int = Field(default=60, gt=0)
+
+
 PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "pro_volatility_expansion_v2": ProVolatilityParameters,
     "supertrend_volume_m5": SupertrendVolumeParameters,
@@ -203,6 +214,7 @@ PARAMETER_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType({
     "ichimoku_mtf_v2": IchimokuMTFParameters,
     "mtf_trend_continuation_v2": MTFTrendContinuationParameters,
     "keylevel_breakout_v2": KeylevelBreakoutParameters,
+    "range_liquidity_trap_m5": RangeLiquidityTrapParameters,
 })
 
 

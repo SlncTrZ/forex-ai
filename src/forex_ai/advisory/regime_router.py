@@ -206,8 +206,8 @@ def route_candidate(regime: RegimeDecision, *, strategy_id: str, side: str,
     if regime.regime == "DOWNTREND" and side != "SELL":
         return "REGIME_DIRECTION_VETO"
     if regime.regime == "SIDEWAY" and not (
-        strategy_id == "btc_squeeze_breakout_m15"
-        and "BTC_SQUEEZE_BREAKOUT_CONFIRMED" in evidence_codes
+        (strategy_id == "btc_squeeze_breakout_m15" and "BTC_SQUEEZE_BREAKOUT_CONFIRMED" in evidence_codes)
+        or (strategy_id == "range_liquidity_trap_m5" and "RANGE_LIQUIDITY_TRAP_CONFIRMED" in evidence_codes)
     ):
         return "REGIME_SIDEWAY_VETO"
     # Exception requires source-backed squeeze-fire evidence, not merely an ID.

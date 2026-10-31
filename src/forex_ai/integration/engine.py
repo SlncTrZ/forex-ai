@@ -20,6 +20,7 @@ from forex_ai.strategy.v2.ichimoku_mtf import evaluate as evaluate_ichimoku
 from forex_ai.strategy.v2.keylevel_breakout import evaluate as evaluate_keylevel
 from forex_ai.strategy.v2.mtf_trend_continuation import evaluate as evaluate_mtf_trend
 from forex_ai.strategy.v2.pro_volatility_expansion_v2 import evaluate as evaluate_pro_volatility
+from forex_ai.strategy.v2.range_liquidity_trap_m5 import evaluate as evaluate_range_liquidity_trap
 from forex_ai.strategy.v2.smc_pro_fvg import evaluate as evaluate_smc
 from forex_ai.strategy.v2.supertrend_stochastic_m5 import evaluate as evaluate_supertrend_stoch
 from forex_ai.strategy.v2.supertrend_volume_m5 import evaluate as evaluate_supertrend
@@ -71,6 +72,8 @@ def production_strategy_bindings(snapshot: StrategyConfigSnapshot) -> tuple[Stra
         bindings.append(StrategyBinding(evaluate_pro_volatility, snapshot.config_for("pro_volatility_expansion_v2")))
     if snapshot.enabled("ichimoku_mtf_v2"):
         bindings.append(StrategyBinding(evaluate_ichimoku, snapshot.config_for("ichimoku_mtf_v2")))
+    if snapshot.enabled("range_liquidity_trap_m5"):
+        bindings.append(StrategyBinding(evaluate_range_liquidity_trap, snapshot.config_for("range_liquidity_trap_m5")))
     if not bindings:
         raise ValueError("at least one production strategy must be enabled")
     return tuple(bindings)

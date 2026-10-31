@@ -170,3 +170,16 @@ strategies:
       session_start_hour: 6.5
       session_end_hour: 16.5
       expiry_minutes: 120
+
+  range_liquidity_trap_m5:
+    enabled: true
+    version: "2.0.0"
+    parameters:
+      decision_timeframe: M5
+      range_lookback_bars: 20
+      target_r: 2.0
+      buffer_atr: 0.1
+      min_stop_distance: 5.0
+      session_start_hour: 6.5
+      session_end_hour: 16.5
+      expiry_minutes: 60
