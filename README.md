@@ -21,6 +21,12 @@ The system features an automated **Tiered Compound Risk Engine** (`_private/lãi
 - Drawdown resilience: When $L < -5$, nominal risk falls to 0.5%; broker-aware risk and drawdown limits still constrain minimum-lot decisions.
 - Multi-order concurrency: `max_active_orders: 3`, `max_total_open_risk_pct: 9%`.
 
+### Standardized Backtest & Risk Protocol
+All backtesting follows strict institutional rules defined in [docs/BACKTEST_PROTOCOL.md](docs/BACKTEST_PROTOCOL.md):
+1. **Mandatory Execution Node:** Backtests must execute on Compute Node X99 (`192.168.1.152`) using real tick data from MT5 Exness. If `.152` is unreachable, halt and notify owner immediately.
+2. **Fixed Base Capital:** Standard initial backtest capital $V_0 = \mathbf{\$1,000\text{ USD}}$ (Level 0).
+3. **Identical Risk Execution:** Dynamic lot sizing based on SL distance and Tiered Compound Level progression is strictly mandatory for both backtesting and live trading. Flat 0.01 lot canary testing is forbidden for strategy performance evaluation.
+
 The execution path is strictly deterministic:
 
 ```text

@@ -1,13 +1,13 @@
 # Forex-AI — Current Status
 
-Last updated: 2026-10-30 23:00
+Last updated: 2026-10-31 10:30
 
 ## Runtime (v0.0.4)
 
 - DEV source-of-truth: `<DEV_TREE>` (backed by Workstation `.171`)
 - Compute & Backtest node: Ubuntu 26.04 (`192.168.1.152`), 56 vCPUs, 30 GB RAM, NVMe 151 GB
 - Production runtime host: Ubuntu 24.04 (`192.168.1.227`), Docker `forex-mt5`, Exness Demo Trial7
-- Current release: `$HOME/apps/forex-ai/current` -> `releases/20261029T043513Z-a48d9b9e1c9a`
+- Current release: `$HOME/apps/forex-ai/current` -> `releases/20261030T161220Z-66d651f19029`
 - Runtime venv: `$HOME/.venvs/forex-ai-runtime`
 - SQLite: `$HOME/.local/share/forex-ai/forex.db`
 - Observer service: `forex-ai-observe.service` active & healthy (78MB RAM, 0 leaks)
@@ -16,17 +16,24 @@ Last updated: 2026-10-30 23:00
 - Reconcile timer: `forex-ai-execution-reconcile.timer` active, every 15 seconds
 - Health watchdog: `forex-ai-ops-health.timer` active, every minute
 
+## Standardized Backtest & Risk Invariants (2026-10-31)
+
+Quy chuẩn bất biến bắt buộc cho toàn bộ các phiên làm việc của Agent ([docs/BACKTEST_PROTOCOL.md](docs/BACKTEST_PROTOCOL.md)):
+1. **Nút Backtest độc quyền:** Mọi kiểm định backtest bắt buộc chạy trên dữ liệu nến thực tế MT5 tại Compute Node X99 (`192.168.1.152`). Nếu không thể truy cập `.152` (tắt nguồn, lỗi mạng, SSH), **dừng lại ngay và báo Anh xử lý**, không tự ý giả lập nến ảo.
+2. **Vốn cơ sở chuẩn (Base Capital):** Cố định $V_0 = \mathbf{\$1,000\text{ USD}}$ (Level 0) cho mọi kịch bản backtest.
+3. **Đồng nhất Quản lý rủi ro:** Luôn luôn áp dụng `TieredCompoundRiskEngine` (Level 0: 3.0% rủi ro, lot tính theo khoảng cách SL, de-escalation khi sụt giảm vốn, thăng/giáng cấp Level $+10\% / -10\%$) cho cả Backtest lẫn Live Trading.
+
 ## Account & Target Symbols
 
 - Broker / Server: Exness / `Exness-MT5Trial7` (Demo) & `Exness-MT5Real36` (Real)
-- Account currency: `USD` ($10,000 initial capital V0)
+- Account currency: `USD` ($1,000 base capital V0 for backtest, live sync dynamic)
 - Target Assets:
   - `XAUUSD -> XAUUSDm / XAUUSDc` (Gold, point = 0.001, min SL = 6.0$ / 600 pts)
   - `BTCUSD -> BTCUSDm / BTCUSDc` (Bitcoin 24/7, point = 0.01, min SL = 150.0$ / 15,000 pts)
   - `EURUSD -> EURUSDm / EURUSDc` (Euro FX, point = 0.00001, min SL = 0.0015 / 150 pts)
   - `USDJPY -> USDJPYm / USDJPYc` (Yen FX, point = 0.001, min SL = 0.15 / 150 pts)
 - Sizing Mechanism: **Tiered Compound Risk Engine** (đã audit & khắc phục 2026-10-30)
-  - V0 đồng bộ động theo High-Water Mark (HWM) hoặc vốn nạp ròng, không dùng số cứng $10,000.
+  - V0 đồng bộ động theo High-Water Mark (HWM) hoặc vốn nạp ròng.
   - Tỷ lệ rủi ro có de-escalation thật sự khi drawdown ($L < 0 \implies 2\% \to 1\% \to 0.5\%$).
   - Chốt chặn bảo vệ `DRAWDOWN_LIMIT` 10% luôn có hiệu lực, không bị bypass bởi forced min lot.
   - Giới hạn rủi ro danh nghĩa được gông cứng bởi `max_risk_per_trade_pct`.
