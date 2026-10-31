@@ -41,7 +41,7 @@ def test_demo_readiness_fails_on_kill_switch_and_disarm(tmp_path,monkeypatch):
     save_trading_control(db,TradingControlState(False,None,True,False,'safe'))
     report=assess_demo_readiness(db_path=db,mode='DEMO',execution_enabled=True,account_trade_mode=0,account_identity_bound=True,now_utc=NOW)
     assert not report.ready
-    assert set(report.reasons)>={'CONTROL_DISARMED','KILL_SWITCH_ACTIVE','ARM_EXPIRED'}
+    assert set(report.reasons)>={'CONTROL_DISARMED','KILL_SWITCH_ACTIVE'}
 
 
 def test_demo_readiness_rejects_real_account(tmp_path,monkeypatch):

@@ -90,8 +90,8 @@ def assess_live_canary_readiness(
         reasons.append("KILL_SWITCH_ACTIVE")
     if control.maintenance_mode:
         reasons.append("MAINTENANCE_MODE")
-    if control.arm_expires_at_utc is None or control.arm_expires_at_utc <= now:
-        reasons.append("ARM_EXPIRED")
+    if control.arm_expires_at_utc is not None and control.arm_expires_at_utc <= now:
+        reasons.append("LEGACY_ARM_EXPIRED")
 
     approval: StrategyApproval | None = None
     if approval_path is None or not approval_path.is_file():

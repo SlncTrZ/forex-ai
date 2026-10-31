@@ -1,6 +1,6 @@
 """Owner CLI for the same guarded control service used by the dashboard.
 
-Arming REAL accounts requires a fresh broker check and explicit approval.
+Arming DEMO or REAL persists until DISARM/KILL. REAL keeps its separate strategy-approval checks.
 No option bypasses manual emergency-stop locks.
 """
 from __future__ import annotations
@@ -17,12 +17,13 @@ def main() -> int:
     group.add_argument("--arm", action="store_true")
     group.add_argument("--disarm", action="store_true")
     group.add_argument("--kill", action="store_true")
-    parser.add_argument("--minutes", type=int, default=60, help="ARM lease 5–1440 minutes")
+    # Legacy CLI parameter accepted but ignored; ARM is persistent.
+    parser.add_argument("--minutes", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--confirm", required=True, help='Exact confirmation, e.g. "ARM DEMO"')
     args = parser.parse_args()
     action = "arm" if args.arm else "disarm" if args.disarm else "kill"
     try:
-        result = change_control(action, {"minutes": args.minutes, "confirmation": args.confirm})
+        result = change_control(action, {"confirmation": args.confirm})
         print(json.dumps({"ok": True, "result": result}))
         return 0
     except ControlDenied as exc:

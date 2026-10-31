@@ -72,21 +72,41 @@ def test_manual_kill_cannot_be_cleared_by_arm(tmp_path, monkeypatch):
     assert not audit(db)
 
 
-def test_arm_confirmation_and_lease_duration_validation(tmp_path, monkeypatch):
-    db = database(tmp_path, monkeypatch, TradingControlState(False,None,True,False,"AUTO_PREFLIGHT_BLOCKED:ACCOUNT_NOT_REAL"))
-    monkeypatch.setattr(control, "arm_preflight", lambda: control.ArmCheck("DEMO",True,()))
-    for payload in ({"confirmation":"ARM REAL","minutes":60},{"confirmation":"ARM DEMO","minutes":0},
-                    {"confirmation":"ARM DEMO","minutes":2000},{"confirmation":"ARM DEMO","minutes":True}):
-        with pytest.raises(control.ControlDenied):
-            control.change_control("arm", payload)
-    assert not audit(db)
-    assert load_trading_control(db).kill_switch
-    outcome = control.change_control("arm", {"confirmation":"ARM DEMO","minutes":15})
-    assert outcome["armed"] and not outcome["kill_switch"]
-    assert len(audit(db)) == 1
-    with pytest.raises(control.ControlDenied, match="ALREADY_ARMED"):
-        control.change_control("arm", {"confirmation":"ARM DEMO","minutes":15})
-    assert len(audit(db)) == 1
+def test_manual_arm_persists_indefinitely_on_demo_and_real(tmp_path, monkeypatch):
+    for mode in ("DEMO", "REAL"):
+        directory = tmp_path / mode.lower()
+        directory.mkdir()
+        db = database(directory, monkeypatch, TradingControlState(
+            False, None, True, False, "AUTO_PREFLIGHT_BLOCKED:ACCOUNT_NOT_REAL"))
+        monkeypatch.setattr(control, "arm_preflight",
+                            lambda mode=mode: control.ArmCheck(mode, True, ()))
+        with pytest.raises(control.ControlDenied, match="CONFIRM_ACCOUNT_TYPE"):
+            control.change_control("arm", {"confirmation": "ARM OTHER"})
+        assert not audit(db)
+        result = control.change_control("arm", {"confirmation": "ARM " + mode})
+        assert result["armed"] and result["expires_at"] is None
+        state = load_trading_control(db)
+        assert state.arm_expires_at_utc is None and state.armed
+        assert state.allows_new_entries(now_utc=datetime.now(UTC) + timedelta(days=3650))
+        assert len(audit(db)) == 1
+        with pytest.raises(control.ControlDenied, match="ALREADY_ARMED"):
+            control.change_control("arm", {"confirmation": "ARM " + mode})
+        result = control.change_control("disarm", {"confirmation": "DISARM"})
+        assert not result["armed"]
+        assert not load_trading_control(db).allows_new_entries(now_utc=datetime.now(UTC))
+
+
+def test_legacy_expired_arm_stays_blocked_until_manual_rearm(tmp_path, monkeypatch):
+    now = datetime.now(UTC)
+    db = database(tmp_path, monkeypatch, TradingControlState(
+        True, now - timedelta(minutes=10), False, False, "OPERATOR_ARM_DEMO"))
+    assert not load_trading_control(db).allows_new_entries(now_utc=now)
+    monkeypatch.setattr(control, "arm_preflight",
+                        lambda: control.ArmCheck("DEMO", True, ()))
+    result = control.change_control("arm", {"confirmation": "ARM DEMO", "minutes": 15})
+    assert result["expires_at"] is None
+    assert load_trading_control(db).allows_new_entries(
+        now_utc=now + timedelta(days=3650))
 
 
 def test_account_mode_read_direct_from_mt5_and_failure_denies(monkeypatch):
@@ -111,7 +131,6 @@ def test_real_preflight_fails_closed_without_approval(tmp_path, monkeypatch):
     monkeypatch.setattr(control,"assess_runtime_health",lambda *a,**kw:SimpleNamespace(healthy=True,reasons=()))
     monkeypatch.setattr(control,"load_execution_enabled",lambda:True)
     monkeypatch.setattr(control,"load_risk_profile",lambda:SimpleNamespace(enabled=True,kill_switch=False))
-    monkeypatch.setattr(control,"auto_live_window",lambda _:True)
     monkeypatch.delenv("FOREX_AI_STRATEGY_APPROVAL_FILE",raising=False)
     report=control.arm_preflight()
     assert not report.ready and "REAL_APPROVAL_MISSING" in report.reasons

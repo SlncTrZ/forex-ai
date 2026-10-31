@@ -10,7 +10,7 @@ from pathlib import Path
 
 from forex_ai.config import load_execution_enabled, load_risk_profile, load_runtime_config
 from forex_ai.execution.account_mode import MT5AccountTradeMode, detect_account_trade_mode
-from forex_ai.execution.auto_week import AutoWeekApproval, auto_live_window, is_auto_managed_control, validate_auto_week_approval
+from forex_ai.execution.auto_week import AutoWeekApproval, is_auto_managed_control, validate_auto_week_approval
 from forex_ai.journal.db import utc_now_parts
 from forex_ai.journal.integration_repository import TradingControlState, load_trading_control
 from forex_ai.mt5.client import MT5Client
@@ -76,8 +76,6 @@ def arm_preflight() -> ArmCheck:
     if mode is MT5AccountTradeMode.REAL:
         if len(cfg.symbols) != 1:
             reasons.append("REAL_CANARY_REQUIRES_ONE_SYMBOL")
-        if not auto_live_window(now):
-            reasons.append("OUTSIDE_REAL_TRADING_WINDOW")
         approval_path = os.getenv("FOREX_AI_STRATEGY_APPROVAL_FILE")
         if not approval_path:
             reasons.append("REAL_APPROVAL_MISSING")
@@ -97,7 +95,7 @@ def arm_preflight() -> ArmCheck:
     return ArmCheck(mode.name, not reasons, tuple(dict.fromkeys(reasons)))
 
 
-def _update_control(action: str, *, mode: str = "", minutes: int = 0) -> dict:
+def _update_control(action: str, *, mode: str = "") -> dict:
     db = load_runtime_config().db_path
     if not db.is_file():
         raise ControlDenied("CONTROL_DATABASE_MISSING", 503)
@@ -115,7 +113,9 @@ def _update_control(action: str, *, mode: str = "", minutes: int = 0) -> dict:
                     raise ControlDenied("MANUAL_SAFETY_LOCK_ACTIVE")
                 if old.allows_new_entries(now_utc=now):
                     raise ControlDenied("ALREADY_ARMED")
-                after = TradingControlState(True, now + timedelta(minutes=minutes), False, False, f"OPERATOR_ARM_{mode}")
+                # Persistent ARM on both account types; only a new owner
+                # authorization converts an expired legacy lease to persistent.
+                after = TradingControlState(True, None, False, False, f"OPERATOR_ARM_{mode}")
             elif action == "disarm":
                 if not old.armed and not old.arm_expires_at_utc:
                     raise ControlDenied("ALREADY_DISARMED")
@@ -161,18 +161,12 @@ def change_control(action: str, payload: dict) -> dict:
     if not isinstance(payload, dict):
         raise ControlDenied("INVALID_PAYLOAD", 400)
     if action == "arm":
-        try:
-            minutes = int(payload.get("minutes"))
-        except (ValueError, TypeError):
-            raise ControlDenied("INVALID_LEASE_DURATION", 400) from None
-        if isinstance(payload.get("minutes"), bool) or not 5 <= minutes <= 1440:
-            raise ControlDenied("LEASE_MUST_BE_5_TO_1440_MINUTES", 400)
         check = arm_preflight()
         if not check.ready:
             raise ControlDenied("PREFLIGHT:" + ",".join(check.reasons))
         if payload.get("confirmation") != "ARM " + check.account_type:
             raise ControlDenied("CONFIRM_ACCOUNT_TYPE", 400)
-        return _update_control("arm", mode=check.account_type, minutes=minutes)
+        return _update_control("arm", mode=check.account_type)
     confirmation = "DISARM" if action == "disarm" else "EMERGENCY STOP"
     if payload.get("confirmation") != confirmation:
         raise ControlDenied("CONFIRM_" + action.upper(), 400)

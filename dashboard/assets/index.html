@@ -88,7 +88,7 @@
           </div>
           <div class="split">
             <section class="panel"><div class="panel-head"><div><h2>Trading authorization</h2><p>Independent of infrastructure health</p></div><span id="overview-arm-pill" class="pill neutral">—</span></div>
-              <div class="control-rows"><div><span class="control-name">MT5 account type</span><b id="account-type">—</b></div><div><span class="control-name">Account binding</span><b id="account-binding">—</b></div><div><span class="control-name">Kill switch</span><b id="kill-state">—</b></div><div><span class="control-name">ARM expiry</span><b id="expiry-state">—</b></div></div>
+              <div class="control-rows"><div><span class="control-name">MT5 account type</span><b id="account-type">—</b></div><div><span class="control-name">Account binding</span><b id="account-binding">—</b></div><div><span class="control-name">Kill switch</span><b id="kill-state">—</b></div><div><span class="control-name">ARM authorization</span><b id="expiry-state">—</b></div></div>
               <button class="inline-link" data-go="trading">Open Trading Control <span>→</span></button>
             </section>
             <section class="panel"><div class="panel-head"><div><h2>Operational health</h2><p>Runtime data, storage and safety gates</p></div><span id="health-pill" class="pill neutral">—</span></div>
@@ -101,9 +101,9 @@
         <section id="tab-trading" class="tabpanel hidden">
           <div class="section-header"><h2>Execution authorization</h2><span class="subtle">Every command is verified against live MT5 and stored in the audit trail</span></div>
           <div class="split trading-split">
-            <div class="panel trading-panel"><div class="panel-head"><div><h2>Control state</h2><p>Owner-authorized operating lease</p></div><span id="trade-state" class="pill neutral">—</span></div>
+            <div class="panel trading-panel"><div class="panel-head"><div><h2>Control state</h2><p>Owner-authorized persistent trading state</p></div><span id="trade-state" class="pill neutral">—</span></div>
               <div class="large-status" id="large-arm">DISARMED</div><div class="trade-subtext" id="trade-reason">Readiness not loaded.</div>
-              <div class="lease-row"><label for="lease-duration">ARM duration</label><select id="lease-duration"><option value="15">15 minutes</option><option value="60" selected>1 hour</option><option value="360">6 hours</option><option value="1440">24 hours</option></select></div>
+              <div class="lease-row"><span>ARM stays enabled until you choose DISARM or KILL.</span></div>
               <div class="control-buttons"><button id="arm-btn" class="btn btn-primary">◇ &nbsp; ARM trading</button><button id="disarm-btn" class="btn btn-outline">Ⅱ &nbsp; Disarm</button></div>
               <div class="safety-rule"><span>ⓘ</span> ARM is never automatic. Real accounts require matching strategy approval and a fresh broker safety check.</div>
             </div>

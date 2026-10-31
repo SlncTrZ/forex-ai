@@ -36,7 +36,6 @@ from forex_ai.mt5.client import MT5Client
 from forex_ai.risk.account_guard import account_matches, assert_account_matches
 from forex_ai.risk.broker_engine import apply_fixed_volume, BrokerAwareRiskEngine
 from forex_ai.runtime.resilience import MT5ResyncCoordinator
-from forex_ai.execution.auto_week import auto_live_window
 from forex_ai.runtime.risk_context import build_risk_context
 from forex_ai.strategy.config import load_strategy_snapshot, required_raw_bars
 
@@ -107,9 +106,6 @@ def main() -> int:
         expected_mode = detect_account_trade_mode(outcome.raw_account)
         if expected_mode is MT5AccountTradeMode.CONTEST:
             print(json.dumps({"status": "blocked", "reasons": ["ACCOUNT_TRADE_MODE_NOT_SUPPORTED:CONTEST"]}))
-            return 0
-        if expected_mode is MT5AccountTradeMode.REAL and not auto_live_window(datetime.now(UTC)):
-            print(json.dumps({"status": "idle", "reason": "OUTSIDE_AUTO_LIVE_WINDOW"}))
             return 0
         readiness = _readiness(
             cfg,

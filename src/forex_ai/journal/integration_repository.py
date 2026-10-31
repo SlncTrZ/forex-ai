@@ -345,7 +345,9 @@ class TradingControlState:
         """
         if self.kill_switch or self.maintenance_mode or not self.armed:
             return False
-        return self.arm_expires_at_utc is not None and now_utc < self.arm_expires_at_utc
+        # Null expiry represents a new persistent operator ARM. Old dated
+        # authorizations still expire, preventing automatic reactivation on upgrade.
+        return self.arm_expires_at_utc is None or now_utc < self.arm_expires_at_utc
 
 
 def load_trading_control(db_path: Path) -> TradingControlState:

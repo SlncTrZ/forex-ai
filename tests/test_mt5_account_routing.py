@@ -90,57 +90,12 @@ def test_contest_account_cannot_use_demo_or_real_execution(monkeypatch, tmp_path
         )
 
 
-@pytest.mark.parametrize("trade_mode", [MT5AccountTradeMode.DEMO, MT5AccountTradeMode.CONTEST])
-def test_auto_live_week_does_not_modify_nonreal_account(
-    monkeypatch, tmp_path, capsys, trade_mode
-):
-    db = tmp_path / "forex.db"
-    control = TradingControlState(
-        armed=True,
-        arm_expires_at_utc=datetime.now(UTC) + timedelta(days=1),
-        kill_switch=False,
-        maintenance_mode=False,
-        reason="DEMO_MONTH_RUN",
-    )
-    calls = []
-    class Client:
-        def __init__(self, cfg):
-            pass
-        def connect(self):
-            return True
-        def account_info(self):
-            return {"trade_mode": int(trade_mode)}
-        def close(self):
-            calls.append("close")
-
-    monkeypatch.setattr(auto_week, "load_runtime_config", lambda: SimpleNamespace(db_path=db))
-    monkeypatch.setattr(auto_week, "initialize", lambda _: None)
-    monkeypatch.setattr(auto_week, "load_trading_control", lambda _: control)
-    monkeypatch.setattr(auto_week, "MT5Client", Client)
-    monkeypatch.setattr(auto_week, "account_matches", lambda _: True)
-    monkeypatch.setattr(auto_week, "save_trading_control", lambda *args: pytest.fail("wrote shared trading control"))
-    monkeypatch.setattr(auto_week, "log_audit_event", lambda *args, **kwargs: pytest.fail("wrote audit event"))
+def test_retired_auto_week_does_not_modify_operator_control(capsys):
+    # Both account types are now owner-controlled, not scheduler-controlled.
     assert auto_week.main() == 0
-    assert "not_applicable" in capsys.readouterr().out
-    assert calls == ["close"]
-
-
-def test_auto_week_does_not_mutate_control_when_mt5_unavailable(monkeypatch, tmp_path):
-    class DisconnectedClient:
-        def __init__(self, cfg):
-            pass
-        def connect(self):
-            return False
-        def close(self):
-            pass
-
-    monkeypatch.setattr(auto_week, "load_runtime_config", lambda: SimpleNamespace(db_path=tmp_path / "db"))
-    monkeypatch.setattr(auto_week, "initialize", lambda _: None)
-    monkeypatch.setattr(auto_week, "load_trading_control", lambda _: TradingControlState())
-    monkeypatch.setattr(auto_week, "MT5Client", DisconnectedClient)
-    monkeypatch.setattr(auto_week, "save_trading_control", lambda *args: pytest.fail("unexpected mutation"))
-    assert auto_week.main() == 0
-
+    output = capsys.readouterr().out
+    assert '"status": "disabled"' in output
+    assert "MANUAL_ARM_ONLY" in output
 
 
 @pytest.mark.parametrize(
@@ -182,7 +137,6 @@ def test_execution_runner_reaches_account_gate_regardless_of_configured_mode(
     monkeypatch.setattr(runner, "MT5ResyncCoordinator", Coordinator)
     monkeypatch.setattr(runner, "account_matches", lambda *args: True)
     monkeypatch.setattr(runner, "assert_account_matches", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "auto_live_window", lambda *args: True)
     monkeypatch.setattr(runner, "_readiness", check_gate)
     monkeypatch.setattr(runner, "latest_approved_risk_result", lambda *args, **kwargs: None)
     monkeypatch.setattr(runner, "log_audit_event", lambda *args, **kwargs: None)
